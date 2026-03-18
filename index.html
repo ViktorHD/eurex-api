@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eurex API Explorer</title>
+    <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Feather Icons for lightweight modern icons -->
+    <script src="https://unpkg.com/feather-icons"></script>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Vertical Left Nav -->
+        <nav class="app-nav">
+            <div class="nav-branding">EX</div>
+            <div class="nav-items">
+                <button class="nav-btn active" title="Windows"><i data-feather="layout"></i></button>
+                <button class="nav-btn" title="History"><i data-feather="clock"></i></button>
+                <button class="nav-btn" title="Collections"><i data-feather="folder"></i></button>
+            </div>
+            <div class="nav-footer">
+                <button class="nav-btn" title="Settings"><i data-feather="settings"></i></button>
+            </div>
+        </nav>
+
+        <div class="app-main">
+            <!-- Tabs Bar -->
+            <div class="tabs-bar" id="tabsBar">
+                <button class="add-tab-btn" id="addTabBtn"><i data-feather="plus"></i></button>
+            </div>
+
+            <!-- Header Action Bar -->
+            <header class="action-bar">
+                <div class="url-input-group">
+                    <select id="httpMethod" class="method-select">
+                        <option value="POST">POST</option>
+                        <option value="GET">GET</option>
+                    </select>
+                    <input type="text" id="apiUrl" value="https://api.developer.deutsche-boerse.com/eurex-prod-graphql/" readonly>
+                    <button class="icon-btn" title="Variables"><i data-feather="sliders"></i></button>
+                    <button class="icon-btn" title="Headers"><i data-feather="list"></i></button>
+                </div>
+                
+                <div class="action-right">
+                    <button id="runQueryBtn" class="primary-btn send-btn">
+                        <i data-feather="play"></i> Send Request
+                    </button>
+                    <button id="toggleDocsBtn" class="secondary-btn docs-btn">
+                        <i data-feather="book"></i> Docs
+                    </button>
+                </div>
+            </header>
+
+            <!-- Three Pane Split Layout -->
+            <div class="workspace-grid">
+                
+                <!-- Left Pane: Query Editor & Drawer -->
+                <section class="pane editor-pane">
+                    <div class="pane-header">Query</div>
+                    <textarea id="queryInput" class="code-editor" spellcheck="false">
+query {
+  Contracts(filter: { Product: { eq: "FDAX" } }) {
+    date
+    data {
+      ISIN
+      Contract
+      ExpirationDate
+    }
+  }
+}
+                    </textarea>
+                    
+                    <!-- Bottom Drawer for Headers -->
+                    <div class="editor-drawer">
+                        <div class="drawer-header" id="drawerToggle">
+                            <span>Headers & Variables</span>
+                            <i data-feather="chevron-up" id="drawerIcon"></i>
+                        </div>
+                        <div class="drawer-content" id="drawerContent">
+                            <div class="control-group">
+                                <label>X-DBP-APIKEY</label>
+                                <input type="password" id="apiKey" placeholder="Enter your API key...">
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="resize-handle horizontal"></div>
+
+                <!-- Middle Pane: Results Table -->
+                <section class="pane results-pane">
+                    <div class="pane-header">
+                        <span>Result <span id="recordCounter" class="record-counter"></span></span>
+                        <div class="results-actions">
+                            <button id="downloadCsvBtn" class="icon-btn" title="Download CSV" disabled><i data-feather="download"></i> CSV</button>
+                            <button id="downloadMdBtn" class="icon-btn" title="Download MD" disabled><i data-feather="file-text"></i> MD</button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <div id="errorBox" class="error-box hidden"></div>
+                        <div id="loadingIndicator" class="loading hidden">
+                            <i data-feather="loader" class="spin"></i>
+                            <p>Fetching data...</p>
+                        </div>
+                        <div id="emptyState" class="empty-state">
+                            <p>Run a query to see results here.</p>
+                        </div>
+                        <table id="resultsTable" class="hidden">
+                            <thead id="tableHead"></thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <div class="resize-handle horizontal" id="docsSplitter"></div>
+
+                <!-- Right Pane: Docs (Schema Introspection) -->
+                <section class="pane docs-pane hidden" id="docsPane">
+                    <div class="pane-header">
+                        <span>Schema Explorer</span>
+                        <button id="closeDocsBtn" class="icon-btn"><i data-feather="x"></i></button>
+                    </div>
+                    <div class="docs-content" id="docsContent">
+                        <input type="text" id="docsSearch" placeholder="Search types and fields..." class="docs-search">
+                        <div id="docsLoading" class="docs-loading hidden">
+                            <i data-feather="loader" class="spin"></i>
+                            <p>Fetching schema...</p>
+                        </div>
+                        <div id="docsEmpty" class="docs-empty">
+                            <p>Click <strong>Docs</strong> to introspect the schema.</p>
+                        </div>
+                        <div id="docsTree" class="docs-tree hidden"></div>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+    <script>
+      feather.replace();
+    </script>
+</body>
+</html>
