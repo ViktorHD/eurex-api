@@ -265,6 +265,17 @@ body {
     color: var(--navy-blue);
 }
 
+.url-input-group .primary-btn {
+    height: 100%;
+    border-radius: 0 24px 24px 0;
+    box-shadow: none;
+    margin: 0;
+}
+
+.url-input-group .primary-btn:hover {
+    box-shadow: none;
+}
+
 .action-right { display: flex; gap: 12px; }
 
 .primary-btn {
