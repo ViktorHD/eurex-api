@@ -146,7 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
             schemaData = json.data.__schema;
             renderSchema(schemaData, '');
         } catch (err) {
-            docsTree.innerHTML = `<p class="docs-error">Failed to load schema: ${err.message}</p>`;
+            docsTree.innerHTML = '';
+            const errP = document.createElement('p');
+            errP.className = 'docs-error';
+            errP.textContent = `Failed to load schema: ${err.message}`;
+            docsTree.appendChild(errP);
             docsTree.classList.remove('hidden');
         } finally {
             docsLoading.classList.add('hidden');
@@ -225,7 +229,19 @@ document.addEventListener('DOMContentLoaded', () => {
             typeHeader.className = 'docs-type-header';
 
             const headerLeft = document.createElement('span');
-            headerLeft.innerHTML = `<span class="docs-type-name">${type.name}</span> <span class="docs-type-kind">${type.kind}</span>`;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'docs-type-name';
+            nameSpan.textContent = type.name;
+            headerLeft.appendChild(nameSpan);
+
+            headerLeft.appendChild(document.createTextNode(' '));
+
+            const kindSpan = document.createElement('span');
+            kindSpan.className = 'docs-type-kind';
+            kindSpan.textContent = type.kind;
+            headerLeft.appendChild(kindSpan);
+
             typeHeader.appendChild(headerLeft);
 
             // If this type name matches a root query field, add a single "+ Query" button
@@ -272,9 +288,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const fieldInfo = document.createElement('span');
-                fieldInfo.innerHTML = `
-                    <span class="docs-field-name">${field.name}</span>${argsStr ? `<span class="docs-field-args">${argsStr}</span>` : ''}: <span class="docs-field-type">${getTypeName(field.type)}</span>
-                `;
+
+                const fNameSpan = document.createElement('span');
+                fNameSpan.className = 'docs-field-name';
+                fNameSpan.textContent = field.name;
+                fieldInfo.appendChild(fNameSpan);
+
+                if (argsStr) {
+                    const fArgsSpan = document.createElement('span');
+                    fArgsSpan.className = 'docs-field-args';
+                    fArgsSpan.textContent = argsStr;
+                    fieldInfo.appendChild(fArgsSpan);
+                }
+
+                fieldInfo.appendChild(document.createTextNode(': '));
+
+                const fTypeSpan = document.createElement('span');
+                fTypeSpan.className = 'docs-field-type';
+                fTypeSpan.textContent = getTypeName(field.type);
+                fieldInfo.appendChild(fTypeSpan);
+
                 fieldDiv.appendChild(fieldInfo);
 
                 if (field.description) {
@@ -302,7 +335,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 type.enumValues.forEach(ev => {
                     const evDiv = document.createElement('div');
                     evDiv.className = 'docs-field';
-                    evDiv.innerHTML = `<span class="docs-field-name">${ev.name}</span>`;
+
+                    const evNameSpan = document.createElement('span');
+                    evNameSpan.className = 'docs-field-name';
+                    evNameSpan.textContent = ev.name;
+                    evDiv.appendChild(evNameSpan);
+
                     if (ev.description) {
                         const edesc = document.createElement('p');
                         edesc.className = 'docs-field-desc';
@@ -461,7 +499,19 @@ document.addEventListener('DOMContentLoaded', () => {
         matches.forEach((m, idx) => {
             const item = document.createElement('div');
             item.className = 'autocomplete-item' + (idx === 0 ? ' active' : '');
-            item.innerHTML = `<span class="ac-label">${m.label}</span> <span class="ac-kind">${m.kind}</span>`;
+
+            const acLabel = document.createElement('span');
+            acLabel.className = 'ac-label';
+            acLabel.textContent = m.label;
+            item.appendChild(acLabel);
+
+            item.appendChild(document.createTextNode(' '));
+
+            const acKind = document.createElement('span');
+            acKind.className = 'ac-kind';
+            acKind.textContent = m.kind;
+            item.appendChild(acKind);
+
             item.addEventListener('mousedown', (e) => {
                 e.preventDefault();
                 applyAutocomplete(m.label, word);
@@ -807,7 +857,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headers.forEach(h => {
             const th = document.createElement('th');
             th.className = 'sortable-th';
-            th.innerHTML = h + (sortCol === h ? (sortAsc ? ' ▲' : ' ▼') : '');
+            th.textContent = h + (sortCol === h ? (sortAsc ? ' ▲' : ' ▼') : '');
             th.addEventListener('click', () => {
                 if (sortCol === h) {
                     sortAsc = !sortAsc;
@@ -981,7 +1031,10 @@ document.addEventListener('DOMContentLoaded', () => {
         emptyState.classList.remove('hidden');
         resultsTable.classList.add('hidden');
         if (msg) {
-            emptyState.innerHTML = `<p>${msg}</p>`;
+            emptyState.innerHTML = '';
+            const p = document.createElement('p');
+            p.textContent = msg;
+            emptyState.appendChild(p);
         }
     }
 
