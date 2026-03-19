@@ -5,12 +5,16 @@
     --neon-green: #00ce7d;
     --neon-hover: #00b36c;
     
-    /* UI Theme Variables matching Altair aesthetic */
-    --bg-main: #f4f6f8;
-    --bg-panel: #ffffff;
-    --border-color: #e2e8f0;
-    --text-primary: #1a202c;
-    --text-secondary: #718096;
+    /* UI Theme Variables matching Material aesthetic */
+    --bg-main: #f8f9fa; /* Material very light gray */
+    --bg-panel: #ffffff; /* Material surface */
+    --border-color: #e0e0e0; /* Material divider */
+    --text-primary: rgba(0, 0, 0, 0.87); /* Material primary text */
+    --text-secondary: rgba(0, 0, 0, 0.60); /* Material secondary text */
+
+    /* Box Shadows for Material Elevation */
+    --elevation-1: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+    --elevation-2: 0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23);
     
     /* Code Editor / Dark Areas */
     --editor-bg: #1e1e24;
@@ -18,7 +22,7 @@
     --editor-border: #2d3748;
 
     /* Status Colors */
-    --error: #e53e3e;
+    --error: #d32f2f; /* Material error red */
 }
 
 * {
@@ -45,17 +49,18 @@ body {
 /* Scrollbars */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #a0aec0; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
 
 /* 1. Vertical Left Nav */
 .app-nav {
-    width: 60px;
+    width: 72px; /* Material standard width for rails */
     background-color: var(--navy-blue);
     display: flex;
     flex-direction: column;
     align-items: center;
-    border-right: 1px solid var(--border-color);
+    border-right: none;
+    box-shadow: var(--elevation-2); /* Material shadow */
     padding: 16px 0;
     z-index: 100;
 }
@@ -80,19 +85,29 @@ body {
 }
 
 .nav-btn {
-    width: 100%;
+    width: 48px; /* Material standard touch target */
+    height: 48px;
+    border-radius: 50%; /* Make them circular for modern feel */
     background: transparent;
     border: none;
-    color: #a0aec0;
-    padding: 12px 0;
+    color: rgba(255, 255, 255, 0.7);
+    margin: 4px 0;
     cursor: pointer;
-    transition: color 0.2s;
+    transition: all 0.2s ease-in-out;
     display: flex;
     justify-content: center;
+    align-items: center;
 }
 
-.nav-btn:hover { color: white; }
-.nav-btn.active { color: var(--neon-green); border-right: 3px solid var(--neon-green); }
+.nav-btn:hover {
+    color: white;
+    background-color: rgba(255,255,255,0.1); /* Subtle hover effect */
+}
+.nav-btn.active {
+    color: var(--navy-blue);
+    background-color: var(--neon-green);
+    box-shadow: 0 2px 4px rgba(0,206,125,0.4); /* Glow effect */
+}
 
 /* Main App Area */
 .app-main {
@@ -100,36 +115,46 @@ body {
     display: flex;
     flex-direction: column;
     min-width: 0;
+    background-color: var(--bg-main); /* Ensure background is applied */
 }
 
 /* 2. Tabs Bar */
 .tabs-bar {
-    height: 40px;
-    background-color: var(--bg-main);
+    height: 48px; /* Slightly taller for Material tabs */
+    background-color: var(--bg-panel);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: flex-end;
-    padding: 0 10px;
+    padding: 0 16px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* Slight elevation */
+    z-index: 10; /* Keep it above the grid */
 }
 
 .tab {
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-color);
-    border-bottom: none;
-    border-radius: 4px 4px 0 0;
-    padding: 8px 16px;
-    font-size: 0.85rem;
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid transparent; /* Material active indicator style */
+    padding: 12px 24px;
+    font-size: 0.875rem; /* Material standard */
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    margin-right: 5px;
+    transition: all 0.2s;
+}
+
+.tab:hover {
+    color: var(--text-primary);
+    background-color: rgba(0,0,0,0.04);
 }
 
 .tab.active {
-    background-color: var(--bg-panel);
-    border-top: 2px solid var(--neon-green);
-    font-weight: 500;
+    color: var(--navy-blue);
+    border-bottom-color: var(--neon-green);
 }
 
 .tab-label {
@@ -168,25 +193,34 @@ body {
 
 /* 3. Header Action Bar */
 .action-bar {
-    height: 60px;
+    height: 64px; /* Material standard height for toolbars */
     background-color: var(--bg-panel);
     border-bottom: 1px solid var(--border-color);
+    box-shadow: var(--elevation-1);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 24px;
+    z-index: 9;
 }
 
 .url-input-group {
     display: flex;
     align-items: center;
     background: var(--bg-main);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    height: 36px;
+    border: 1px solid transparent; /* Remove border, use shadow */
+    border-radius: 24px; /* Pill shape for search/URL inputs */
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
+    height: 40px; /* Taller for better tap target */
     width: 50%;
     min-width: 400px;
     overflow: hidden;
+    transition: all 0.2s;
+}
+.url-input-group:focus-within {
+    border-color: var(--neon-green);
+    background: var(--bg-panel);
+    box-shadow: 0 0 0 2px rgba(0, 206, 125, 0.2);
 }
 
 .method-select {
@@ -194,18 +228,19 @@ body {
     color: white;
     border: none;
     height: 100%;
-    padding: 0 12px;
+    padding: 0 16px;
     font-weight: 600;
     outline: none;
     cursor: pointer;
+    font-size: 0.875rem;
 }
 
 #apiUrl {
     flex: 1;
     border: none;
     background: transparent;
-    padding: 0 12px;
-    font-size: 0.9rem;
+    padding: 0 16px;
+    font-size: 0.95rem; /* Better readability */
     color: var(--text-primary);
     outline: none;
 }
@@ -213,17 +248,31 @@ body {
 .icon-btn {
     background: transparent;
     border: none;
-    padding: 6px;
+    padding: 8px;
+    border-radius: 50%; /* Material style icon buttons */
     color: var(--text-secondary);
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 0.85rem;
+    transition: background 0.2s;
 }
-.icon-btn:hover:not(:disabled) { color: var(--navy-blue); }
+.icon-btn:hover:not(:disabled) {
+    background-color: rgba(0,0,0,0.05);
+    color: var(--navy-blue);
+}
 .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.url-input-group .icon-btn { padding: 0 10px; border-left: 1px solid var(--border-color); height: 100%; border-radius: 0; }
+.url-input-group .icon-btn {
+    padding: 0 12px;
+    border-left: 1px solid var(--border-color);
+    height: 100%;
+    border-radius: 0;
+}
+.url-input-group .icon-btn:hover:not(:disabled) {
+    background-color: transparent;
+    color: var(--navy-blue);
+}
 
 .action-right { display: flex; gap: 12px; }
 
@@ -231,30 +280,44 @@ body {
     background-color: var(--neon-green);
     color: var(--navy-blue);
     border: none;
-    border-radius: 6px;
-    padding: 0 20px;
-    height: 36px;
+    border-radius: 4px; /* Material standard radius */
+    padding: 0 24px;
+    height: 40px;
     font-weight: 600;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 8px;
-    transition: background 0.2s;
+    box-shadow: var(--elevation-1);
+    transition: all 0.2s;
 }
-.primary-btn:hover { background-color: var(--neon-hover); }
+.primary-btn:hover {
+    background-color: var(--neon-hover);
+    box-shadow: var(--elevation-2);
+}
 
 .secondary-btn {
     background-color: transparent;
     color: var(--navy-blue);
     border: 1px solid var(--navy-blue);
-    border-radius: 6px;
-    padding: 0 16px;
-    height: 36px;
-    font-weight: 500;
+    border-radius: 4px;
+    padding: 0 24px;
+    height: 40px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 8px;
+    transition: all 0.2s;
+}
+.secondary-btn:hover {
+    background-color: rgba(32, 23, 81, 0.05); /* Very subtle navy background */
 }
 
 /* 4. Three Pane Split Layout */
@@ -275,24 +338,36 @@ body {
     position: relative;
 }
 
-.editor-pane { flex: 1; max-width: 600px; background-color: var(--editor-bg); color: var(--editor-text); }
-.results-pane { flex: 2; overflow: hidden; }
+.editor-pane {
+    flex: 1;
+    max-width: 600px;
+    background-color: var(--editor-bg);
+    color: var(--editor-text);
+}
+.results-pane {
+    flex: 2;
+    overflow: hidden;
+}
 .docs-pane { width: 350px; }
 
 .hidden { display: none !important; }
 
 /* Pane Headers */
 .pane-header {
-    height: 40px;
-    background-color: #f7fafc;
+    height: 48px; /* Material standard list item height */
+    background-color: var(--bg-panel); /* Cleaner background */
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 24px;
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: 0.875rem; /* Material subtitle2 */
     color: var(--navy-blue);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    z-index: 5;
 }
 .editor-pane .pane-header {
     background-color: #2d3748;
@@ -321,37 +396,55 @@ body {
     background-color: #2d3748;
     display: flex;
     flex-direction: column;
+    box-shadow: 0 -2px 4px rgba(0,0,0,0.1); /* Slight shadow to indicate it's over the editor */
 }
 
 .drawer-header {
-    padding: 8px 16px;
-    font-size: 0.8rem;
-    font-weight: 600;
+    padding: 12px 24px;
+    font-size: 0.875rem;
+    font-weight: 500;
     color: #a0aec0;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    transition: all 0.2s;
 }
-.drawer-header:hover { color: white; }
+.drawer-header:hover {
+    color: white;
+    background-color: rgba(255,255,255,0.05); /* Material hover effect */
+}
 
 .drawer-content {
     background-color: var(--editor-bg);
-    padding: 16px;
-    height: 150px;
+    padding: 24px;
+    height: auto;
+    min-height: 150px;
     border-top: 1px solid #4a5568;
     display: none; /* hidden initially */
 }
 .drawer-content.open { display: block; }
 
-.control-group label { display: block; font-size: 0.8rem; color: #a0aec0; margin-bottom: 8px; }
+.control-group label {
+    display: block;
+    font-size: 0.875rem;
+    color: #a0aec0;
+    margin-bottom: 8px;
+}
 .control-group input { 
     width: 100%; 
     background: rgba(0,0,0,0.3); 
-    border: 1px solid #4a5568; 
+    border: 1px solid transparent;
+    border-bottom: 1px solid #a0aec0; /* Material standard border */
     color: white; 
-    padding: 8px; 
-    border-radius: 4px; 
+    padding: 12px 8px;
+    border-radius: 4px 4px 0 0; /* Material input shape */
+    transition: all 0.2s;
+    outline: none;
+}
+.control-group input:focus {
+    background: rgba(0,0,0,0.5);
+    border-bottom: 2px solid var(--neon-green);
 }
 
 /* Results Table Specifics */
@@ -359,45 +452,88 @@ body {
     flex: 1;
     overflow: auto;
     position: relative;
-    padding: 16px;
+    padding: 0 24px 24px; /* Material standard horizontal padding */
+    background-color: var(--bg-panel);
 }
 
 .results-actions { display: flex; gap: 8px; }
 
-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: auto; }
-thead { position: sticky; top: -16px; z-index: 10; }
-th, td { padding: 10px; text-align: left; border: 1px solid var(--border-color); }
-th { background-color: var(--bg-main); font-weight: 600; color: var(--navy-blue); }
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem; /* Material standard body2 */
+    table-layout: auto;
+}
+
+thead {
+    position: sticky;
+    top: 0; /* Updated stickiness for no-padding container */
+    z-index: 10;
+    background-color: var(--bg-panel);
+}
+
+th, td {
+    padding: 16px; /* Material standard table cell padding */
+    text-align: left;
+    border-bottom: 1px solid var(--border-color); /* Material tables use bottom borders */
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    color: var(--text-primary);
+}
+
+th {
+    font-weight: 500; /* Material table headers are medium weight */
+    color: var(--text-secondary); /* Material table headers are secondary text color */
+    background-color: var(--bg-panel);
+    border-bottom: 2px solid var(--border-color);
+}
+
+tr:hover td {
+    background-color: rgba(0,0,0,0.04); /* Material table row hover */
+}
 
 .sortable-th {
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
+    transition: color 0.2s;
 }
-.sortable-th:hover { background-color: #e2e8f0; }
+.sortable-th:hover {
+    color: var(--text-primary);
+    background-color: transparent; /* Remove the old highlight */
+}
 
 .filter-row th {
-    padding: 4px;
-    background-color: var(--bg-panel);
+    padding: 8px 16px;
+    background-color: var(--bg-main); /* Slight contrast for filter row */
+    border-bottom: 1px solid var(--border-color);
 }
 
 .col-filter {
     width: 100%;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    padding: 4px 6px;
-    font-size: 0.8rem;
+    border: none; /* Modern borderless input */
+    border-bottom: 1px solid var(--text-secondary);
+    border-radius: 0;
+    padding: 6px 4px;
+    font-size: 0.875rem;
     outline: none;
-    background: var(--bg-main);
+    background: transparent;
     color: var(--text-primary);
+    transition: all 0.2s;
 }
-.col-filter:focus { border-color: var(--neon-green); }
+.col-filter:focus {
+    border-bottom: 2px solid var(--neon-green);
+    background-color: rgba(0, 206, 125, 0.05); /* Very slight tint on focus */
+}
 
 .record-counter {
     font-weight: 400;
     font-size: 0.8rem;
     color: var(--text-secondary);
-    margin-left: 4px;
+    margin-left: 8px;
+    text-transform: none; /* Counter doesn't need to be uppercase */
+    letter-spacing: normal;
 }
 
 .empty-state {
@@ -424,21 +560,27 @@ th { background-color: var(--bg-main); font-weight: 600; color: var(--navy-blue)
 .docs-content {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
+    padding: 24px;
+    background-color: var(--bg-main);
 }
 
 .docs-search {
     width: 100%;
-    margin-bottom: 16px;
-    background: var(--bg-main);
+    margin-bottom: 24px;
+    background: var(--bg-panel);
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 0.85rem;
+    border: 1px solid transparent; /* Remove standard border */
+    box-shadow: var(--elevation-1); /* Material search bar */
+    padding: 12px 16px;
+    border-radius: 24px; /* Pill shape */
+    font-size: 0.875rem;
     outline: none;
+    transition: all 0.2s;
 }
-.docs-search:focus { border-color: var(--neon-green); }
+.docs-search:focus {
+    box-shadow: var(--elevation-2);
+    border: 1px solid var(--neon-green);
+}
 
 .docs-loading {
     display: flex;
@@ -480,22 +622,30 @@ th { background-color: var(--bg-main); font-weight: 600; color: var(--navy-blue)
 }
 
 .docs-type-block {
-    margin-bottom: 6px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+    margin-bottom: 8px; /* Slightly more space */
+    border: none;
+    background: var(--bg-panel);
+    border-radius: 8px; /* Material standard roundness */
+    box-shadow: var(--elevation-1); /* Elevate blocks */
     overflow: hidden;
+    transition: all 0.2s;
+}
+.docs-type-block:hover {
+    box-shadow: var(--elevation-2);
 }
 
 .docs-type-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 12px;
-    background: var(--bg-main);
+    padding: 12px 16px;
+    background: var(--bg-panel);
     cursor: pointer;
     transition: background 0.15s;
 }
-.docs-type-header:hover { background: #e2e8f0; }
+.docs-type-header:hover {
+    background-color: rgba(0,0,0,0.04);
+}
 
 .docs-type-name {
     font-weight: 600;
@@ -522,17 +672,18 @@ th { background-color: var(--bg-main); font-weight: 600; color: var(--navy-blue)
 
 .docs-type-body {
     border-top: 1px solid var(--border-color);
+    background: #fafafa; /* Subtle offset from pure white header */
 }
 
 .docs-field {
-    padding: 6px 12px 6px 20px;
-    font-size: 0.85rem;
+    padding: 12px 16px 12px 24px;
+    font-size: 0.875rem; /* Material typography */
     border-bottom: 1px solid var(--border-color);
-    line-height: 1.4;
+    line-height: 1.5;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
+    gap: 8px; /* Better spacing for readability */
 }
 .docs-field:last-child { border-bottom: none; }
 
