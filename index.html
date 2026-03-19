@@ -47,6 +47,9 @@
                     <button id="runQueryBtn" class="primary-btn send-btn">
                         <i data-feather="play"></i> Send Request
                     </button>
+                    <button id="toggleQueryBtn" class="secondary-btn query-btn">
+                        <i data-feather="edit-3"></i> Query
+                    </button>
                     <button id="toggleDocsBtn" class="secondary-btn docs-btn">
                         <i data-feather="book"></i> Docs
                     </button>
@@ -57,8 +60,11 @@
             <div class="workspace-grid">
                 
                 <!-- Left Pane: Query Editor & Drawer -->
-                <section class="pane editor-pane">
-                    <div class="pane-header">Query</div>
+                <section class="pane editor-pane" id="queryPane">
+                    <div class="pane-header">
+                        <span>Query</span>
+                        <button id="closeQueryBtn" class="icon-btn"><i data-feather="x"></i></button>
+                    </div>
                     <textarea id="queryInput" class="code-editor" spellcheck="false">
 query {
   Contracts(filter: { Product: { eq: "FDAX" } }) {
@@ -116,7 +122,7 @@ query {
                     </div>
                 </section>
 
-                <div class="resize-handle horizontal" id="docsSplitter"></div>
+                <div class="resize-handle horizontal hidden" id="docsSplitter"></div>
 
                 <!-- Right Pane: Docs (Schema Introspection) -->
                 <section class="pane docs-pane hidden" id="docsPane">

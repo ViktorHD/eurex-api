@@ -30,8 +30,88 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
     const downloadMdBtn = document.getElementById('downloadMdBtn');
 
+    // Workspace Grid
+    const workspaceGrid = document.querySelector('.workspace-grid');
+    const queryPane = document.getElementById('queryPane');
+    const resultsPane = document.querySelector('.results-pane');
+
+    // Resize handles
+    const resizeHandles = document.querySelectorAll('.resize-handle');
+
+    // --- Toggle Panes ---
+    const toggleQueryBtn = document.getElementById('toggleQueryBtn');
+    const closeQueryBtn = document.getElementById('closeQueryBtn');
+    const firstSplitter = document.querySelector('.resize-handle:not(#docsSplitter)');
+
+    toggleQueryBtn.addEventListener('click', () => {
+        queryPane.classList.toggle('hidden');
+        if (firstSplitter) {
+            firstSplitter.classList.toggle('hidden');
+        }
+    });
+
+    closeQueryBtn.addEventListener('click', () => {
+        queryPane.classList.add('hidden');
+        if (firstSplitter) {
+            firstSplitter.classList.add('hidden');
+        }
+    });
+
     // State
     let currentData = null;
+
+    // --- Resizing Logic ---
+    resizeHandles.forEach(handle => {
+        handle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            workspaceGrid.classList.add('resizing');
+            handle.classList.add('active');
+
+            // Figure out which panes we are resizing
+            const isDocsSplitter = handle.id === 'docsSplitter';
+
+            // For the first splitter (query / results)
+            let startX = e.clientX;
+
+            // Current widths
+            let startWidthQuery = queryPane.getBoundingClientRect().width;
+            let startWidthDocs = docsPane.getBoundingClientRect().width;
+
+            function onMouseMove(e) {
+                const dx = e.clientX - startX;
+                if (isDocsSplitter) {
+                    // Docs pane is on the right, so moving left increases its width
+                    // Wait, let's just adjust width explicitly.
+                    let newWidth = startWidthDocs - dx;
+                    if (newWidth < 200) newWidth = 200;
+                    if (newWidth > 800) newWidth = 800;
+                    docsPane.style.width = newWidth + 'px';
+                    docsPane.style.flex = 'none'; // Ensure width takes precedence
+                } else {
+                    // Query pane is on the left
+                    let newWidth = startWidthQuery + dx;
+                    if (newWidth < 200) newWidth = 200;
+                    if (newWidth > 800) newWidth = 800;
+                    queryPane.style.width = newWidth + 'px';
+                    queryPane.style.flex = 'none';
+                    queryPane.style.maxWidth = 'none'; // remove the css max-width while resizing
+                }
+
+                // Force results pane to fill remaining space
+                resultsPane.style.flex = '1';
+            }
+
+            function onMouseUp() {
+                workspaceGrid.classList.remove('resizing');
+                handle.classList.remove('active');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    });
 
     // Event Listeners
     runQueryBtn.addEventListener('click', handleRunQuery);
@@ -52,12 +132,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const docsEmpty = document.getElementById('docsEmpty');
     const docsTree = document.getElementById('docsTree');
     const docsSearch = document.getElementById('docsSearch');
+    const docsSplitter = document.getElementById('docsSplitter');
 
     // Schema introspection cache
     let schemaData = null;
 
+    // Toggle Docs Pane
     toggleDocsBtn.addEventListener('click', async () => {
         docsPane.classList.toggle('hidden');
+        if (docsSplitter) {
+            docsSplitter.classList.toggle('hidden');
+        }
         // If just opened and no schema loaded, fetch it
         if (!docsPane.classList.contains('hidden') && !schemaData) {
             await fetchSchema();
@@ -66,6 +151,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     closeDocsBtn.addEventListener('click', () => {
         docsPane.classList.add('hidden');
+        if (docsSplitter) {
+            docsSplitter.classList.add('hidden');
+        }
     });
 
     // Search filter

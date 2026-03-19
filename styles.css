@@ -350,6 +350,22 @@ body {
 }
 .docs-pane { width: 350px; }
 
+/* Resizer Handles */
+.resize-handle {
+    width: 6px;
+    background-color: var(--border-color);
+    cursor: col-resize;
+    z-index: 10;
+    transition: background-color 0.2s;
+}
+.resize-handle:hover, .resize-handle.active {
+    background-color: var(--neon-green);
+}
+/* Ensure the grid respects explicit widths when dragging */
+.workspace-grid.resizing * {
+    user-select: none;
+}
+
 .hidden { display: none !important; }
 
 /* Pane Headers */
