@@ -1,3 +1,12 @@
+function getTypeName(typeObj) {
+    if (!typeObj) return 'Unknown';
+    if (typeObj.name) return typeObj.name;
+    if (typeObj.kind === 'NON_NULL') return getTypeName(typeObj.ofType) + '!';
+    if (typeObj.kind === 'LIST') return '[' + getTypeName(typeObj.ofType) + ']';
+    return 'Unknown';
+}
+
+if (typeof document !== 'undefined') {
 document.addEventListener('DOMContentLoaded', () => {
     // Top Header Elements
     const apiUrlInput = document.getElementById('apiUrl');
@@ -245,14 +254,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             docsLoading.classList.add('hidden');
         }
-    }
-
-    function getTypeName(typeObj) {
-        if (!typeObj) return 'Unknown';
-        if (typeObj.name) return typeObj.name;
-        if (typeObj.kind === 'NON_NULL') return getTypeName(typeObj.ofType) + '!';
-        if (typeObj.kind === 'LIST') return '[' + getTypeName(typeObj.ofType) + ']';
-        return 'Unknown';
     }
 
     function renderSchema(schema, filter) {
@@ -1153,3 +1154,8 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadMdBtn.disabled = true;
     }
 });
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { getTypeName };
+}
