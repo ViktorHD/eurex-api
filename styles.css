@@ -54,7 +54,7 @@ body {
 
 /* 1. Vertical Left Nav */
 .app-nav {
-    width: 72px; /* Material standard width for rails */
+    width: 60px; /* Material standard width for rails */
     background-color: var(--navy-blue);
     display: flex;
     flex-direction: column;
@@ -68,8 +68,11 @@ body {
 .nav-branding {
     color: var(--neon-green);
     font-weight: 700;
-    font-size: 1.5rem;
-    margin-bottom: 30px;
+    font-size: 1.2rem;
+    margin-top: 100px;
+    margin-bottom: 100px;
+    white-space: nowrap;
+    transform: rotate(-90deg);
 }
 
 .nav-items {
@@ -328,7 +331,7 @@ body {
 
 .editor-pane {
     flex: 1;
-    max-width: 600px;
+    max-width: 480px;
     background-color: var(--editor-bg);
     color: var(--editor-text);
 }
