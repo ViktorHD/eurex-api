@@ -212,8 +212,8 @@ body {
     border-radius: 24px; /* Pill shape for search/URL inputs */
     box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
     height: 40px; /* Taller for better tap target */
-    width: 50%;
-    min-width: 400px;
+    width: 35%;
+    min-width: 280px;
     overflow: hidden;
     transition: all 0.2s;
 }
@@ -221,18 +221,6 @@ body {
     border-color: var(--neon-green);
     background: var(--bg-panel);
     box-shadow: 0 0 0 2px rgba(0, 206, 125, 0.2);
-}
-
-.method-select {
-    background: var(--navy-blue);
-    color: white;
-    border: none;
-    height: 100%;
-    padding: 0 16px;
-    font-weight: 600;
-    outline: none;
-    cursor: pointer;
-    font-size: 0.875rem;
 }
 
 #apiUrl {
