@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Top Header Elements
     const apiUrlInput = document.getElementById('apiUrl');
+    const httpMethodSelect = document.getElementById('httpMethod');
     const runQueryBtn = document.getElementById('runQueryBtn');
     const toggleDocsBtn = document.getElementById('toggleDocsBtn');
     
@@ -130,14 +131,25 @@ document.addEventListener('DOMContentLoaded', () => {
         docsTree.classList.add('hidden');
 
         try {
-            const resp = await fetch(endpoint, {
-                method: 'POST',
+            const method = httpMethodSelect.value;
+            const fetchOptions = {
+                method: method,
                 headers: {
                     'Content-Type': 'application/json',
                     'X-DBP-APIKEY': apiKey
-                },
-                body: JSON.stringify({ query: INTROSPECTION_QUERY })
-            });
+                }
+            };
+
+            let finalEndpoint = endpoint;
+            if (method === 'GET') {
+                const url = new URL(endpoint);
+                url.searchParams.append('query', INTROSPECTION_QUERY);
+                finalEndpoint = url.toString();
+            } else {
+                fetchOptions.body = JSON.stringify({ query: INTROSPECTION_QUERY });
+            }
+
+            const resp = await fetch(finalEndpoint, fetchOptions);
 
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const json = await resp.json();
@@ -691,14 +703,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const endpoint = apiUrlInput.value.trim();
-            const response = await fetch(endpoint, {
-                method: 'POST',
+            const method = httpMethodSelect.value;
+            const fetchOptions = {
+                method: method,
                 headers: {
                     'Content-Type': 'application/json',
                     'X-DBP-APIKEY': apiKey
-                },
-                body: JSON.stringify({ query })
-            });
+                }
+            };
+
+            let finalEndpoint = endpoint;
+            if (method === 'GET') {
+                const url = new URL(endpoint);
+                url.searchParams.append('query', query);
+                finalEndpoint = url.toString();
+            } else {
+                fetchOptions.body = JSON.stringify({ query });
+            }
+
+            const response = await fetch(finalEndpoint, fetchOptions);
 
             if (!response.ok) {
                 let errText = await response.text();
