@@ -277,13 +277,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Group types by category
         const rootTypes = userTypes.filter(t => t.name === queryTypeName || t.name === mutationTypeName);
-        const objectTypes = userTypes.filter(t => t.kind === 'OBJECT' && !rootTypes.includes(t));
+        const objectTypes = userTypes.filter(t => t.kind === 'OBJECT' && !rootTypes.includes(t) && !t.name.endsWith('Response'));
         const inputTypes = userTypes.filter(t => t.kind === 'INPUT_OBJECT');
         const enumTypes = userTypes.filter(t => t.kind === 'ENUM');
         const scalarTypes = userTypes.filter(t => t.kind === 'SCALAR');
 
         // Render each section
-        if (rootTypes.length > 0) addSection('Root Types', rootTypes, filter, rootFieldMap);
         if (objectTypes.length > 0) addSection('Object Types', objectTypes, filter, rootFieldMap);
         if (inputTypes.length > 0) addSection('Input Types', inputTypes, filter, rootFieldMap);
         if (enumTypes.length > 0) addSection('Enums', enumTypes, filter, rootFieldMap);
