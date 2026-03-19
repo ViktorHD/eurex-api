@@ -839,14 +839,16 @@ document.addEventListener('DOMContentLoaded', () => {
         tableBody.innerHTML = '';
 
         // Apply column filters
+        const activeFilters = headers
+            .map(h => ({ header: h, value: (columnFilters[h] || '').toLowerCase() }))
+            .filter(f => f.value);
+
         let filtered = dataArray.filter(row => {
-            return headers.every(h => {
-                const fv = (columnFilters[h] || '').toLowerCase();
-                if (!fv) return true;
-                let val = row[h];
+            return activeFilters.every(f => {
+                let val = row[f.header];
                 if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
                 val = val !== undefined && val !== null ? String(val) : '';
-                return val.toLowerCase().includes(fv);
+                return val.toLowerCase().includes(f.value);
             });
         });
 
