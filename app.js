@@ -509,19 +509,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function insertFieldIntoQuery(fieldName) {
         const current = queryInput.value;
-        // Try to insert before the last closing brace
-        const lastBrace = current.lastIndexOf('}');
-        if (lastBrace > 0) {
-            const secondLastBrace = current.lastIndexOf('}', lastBrace - 1);
-            if (secondLastBrace > 0) {
-                const before = current.substring(0, secondLastBrace);
-                const after = current.substring(secondLastBrace);
-                queryInput.value = before + '      ' + fieldName + '\n' + after;
+
+        // Find the 'data {' block
+        const dataMatch = current.match(/data\s*\{/);
+
+        if (dataMatch) {
+            // Find the matching closing brace for the 'data' block
+            let braceCount = 0;
+            let startIndex = dataMatch.index + dataMatch[0].length;
+            let closingBraceIndex = -1;
+
+            for (let i = startIndex; i < current.length; i++) {
+                if (current[i] === '{') {
+                    braceCount++;
+                } else if (current[i] === '}') {
+                    if (braceCount === 0) {
+                        closingBraceIndex = i;
+                        break;
+                    }
+                    braceCount--;
+                }
+            }
+
+            if (closingBraceIndex !== -1) {
+                // Determine indentation (replace any non-whitespace chars, just in case)
+                const lineStartIndex = current.lastIndexOf('\n', closingBraceIndex) + 1;
+                const indentation = current.substring(lineStartIndex, closingBraceIndex).replace(/[^\s]/g, ' ');
+                const fieldIndent = indentation + '  ';
+
+                // Find where to insert (right before the closing brace)
+                const before = current.substring(0, closingBraceIndex);
+                const after = current.substring(closingBraceIndex);
+
+                // If there's already whitespace at the end of `before` (e.g. from the previous line's newline and indent),
+                // we want to place our field there, then add a newline and the closing brace's indentation.
+                // A clean way is to trim trailing whitespace of `before`, add a newline + fieldIndent + fieldName + newline + indentation
+                const cleanBefore = before.replace(/\s+$/, '');
+
+                queryInput.value = cleanBefore + '\n' + fieldIndent + fieldName + '\n' + indentation + after;
                 return;
             }
         }
-        // Fallback: append to cursor position
-        const pos = queryInput.selectionStart || queryInput.value.length;
+
+        // Fallback: append to cursor position if no 'data {' block is found
+        const pos = queryInput.selectionStart || current.length;
         queryInput.value = current.substring(0, pos) + '\n      ' + fieldName + current.substring(pos);
     }
 
