@@ -498,6 +498,7 @@ th, td {
     border-right: none;
     border-top: none;
     color: var(--text-primary);
+    white-space: nowrap;
 }
 
 th {
@@ -555,21 +556,55 @@ tr:hover td {
 }
 
 .empty-state {
-    display: flex; align-items: center; justify-content: center;
-    height: 100%; color: var(--text-secondary); font-style: italic;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; color: var(--text-secondary); text-align: center; gap: 16px;
 }
+.empty-state i { width: 48px; height: 48px; stroke-width: 1.5; color: var(--border-color); }
+.empty-state h3 { font-size: 1.1rem; color: var(--text-primary); font-weight: 500; margin-bottom: 4px; font-style: normal; }
+.empty-state p { font-size: 0.9rem; font-style: normal; }
 
 .loading {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    height: 100%; gap: 16px; color: var(--navy-blue);
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start;
+    height: 100%; width: 100%; margin-top: 16px;
 }
-.spin { animation: spin 1s linear infinite; }
-@keyframes spin { 100% { transform: rotate(360deg); } }
 
-.error-box {
-    background-color: #fed7d7; color: var(--error);
-    padding: 12px; border-radius: 6px; margin-bottom: 16px;
-    border: 1px solid #feb2b2;
+/* Animations */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.4s ease-out forwards; }
+
+@keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+}
+.skeleton {
+    background: #f6f7f8;
+    background-image: linear-gradient(to right, #f6f7f8 0%, #edeef1 20%, #f6f7f8 40%, #f6f7f8 100%);
+    background-repeat: no-repeat;
+    background-size: 1000px 100%; 
+    animation: shimmer 1.5s linear infinite;
+    border-radius: 4px;
+}
+.skeleton-row { height: 16px; margin-bottom: 12px; width: 100%; }
+.skeleton-header { height: 24px; margin-bottom: 24px; width: 60%; }
+
+.error-card {
+    background-color: #fff;
+    border-left: 4px solid var(--error);
+    box-shadow: var(--elevation-1);
+    padding: 16px 20px;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.error-card-header {
+    display: flex; align-items: center; gap: 8px; color: var(--error); font-weight: 600;
+}
+.error-card p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
 }
 
 /* === Docs / Schema Explorer Pane === */
@@ -812,8 +847,24 @@ tr:hover td {
     border-radius: 3px;
 }
 
-/* Responsive: hide left nav for very narrow embeds */
+/* Responsive Layouts */
 @media (max-width: 700px) {
     .app-nav { display: none; }
-    .url-input-group { min-width: 180px; }
+    .url-input-group { min-width: 180px; width: 100%; }
+    .action-bar { flex-wrap: wrap; height: auto; padding: 12px; gap: 12px; }
+    .action-right { width: 100%; justify-content: space-between; gap: 8px; }
+    .workspace-grid { flex-direction: column; }
+    .pane { min-width: 100%; flex: none; height: 50vh; }
+    .results-pane { height: 60vh; border-top: 1px solid var(--border-color); }
+    .docs-pane { height: 100vh; position: absolute; z-index: 50; width: 100%; top: 0; left: 0; }
+    .resize-handle { display: none; }
+
+    /* Responsive Table as Cards */
+    table { display: block; border: 0; width: 100%; }
+    thead { display: none; }
+    tbody { display: flex; flex-direction: column; gap: 16px; padding: 8px 0; }
+    tr { display: flex; flex-direction: column; background: var(--bg-panel); box-shadow: var(--elevation-1); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); }
+    td { display: flex; flex-direction: column; border-bottom: 1px solid var(--border-color); padding: 10px 16px; text-align: left; }
+    td::before { content: attr(data-label); font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; }
+    td:last-child { border-bottom: 0; }
 }

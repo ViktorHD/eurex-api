@@ -26,10 +26,7 @@
             <!-- Header Action Bar -->
             <header class="action-bar">
                 <div class="url-input-group">
-                    <input type="text" id="apiUrl" value="https://api.developer.deutsche-boerse.com/eurex-prod-graphql/" readonly>
-                    <button id="runQueryBtn" class="primary-btn send-btn">
-                        <i data-feather="play"></i> Send Request
-                    </button>
+                    <input type="text" id="apiUrl" value="https://api.developer.deutsche-boerse.com/eurex-prod-graphql/" placeholder="Enter Endpoint here...">
                 </div>
 
                 <div class="action-right">
@@ -48,7 +45,12 @@
                 <!-- Left Pane: Query Editor & Drawer -->
                 <section class="pane editor-pane" id="queryPane">
                     <div class="pane-header">
-                        <span>Query</span>
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <span>Query</span>
+                            <button id="runQueryBtn" class="primary-btn" style="height: 28px; padding: 0 16px; font-size: 0.75rem;">
+                                <i data-feather="play" style="width: 14px; height: 14px;"></i> Run
+                            </button>
+                        </div>
                         <button id="closeQueryBtn" class="icon-btn"><i data-feather="x"></i></button>
                     </div>
                     <textarea id="queryInput" class="code-editor" spellcheck="false">
@@ -92,14 +94,21 @@ query {
                     </div>
                     
                     <div class="table-container">
-                        <div id="errorBox" class="error-box hidden"></div>
+                        <div id="errorBox" class="error-card hidden"></div>
                         <div id="loadingIndicator" class="loading hidden">
-                            <i data-feather="loader" class="spin"></i>
-                            <p>Fetching data...</p>
+                            <div class="skeleton skeleton-header"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row" style="width: 80%;"></div>
+                            <div class="skeleton skeleton-row" style="width: 90%;"></div>
                         </div>
                         <div id="emptyState" class="empty-state">
-                            <p>Run a query to see results here.</p>
-                            <p style="margin-top: 8px; font-size: 0.8rem;"><a href="https://www.eurex.com/ex-en/data/free-reference-data-api" target="_blank" rel="noopener" style="color: #00ce7d;">ℹ️ Learn more about the Eurex Reference Data API</a></p>
+                            <i data-feather="database"></i>
+                            <div>
+                                <h3>No Data to Display</h3>
+                                <p>Run a query to see results here.</p>
+                                <p style="margin-top: 8px; font-size: 0.85rem;"><a href="https://www.eurex.com/ex-en/data/free-reference-data-api" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none;">Learn more about the Eurex API →</a></p>
+                            </div>
                         </div>
                         <table id="resultsTable" class="hidden">
                             <thead id="tableHead"></thead>
@@ -119,11 +128,16 @@ query {
                     <div class="docs-content" id="docsContent">
                         <input type="text" id="docsSearch" placeholder="Search types and fields..." class="docs-search">
                         <div id="docsLoading" class="docs-loading hidden">
-                            <i data-feather="loader" class="spin"></i>
-                            <p>Fetching schema...</p>
+                            <div class="skeleton skeleton-header" style="width: 70%;"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row" style="width: 50%;"></div>
                         </div>
-                        <div id="docsEmpty" class="docs-empty">
-                            <p>Click <strong>Docs</strong> to introspect the schema.</p>
+                        <div id="docsEmpty" class="empty-state hidden" style="margin-top: 40px;">
+                            <i data-feather="book-open"></i>
+                            <div>
+                                <h3>Schema Explorer</h3>
+                                <p>Click <strong>Docs</strong> to introspect.</p>
+                            </div>
                         </div>
                         <div id="docsTree" class="docs-tree hidden"></div>
                     </div>
@@ -132,7 +146,7 @@ query {
             </div>
         </div>
     </div>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
     <script>
       feather.replace();
     </script>
