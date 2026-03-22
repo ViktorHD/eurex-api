@@ -77,6 +77,13 @@ query {
                                 <label>X-DBP-APIKEY</label>
                                 <input type="password" id="apiKey" placeholder="Enter your API key...">
                             </div>
+                            <div class="control-group" style="margin-top: 16px;">
+                                <label>Google Gemini API Key (For AI Chatbot)</label>
+                                <input type="password" id="geminiApiKey" placeholder="Enter Gemini API key...">
+                                <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;">
+                                    Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none;">Google AI Studio</a>.
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -146,6 +153,29 @@ query {
             </div>
         </div>
     </div>
+
+    <!-- Floating Chatbot UI -->
+    <div id="chatbotContainer" class="chatbot-container">
+        <div id="chatbotWindow" class="chatbot-window hidden">
+            <div class="chatbot-header">
+                <span>Eurex AI Assistant</span>
+                <button id="closeChatbotBtn" class="icon-btn" style="color: white;"><i data-feather="x"></i></button>
+            </div>
+            <div id="chatbotMessages" class="chatbot-messages">
+                <div class="chat-message assistant">
+                    Hi! I'm the Eurex AI Assistant. I can help you understand the GraphQL schema and write queries. How can I help you today?
+                </div>
+            </div>
+            <div class="chatbot-input-area">
+                <textarea id="chatbotInput" placeholder="Ask a question or request a query..." rows="2"></textarea>
+                <button id="sendChatbotBtn" class="icon-btn"><i data-feather="send"></i></button>
+            </div>
+        </div>
+        <button id="toggleChatbotBtn" class="chatbot-toggle-btn">
+            <i data-feather="message-circle"></i>
+        </button>
+    </div>
+
     <script type="module" src="app.js"></script>
     <script>
       feather.replace();
