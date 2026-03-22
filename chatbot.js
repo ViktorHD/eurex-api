@@ -72,8 +72,55 @@ export class Chatbot {
         }
     }
 
+    async getBestModel(apiKey) {
+        if (this.selectedModel) {
+            return this.selectedModel;
+        }
+
+        const modelsUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+        const response = await fetch(modelsUrl);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error?.message || 'Failed to fetch available Gemini models');
+        }
+
+        const data = await response.json();
+        const models = data.models || [];
+
+        // Filter models that support generateContent
+        const supportedModels = models.filter(m =>
+            m.supportedGenerationMethods &&
+            m.supportedGenerationMethods.includes('generateContent')
+        );
+
+        if (supportedModels.length === 0) {
+            throw new Error('No models found that support generateContent.');
+        }
+
+        // Prioritize: pro, then flash, then any other
+        let selectedModel = supportedModels.find(m => m.name.includes('gemini-1.5-pro'));
+
+        if (!selectedModel) {
+            selectedModel = supportedModels.find(m => m.name.includes('gemini-1.5-flash'));
+        }
+        if (!selectedModel) {
+            selectedModel = supportedModels.find(m => m.name.includes('pro'));
+        }
+        if (!selectedModel) {
+            selectedModel = supportedModels.find(m => m.name.includes('flash'));
+        }
+        if (!selectedModel) {
+            selectedModel = supportedModels[0];
+        }
+
+        this.selectedModel = selectedModel.name;
+        return this.selectedModel;
+    }
+
     async callGeminiAPI(message, apiKey) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+        const modelName = await this.getBestModel(apiKey);
+        // modelName typically comes back as "models/gemini-..."
+        const url = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${apiKey}`;
 
         // Initialize history with system prompt if empty
         if (this.chatHistory.length === 0) {
