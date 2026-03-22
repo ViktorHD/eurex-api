@@ -3,6 +3,7 @@ import { UIManager } from './ui.js';
 import { TabManager } from './tabs.js';
 import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
+import { Chatbot } from './chatbot.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const apiUrlInput = document.getElementById('apiUrl');
@@ -127,6 +128,51 @@ document.addEventListener('DOMContentLoaded', () => {
     }, {
         onInsertField: insertFieldIntoQuery,
         onSetQuery: (query) => { queryInput.value = query; }
+    });
+
+    // AI Chatbot Setup
+    const chatbot = new Chatbot({
+        container: document.getElementById('chatbotContainer'),
+        window: document.getElementById('chatbotWindow'),
+        messagesContainer: document.getElementById('chatbotMessages'),
+        input: document.getElementById('chatbotInput'),
+        sendBtn: document.getElementById('sendChatbotBtn'),
+        toggleBtn: document.getElementById('toggleChatbotBtn'),
+        closeBtn: document.getElementById('closeChatbotBtn'),
+        getApiKey: () => document.getElementById('geminiApiKey').value.trim(),
+        getSchemaSummary: async () => {
+            const schema = await schemaExplorer.fetchSchema();
+            if (!schema) return "Schema not loaded yet.";
+
+            // Generate a lightweight summary of the schema to send to the AI
+            let summary = "Queries:\n";
+            const queries = schema.types.find(t => t.name === 'Query')?.fields || [];
+            queries.forEach(q => {
+                summary += `- ${q.name}(${q.args.map(a => a.name).join(', ')}): ${q.type.name}\n`;
+            });
+
+            // Include a couple of key types, but don't dump the whole schema to avoid token limits
+            const keyTypes = ['Product', 'Contract', 'DateData'];
+            keyTypes.forEach(typeName => {
+                const type = schema.types.find(t => t.name === typeName);
+                if (type && type.fields) {
+                    summary += `\nType ${typeName}:\n`;
+                    type.fields.forEach(f => {
+                        summary += `  - ${f.name}: ${f.type.name || f.type.kind}\n`;
+                    });
+                }
+            });
+
+            return summary;
+        },
+        onRunQuery: (queryText) => {
+            queryInput.value = queryText;
+            // Optionally auto-open the query pane if it's hidden
+            if (queryPane.classList.contains('hidden')) {
+                toggleQueryBtn.click();
+            }
+            runQueryBtn.click();
+        }
     });
 
     // App Layout Logic
