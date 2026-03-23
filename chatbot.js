@@ -87,18 +87,32 @@ export class Chatbot {
                 console.warn("Failed to get schema summary for chatbot context", e);
             }
 
-            const systemPrompt = `You are a helpful AI assistant for the Eurex GraphQL API Explorer.
-Your job is to help the user understand the API, explain the schema, and write valid GraphQL queries for them based on their requests.
-When you provide a GraphQL query, ALWAYS wrap it in markdown code blocks like this:
+            const systemPrompt = `You are derivatives expert, Eurex T7 functional expert and assistant that answers user questions about Eurex functionality, products and contracts using the Eurex Reference Data GraphQL API.
+        
+Here is the Eurex GraphQL Schema summary. You MUST use this to understand available queries, fields, and types (e.g. Contracts, Products, TradingHours) to answer the user's questions.
+
+SCHEMA SUMMARY:
+${schemaSummary}
+
+Your workflow:
+1. Read the Schema Summary above. Never assume which queries or fields exist.
+2. Answer the user’s question clearly in human words based on this schema.
+3. If a field or query is not in the schema, explain that it’s not available.
+
+Guidelines:
+- DO NOT output introspection queries (or any GraphQL queries) to the user unless they explicitly ask for a query. 
+- You MUST answer the user's questions in human words.
+- Always return human-readable answers.
+- Use tables or bullet lists if the data is structured.
+- Keep answers factual and concise.
+- Retrieved results should be presented in a table format.
+- Always use Product as filter for queries related to Contracts and SettlementPrices.
+- If the user explicitly asks for a GraphQL query, ALWAYS wrap it in markdown code blocks like this:
 \`\`\`graphql
 query {
   ...
 }
-\`\`\`
-Here is a summary of the current GraphQL schema for your reference:
-${schemaSummary}
-
-Be concise and direct in your answers.`;
+\`\`\``;
 
             this.chatHistory.push({
                 role: "user",
@@ -116,7 +130,20 @@ Be concise and direct in your answers.`;
         });
 
         const requestBody = {
-            contents: this.chatHistory
+            contents: this.chatHistory,
+            tools: [{
+                functionDeclarations: [{
+                    name: "eurex_graphql",
+                    description: "Executes a GraphQL query against the Eurex Reference Data API.",
+                    parameters: {
+                        type: "OBJECT",
+                        properties: {
+                            query: { type: "STRING" }
+                        },
+                        required: ["query"]
+                    }
+                }]
+            }]
         };
 
         const response = await fetch(url, {
@@ -138,7 +165,24 @@ Be concise and direct in your answers.`;
         const data = await response.json();
 
         if (data.candidates && data.candidates.length > 0) {
-            const replyText = data.candidates[0].content.parts[0].text;
+            const candidate = data.candidates[0];
+
+            // Handle cases where the model response is blocked or empty
+            if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
+                console.error("Unexpected or blocked response:", data);
+                if (candidate.finishReason === 'SAFETY') {
+                    throw new Error('The response was blocked due to safety settings.');
+                }
+                const reason = candidate.finishReason ? `(Reason: ${candidate.finishReason})` : '';
+                throw new Error(`The model returned an empty or unsupported response ${reason}. Check console for details.`);
+            }
+
+            const part = candidate.content.parts[0];
+            let replyText = part.text || '';
+            if (part.functionCall && part.functionCall.name === 'eurex_graphql') {
+                replyText = `I have formulated a query based on your request. Please run it:\n\`\`\`graphql\n${part.functionCall.args.query}\n\`\`\``;
+            }
+            if (!replyText) replyText = '(The model generated an empty response)';
 
             // Save model reply to history
             this.chatHistory.push({
@@ -167,7 +211,7 @@ Be concise and direct in your answers.`;
                     if (parts[i].trim()) {
                         // Convert newlines to br
                         const lines = parts[i].split('\n');
-                        for (let j=0; j<lines.length; j++) {
+                        for (let j = 0; j < lines.length; j++) {
                             msgDiv.appendChild(document.createTextNode(lines[j]));
                             if (j < lines.length - 1) {
                                 msgDiv.appendChild(document.createElement('br'));
