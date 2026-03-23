@@ -73,7 +73,7 @@ export class Chatbot {
     }
 
     async callGeminiAPI(message, apiKey) {
-        const modelName = "models/gemini-1.5-pro";
+        const modelName = "models/gemini-2.5-flash";
         const url = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${apiKey}`;
 
         // Initialize history with system prompt if empty
