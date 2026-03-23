@@ -144,26 +144,52 @@ document.addEventListener('DOMContentLoaded', () => {
             const schema = await schemaExplorer.fetchSchema();
             if (!schema) return "Schema not loaded yet.";
 
-            // Generate a lightweight summary of the schema to send to the AI
-            let summary = "Queries:\n";
-            const queries = schema.types.find(t => t.name === 'Query')?.fields || [];
-            queries.forEach(q => {
-                summary += `- ${q.name}(${q.args.map(a => a.name).join(', ')}): ${q.type.name}\n`;
-            });
+            // Helper to stringify GraphQL types accurately
+            const formatType = (typeObj) => {
+                if (!typeObj) return 'Unknown';
+                if (typeObj.kind === 'NON_NULL') return formatType(typeObj.ofType) + '!';
+                if (typeObj.kind === 'LIST') return '[' + formatType(typeObj.ofType) + ']';
+                return typeObj.name || 'Unknown';
+            };
 
-            // Include a couple of key types, but don't dump the whole schema to avoid token limits
-            const keyTypes = ['Product', 'Contract', 'DateData'];
-            keyTypes.forEach(typeName => {
-                const type = schema.types.find(t => t.name === typeName);
-                if (type && type.fields) {
-                    summary += `\nType ${typeName}:\n`;
-                    type.fields.forEach(f => {
-                        summary += `  - ${f.name}: ${f.type.name || f.type.kind}\n`;
-                    });
+            let sdl = "";
+
+            // Filter out introspection types
+            const userTypes = schema.types.filter(t => !t.name.startsWith('__'));
+
+            userTypes.forEach(type => {
+                if (type.kind === 'OBJECT') {
+                    sdl += `type ${type.name} {\n`;
+                    if (type.fields) {
+                        type.fields.forEach(f => {
+                            let argsStr = "";
+                            if (f.args && f.args.length > 0) {
+                                argsStr = "(" + f.args.map(a => `${a.name}: ${formatType(a.type)}`).join(", ") + ")";
+                            }
+                            sdl += `  ${f.name}${argsStr}: ${formatType(f.type)}\n`;
+                        });
+                    }
+                    sdl += `}\n\n`;
+                } else if (type.kind === 'INPUT_OBJECT') {
+                    sdl += `input ${type.name} {\n`;
+                    if (type.inputFields) {
+                        type.inputFields.forEach(f => {
+                            sdl += `  ${f.name}: ${formatType(f.type)}\n`;
+                        });
+                    }
+                    sdl += `}\n\n`;
+                } else if (type.kind === 'ENUM') {
+                    sdl += `enum ${type.name} {\n`;
+                    if (type.enumValues) {
+                        type.enumValues.forEach(v => {
+                            sdl += `  ${v.name}\n`;
+                        });
+                    }
+                    sdl += `}\n\n`;
                 }
             });
 
-            return summary;
+            return sdl.trim();
         },
         onRunQuery: (queryText) => {
             queryInput.value = queryText;
