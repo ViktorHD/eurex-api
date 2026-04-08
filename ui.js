@@ -98,12 +98,19 @@ export class UIManager {
         const headers = Object.keys(this.currentData[0]);
 
         this.numericCols = new Set();
-        headers.forEach(h => {
-            const rowWithVal = this.currentData.find(r => r[h] !== null && r[h] !== undefined);
-            if (rowWithVal && typeof rowWithVal[h] === 'number' && !h.toLowerCase().includes('id')) {
-                this.numericCols.add(h);
+        const remainingHeaders = new Set(headers);
+        for (const row of this.currentData) {
+            for (const h of remainingHeaders) {
+                const val = row[h];
+                if (val !== null && val !== undefined) {
+                    if (typeof val === 'number' && !h.toLowerCase().includes('id')) {
+                        this.numericCols.add(h);
+                    }
+                    remainingHeaders.delete(h);
+                }
             }
-        });
+            if (remainingHeaders.size === 0) break;
+        }
 
         // Filter row
         const trFilter = document.createElement('tr');
