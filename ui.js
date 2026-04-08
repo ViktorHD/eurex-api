@@ -97,13 +97,35 @@ export class UIManager {
 
         const headers = Object.keys(this.currentData[0]);
 
-        this.numericCols = new Set();
-        headers.forEach(h => {
-            const rowWithVal = this.currentData.find(r => r[h] !== null && r[h] !== undefined);
-            if (rowWithVal && typeof rowWithVal[h] === 'number' && !h.toLowerCase().includes('id')) {
-                this.numericCols.add(h);
-            }
+        this.processedData = this.currentData.map(row => {
+            const _s = {};
+            headers.forEach(h => {
+                let val = row[h];
+                if (val === null || val === undefined) {
+                    _s[h] = '';
+                } else if (typeof val === 'object') {
+                    _s[h] = JSON.stringify(val);
+                } else {
+                    _s[h] = String(val);
+                }
+            });
+            return { row, _s };
         });
+
+        this.numericCols = new Set();
+        const remainingHeaders = new Set(headers);
+        for (const row of this.currentData) {
+            for (const h of remainingHeaders) {
+                const val = row[h];
+                if (val !== null && val !== undefined) {
+                    if (typeof val === 'number' && !h.toLowerCase().includes('id')) {
+                        this.numericCols.add(h);
+                    }
+                    remainingHeaders.delete(h);
+                }
+            }
+            if (remainingHeaders.size === 0) break;
+        }
 
         // Filter row
         const trFilter = document.createElement('tr');
@@ -171,23 +193,16 @@ export class UIManager {
             .map(h => ({ header: h, value: (this.columnFilters[h] || '').toLowerCase() }))
             .filter(f => f.value);
 
-        let filtered = this.currentData.filter(row => {
+        let filtered = this.processedData.filter(item => {
             return activeFilters.every(f => {
-                let val = row[f.header];
-                if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
-                val = val !== undefined && val !== null ? String(val) : '';
+                const val = item._s[f.header] || '';
                 return val.toLowerCase().includes(f.value);
             });
         });
 
         if (this.sortCol) {
             filtered = [...filtered].sort((a, b) => {
-                let va = a[this.sortCol], vb = b[this.sortCol];
-                if (va == null) va = '';
-                if (vb == null) vb = '';
-                if (typeof va === 'object') va = JSON.stringify(va);
-                if (typeof vb === 'object') vb = JSON.stringify(vb);
-                va = String(va); vb = String(vb);
+                const va = a._s[this.sortCol] || '', vb = b._s[this.sortCol] || '';
                 
                 const na = parseFloat(va), nb = parseFloat(vb);
                 if (!isNaN(na) && !isNaN(nb)) {
@@ -199,13 +214,13 @@ export class UIManager {
 
         this.els.recordCounter.textContent = `(${filtered.length} of ${this.currentData.length} records)`;
 
-        filtered.forEach(row => {
+        filtered.forEach(item => {
             const tr = document.createElement('tr');
             headers.forEach(h => {
                 const td = document.createElement('td');
                 td.setAttribute('data-label', h);
                 if (this.numericCols && this.numericCols.has(h)) td.style.textAlign = 'right';
-                let cellVal = row[h];
+                let cellVal = item.row[h];
                 td.textContent = this.formatValue(cellVal, h);
                 tr.appendChild(td);
             });
