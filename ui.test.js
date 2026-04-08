@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { getTypeName, UIManager } from './ui.js';
 
 describe('getTypeName', () => {
@@ -47,6 +48,63 @@ describe('getTypeName', () => {
     });
 });
 
+describe('UIManager.formatValue', () => {
+    let ui;
+
+    beforeEach(() => {
+        // Mock elements object
+        const mockEls = {
+            loadingIndicator: { classList: { add: jest.fn(), remove: jest.fn() } },
+            emptyState: { classList: { add: jest.fn(), remove: jest.fn() }, querySelector: jest.fn() },
+            resultsTable: { classList: { add: jest.fn(), remove: jest.fn() }, querySelectorAll: jest.fn() },
+            errorBox: { classList: { add: jest.fn(), remove: jest.fn() } },
+            downloadCsvBtn: {},
+            downloadMdBtn: {},
+            tableHead: {},
+            tableBody: {},
+            recordCounter: {}
+        };
+        ui = new UIManager(mockEls);
+    });
+
+    test('returns empty string for null or undefined', () => {
+        expect(ui.formatValue(null)).toBe('');
+        expect(ui.formatValue(undefined)).toBe('');
+    });
+
+    test('returns JSON string for objects', () => {
+        const obj = { key: 'value', nested: { a: 1 } };
+        expect(ui.formatValue(obj)).toBe(JSON.stringify(obj));
+    });
+
+    test('returns string representation for other primitives', () => {
+        expect(ui.formatValue(true)).toBe('true');
+        expect(ui.formatValue('hello')).toBe('hello');
+    });
+
+    test('formats numbers using Intl.NumberFormat if colName does not include "id"', () => {
+        const val = 1234567.89;
+        const formatted = new Intl.NumberFormat().format(val);
+        expect(ui.formatValue(val, 'price')).toBe(formatted);
+    });
+
+    test('returns number as string if colName includes "id"', () => {
+        const val = 1234567;
+        expect(ui.formatValue(val, 'productId')).toBe('1234567');
+        expect(ui.formatValue(val, 'ID')).toBe('1234567');
+    });
+
+    test('formats ISO date strings using toLocaleString', () => {
+        const isoStr = '2023-10-27T10:00:00Z';
+        const expected = new Date(isoStr).toLocaleString();
+        expect(ui.formatValue(isoStr)).toBe(expected);
+    });
+
+    test('returns original string if it is not a valid ISO date', () => {
+        const invalidDate = '2023-13-45T25:00:00';
+        expect(ui.formatValue(invalidDate)).toBe(invalidDate);
+        const notADate = 'Not a date';
+        expect(ui.formatValue(notADate)).toBe(notADate);
 describe('UIManager', () => {
     let uiManager;
 
