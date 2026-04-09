@@ -8,31 +8,27 @@ export class TabManager {
         this.activeTabId = 1;
         this.tabStates = {};
         
-        this.tabStates[1] = {
-            id: 1,
-            name: 'Query 1',
+        this.tabStates[1] = this._createTabState(1);
+
+        this.addTabBtn.addEventListener('click', () => {
+            this.callbacks.onTabSave(this.activeTabId, this.tabStates[this.activeTabId]);
+            this.tabIdCounter++;
+            this.tabStates[this.tabIdCounter] = this._createTabState(this.tabIdCounter);
+            this.activateTab(this.tabIdCounter);
+            this.render();
+        });
+    }
+
+    _createTabState(id) {
+        return {
+            id: id,
+            name: 'Query ' + id,
             query: '',
             data: null,
             sortCol: null,
             sortAsc: true,
             columnFilters: {}
         };
-
-        this.addTabBtn.addEventListener('click', () => {
-            this.callbacks.onTabSave(this.activeTabId, this.tabStates[this.activeTabId]);
-            this.tabIdCounter++;
-            this.tabStates[this.tabIdCounter] = {
-                id: this.tabIdCounter,
-                name: 'Query ' + this.tabIdCounter,
-                query: '',
-                data: null,
-                sortCol: null,
-                sortAsc: true,
-                columnFilters: {}
-            };
-            this.activateTab(this.tabIdCounter);
-            this.render();
-        });
     }
 
     getActiveState() {
