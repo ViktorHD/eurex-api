@@ -105,53 +105,5 @@ describe('UIManager.formatValue', () => {
         expect(ui.formatValue(invalidDate)).toBe(invalidDate);
         const notADate = 'Not a date';
         expect(ui.formatValue(notADate)).toBe(notADate);
-describe('UIManager', () => {
-    let uiManager;
-
-    beforeEach(() => {
-        uiManager = new UIManager({});
-    });
-
-    describe('formatValue', () => {
-        test('returns empty string for null or undefined', () => {
-            expect(uiManager.formatValue(null)).toBe('');
-            expect(uiManager.formatValue(undefined)).toBe('');
-        });
-
-        test('returns JSON string for objects', () => {
-            const obj = { key: 'value', num: 123 };
-            expect(uiManager.formatValue(obj)).toBe(JSON.stringify(obj));
-        });
-
-        test('formats numbers using Intl.NumberFormat', () => {
-            const num = 1234.56;
-            const expected = new Intl.NumberFormat().format(num);
-            expect(uiManager.formatValue(num)).toBe(expected);
-        });
-
-        test('returns string representation for numbers if column name contains "id"', () => {
-            const id = 987654321;
-            expect(uiManager.formatValue(id, 'userId')).toBe('987654321');
-            expect(uiManager.formatValue(id, 'ID')).toBe('987654321');
-        });
-
-        test('formats ISO date strings using toLocaleString', () => {
-            const isoDate = '2023-10-27T10:30:00';
-            const expected = new Date(isoDate).toLocaleString();
-            expect(uiManager.formatValue(isoDate)).toBe(expected);
-        });
-
-        test('returns original string for non-ISO date strings', () => {
-            const normalStr = 'Hello World';
-            expect(uiManager.formatValue(normalStr)).toBe('Hello World');
-
-            const partialDate = '2023-10-27';
-            expect(uiManager.formatValue(partialDate)).toBe('2023-10-27');
-        });
-
-        test('returns string representation for other types', () => {
-            expect(uiManager.formatValue(true)).toBe('true');
-            expect(uiManager.formatValue(false)).toBe('false');
-        });
     });
 });
