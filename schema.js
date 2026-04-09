@@ -59,7 +59,8 @@ export class SchemaExplorer {
             this.els.docsTree.innerHTML = '';
             const errP = document.createElement('div');
             errP.className = 'error-card';
-            errP.innerHTML = `<div class="error-card-header"><i data-feather="alert-circle"></i> Error</div><p>Failed to load schema: ${err.message}</p>`;
+            errP.innerHTML = `<div class="error-card-header"><i data-feather="alert-circle"></i> Error</div><p class="error-message"></p>`;
+            errP.querySelector('.error-message').textContent = `Failed to load schema: ${err.message}`;
             if (window.feather) setTimeout(() => window.feather.replace(), 0);
             this.els.docsTree.appendChild(errP);
             this.els.docsTree.classList.remove('hidden');
