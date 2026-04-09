@@ -38,6 +38,9 @@ export class UIManager {
             <div class="error-card-header"><i data-feather="alert-circle"></i> Error</div>
             <p class="error-message"></p>
         `;
+        const errorMsgEl = this.els.errorBox.querySelector('.error-message');
+        if (errorMsgEl) errorMsgEl.textContent = msg;
+
         this.els.errorBox.querySelector('.error-message').textContent = msg;
         if (window.feather) setTimeout(() => window.feather.replace(), 0);
         this.els.errorBox.classList.remove('hidden');
@@ -100,17 +103,21 @@ export class UIManager {
 
         this.processedData = this.currentData.map(row => {
             const _s = {};
+            const _sl = {};
             headers.forEach(h => {
                 let val = row[h];
+                let sVal;
                 if (val === null || val === undefined) {
-                    _s[h] = '';
+                    sVal = '';
                 } else if (typeof val === 'object') {
-                    _s[h] = JSON.stringify(val);
+                    sVal = JSON.stringify(val);
                 } else {
-                    _s[h] = String(val);
+                    sVal = String(val);
                 }
+                _s[h] = sVal;
+                _sl[h] = sVal.toLowerCase();
             });
-            return { row, _s };
+            return { row, _s, _sl };
         });
 
         this.numericCols = new Set();
@@ -196,8 +203,8 @@ export class UIManager {
 
         let filtered = this.processedData.filter(item => {
             return activeFilters.every(f => {
-                const val = item._s[f.header] || '';
-                return val.toLowerCase().includes(f.value);
+                const val = item._sl[f.header] || '';
+                return val.includes(f.value);
             });
         });
 
