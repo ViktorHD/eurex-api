@@ -36,8 +36,9 @@ export class UIManager {
     showError(msg) {
         this.els.errorBox.innerHTML = `
             <div class="error-card-header"><i data-feather="alert-circle"></i> Error</div>
-            <p>${msg}</p>
+            <p class="error-message"></p>
         `;
+        this.els.errorBox.querySelector('.error-message').textContent = msg;
         if (window.feather) setTimeout(() => window.feather.replace(), 0);
         this.els.errorBox.classList.remove('hidden');
         this.els.loadingIndicator.classList.add('hidden');
