@@ -18,11 +18,30 @@ def proxy_databricks():
     headers = {'Content-Type': 'application/json'}
     if token:
         headers['Authorization'] = f'Bearer {token}'
+
+    body = request.json or {}
+    messages = body.get('messages', [])
+
+    # Try OpenAI-compatible format first, then MLflow dataframe_records format
+    for payload in [
+        {'messages': messages},
+        {'dataframe_records': [{'messages': messages}]},
+    ]:
+        try:
+            resp = requests.post(ENDPOINT_URL, json=payload, headers=headers, timeout=60)
+            if resp.status_code not in (400, 405, 422):
+                try:
+                    return jsonify(resp.json()), resp.status_code
+                except Exception:
+                    return resp.text, resp.status_code
+        except Exception as e:
+            return jsonify({'error': {'message': str(e)}}), 502
+
+    # Return last error with full details
     try:
-        resp = requests.post(ENDPOINT_URL, json=request.json, headers=headers)
-        return jsonify(resp.json()), resp.status_code
-    except Exception as e:
-        return jsonify({'error': {'message': str(e)}}), 502
+        return jsonify({'error': {'message': f'HTTP {resp.status_code}', 'detail': resp.text}}), resp.status_code
+    except Exception:
+        return jsonify({'error': {'message': 'All request formats failed'}}), 502
 
 
 @app.route('/<path:path>')
