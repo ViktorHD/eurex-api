@@ -134,14 +134,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const aiProviderSelect = document.getElementById('aiProvider');
     const claudeKeyGroup = document.getElementById('claudeKeyGroup');
     const geminiKeyGroup = document.getElementById('geminiKeyGroup');
-    aiProviderSelect.addEventListener('change', () => {
+    const databricksTokenGroup = document.getElementById('databricksTokenGroup');
+
+    function updateProviderFields() {
         const val = aiProviderSelect.value;
+        databricksTokenGroup.style.display = val === 'databricks' ? '' : 'none';
         claudeKeyGroup.style.display = val === 'claude' ? '' : 'none';
         geminiKeyGroup.style.display = val === 'gemini' ? '' : 'none';
-    });
-    // Set initial state (databricks is default — no key field shown)
-    claudeKeyGroup.style.display = 'none';
-    geminiKeyGroup.style.display = 'none';
+    }
+    aiProviderSelect.addEventListener('change', updateProviderFields);
+    updateProviderFields();
 
     // AI Chatbot Setup
     const chatbot = new Chatbot({
@@ -154,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
         closeBtn: document.getElementById('closeChatbotBtn'),
         getApiKey: () => document.getElementById('geminiApiKey').value.trim(),
         getClaudeApiKey: () => document.getElementById('claudeApiKey').value.trim(),
+        getDatabricksToken: () => document.getElementById('databricksToken').value.trim(),
         getProvider: () => document.getElementById('aiProvider').value,
         getSchemaSummary: async () => {
             const schema = await schemaExplorer.fetchSchema();

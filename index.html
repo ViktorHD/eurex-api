@@ -85,7 +85,14 @@ query {
                                     <option value="gemini">Google Gemini</option>
                                 </select>
                             </div>
-                            <div class="control-group" style="margin-top: 16px;" id="claudeKeyGroup">
+                            <div class="control-group" style="margin-top: 16px;" id="databricksTokenGroup">
+                                <label>Databricks Personal Access Token</label>
+                                <input type="password" id="databricksToken" placeholder="Enter Databricks PAT...">
+                                <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;">
+                                    Generate in Databricks under <strong>User Settings → Developer → Access Tokens</strong>.
+                                </div>
+                            </div>
+                            <div class="control-group" style="margin-top: 16px; display: none;" id="claudeKeyGroup">
                                 <label>Claude API Key</label>
                                 <input type="password" id="claudeApiKey" placeholder="Enter Claude API key...">
                                 <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;">

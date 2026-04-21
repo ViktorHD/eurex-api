@@ -9,6 +9,7 @@ export class Chatbot {
         this.closeBtn = options.closeBtn;
         this.getApiKey = options.getApiKey;
         this.getClaudeApiKey = options.getClaudeApiKey;
+        this.getDatabricksToken = options.getDatabricksToken;
         this.getProvider = options.getProvider;
         this.getSchemaSummary = options.getSchemaSummary;
         this.onRunQuery = options.onRunQuery;
@@ -69,6 +70,12 @@ export class Chatbot {
                 this.addMessage('assistant', 'Please enter your Google Gemini API key in the "Headers & Variables" drawer to use the chatbot.');
                 return;
             }
+        } else if (provider === 'databricks') {
+            const token = this.getDatabricksToken ? this.getDatabricksToken() : '';
+            if (!token) {
+                this.addMessage('assistant', 'Please enter your Databricks Personal Access Token in the "Headers & Variables" drawer to use the chatbot.');
+                return;
+            }
         }
 
         this.input.value = '';
@@ -82,7 +89,8 @@ export class Chatbot {
             if (provider === 'claude') {
                 response = await this.callClaudeAPI(text, apiKey);
             } else if (provider === 'databricks') {
-                response = await this.callDatabricksAPI(text);
+                const token = this.getDatabricksToken ? this.getDatabricksToken() : '';
+                response = await this.callDatabricksAPI(text, token);
             } else {
                 response = await this.callGeminiAPI(text, apiKey);
             }
@@ -218,14 +226,17 @@ query {
         }
     }
 
-    async callDatabricksAPI(message) {
-        const url = '/api/databricks';
+    async callDatabricksAPI(message, token) {
+        const url = 'https://dbc-f43533dd-29e2.cloud.databricks.com/serving-endpoints/Eurex_agent/invocations';
 
         this.databricksHistory.push({ role: 'user', content: message });
 
         const response = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ messages: this.databricksHistory })
         });
 
