@@ -135,10 +135,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const claudeKeyGroup = document.getElementById('claudeKeyGroup');
     const geminiKeyGroup = document.getElementById('geminiKeyGroup');
     aiProviderSelect.addEventListener('change', () => {
-        const isClaude = aiProviderSelect.value === 'claude';
-        claudeKeyGroup.style.display = isClaude ? '' : 'none';
-        geminiKeyGroup.style.display = isClaude ? 'none' : '';
+        const val = aiProviderSelect.value;
+        claudeKeyGroup.style.display = val === 'claude' ? '' : 'none';
+        geminiKeyGroup.style.display = val === 'gemini' ? '' : 'none';
     });
+    // Set initial state (databricks is default — no key field shown)
+    claudeKeyGroup.style.display = 'none';
+    geminiKeyGroup.style.display = 'none';
 
     // AI Chatbot Setup
     const chatbot = new Chatbot({
