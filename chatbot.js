@@ -70,12 +70,6 @@ export class Chatbot {
                 this.addMessage('assistant', 'Please enter your Google Gemini API key in the "Headers & Variables" drawer to use the chatbot.');
                 return;
             }
-        } else if (provider === 'databricks') {
-            const token = this.getDatabricksToken ? this.getDatabricksToken() : '';
-            if (!token) {
-                this.addMessage('assistant', 'Please enter your Databricks Personal Access Token in the "Headers & Variables" drawer to use the chatbot.');
-                return;
-            }
         }
 
         this.input.value = '';
@@ -89,8 +83,7 @@ export class Chatbot {
             if (provider === 'claude') {
                 response = await this.callClaudeAPI(text, apiKey);
             } else if (provider === 'databricks') {
-                const token = this.getDatabricksToken ? this.getDatabricksToken() : '';
-                response = await this.callDatabricksAPI(text, token);
+                response = await this.callDatabricksAPI(text);
             } else {
                 response = await this.callGeminiAPI(text, apiKey);
             }
@@ -226,17 +219,12 @@ query {
         }
     }
 
-    async callDatabricksAPI(message, token) {
-        const url = '/api/databricks';
-
+    async callDatabricksAPI(message) {
         this.databricksHistory.push({ role: 'user', content: message });
 
-        const headers = { 'Content-Type': 'application/json' };
-        if (token) headers['x-databricks-token'] = token;
-
-        const response = await fetch(url, {
+        const response = await fetch('/api/databricks', {
             method: 'POST',
-            headers,
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ messages: this.databricksHistory })
         });
 
