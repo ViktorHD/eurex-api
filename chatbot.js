@@ -219,7 +219,7 @@ query {
     }
 
     async callDatabricksAPI(message) {
-        const url = 'https://dbc-f43533dd-29e2.cloud.databricks.com/serving-endpoints/Eurex_agent/invocations';
+        const url = '/api/databricks';
 
         this.databricksHistory.push({ role: 'user', content: message });
 
