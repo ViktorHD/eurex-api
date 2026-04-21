@@ -227,16 +227,16 @@ query {
     }
 
     async callDatabricksAPI(message, token) {
-        const url = 'https://dbc-f43533dd-29e2.cloud.databricks.com/serving-endpoints/Eurex_agent/invocations';
+        const url = '/api/databricks';
 
         this.databricksHistory.push({ role: 'user', content: message });
 
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['x-databricks-token'] = token;
+
         const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers,
             body: JSON.stringify({ messages: this.databricksHistory })
         });
 
