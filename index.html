@@ -78,7 +78,21 @@ query {
                                 <input type="password" id="apiKey" placeholder="Enter your API key...">
                             </div>
                             <div class="control-group" style="margin-top: 16px;">
-                                <label>Google Gemini API Key (For AI Chatbot)</label>
+                                <label>AI Chatbot Provider</label>
+                                <select id="aiProvider" style="width: 100%; background: #1a1a2e; color: #e2e8f0; border: 1px solid #2d3748; border-radius: 6px; padding: 8px 10px; font-size: 0.875rem;">
+                                    <option value="claude">Claude (Anthropic)</option>
+                                    <option value="gemini">Google Gemini</option>
+                                </select>
+                            </div>
+                            <div class="control-group" style="margin-top: 16px;" id="claudeKeyGroup">
+                                <label>Claude API Key</label>
+                                <input type="password" id="claudeApiKey" placeholder="Enter Claude API key...">
+                                <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;">
+                                    Get a key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none;">Anthropic Console</a>.
+                                </div>
+                            </div>
+                            <div class="control-group" style="margin-top: 16px; display: none;" id="geminiKeyGroup">
+                                <label>Google Gemini API Key</label>
                                 <input type="password" id="geminiApiKey" placeholder="Enter Gemini API key...">
                                 <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;">
                                     Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none;">Google AI Studio</a>.

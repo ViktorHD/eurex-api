@@ -130,6 +130,16 @@ document.addEventListener('DOMContentLoaded', () => {
         onSetQuery: (query) => { queryInput.value = query; }
     });
 
+    // Provider selector show/hide logic
+    const aiProviderSelect = document.getElementById('aiProvider');
+    const claudeKeyGroup = document.getElementById('claudeKeyGroup');
+    const geminiKeyGroup = document.getElementById('geminiKeyGroup');
+    aiProviderSelect.addEventListener('change', () => {
+        const isClaude = aiProviderSelect.value === 'claude';
+        claudeKeyGroup.style.display = isClaude ? '' : 'none';
+        geminiKeyGroup.style.display = isClaude ? 'none' : '';
+    });
+
     // AI Chatbot Setup
     const chatbot = new Chatbot({
         container: document.getElementById('chatbotContainer'),
@@ -140,6 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleBtn: document.getElementById('toggleChatbotBtn'),
         closeBtn: document.getElementById('closeChatbotBtn'),
         getApiKey: () => document.getElementById('geminiApiKey').value.trim(),
+        getClaudeApiKey: () => document.getElementById('claudeApiKey').value.trim(),
+        getProvider: () => document.getElementById('aiProvider').value,
         getSchemaSummary: async () => {
             const schema = await schemaExplorer.fetchSchema();
             if (!schema) return "Schema not loaded yet.";
