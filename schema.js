@@ -217,6 +217,9 @@ export class SchemaExplorer {
                     fieldDiv.appendChild(fdesc);
                 }
 
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'docs-field-actions-container';
+
                 const addBtn = document.createElement('button');
                 addBtn.className = 'docs-add-btn docs-add-btn-secondary docs-add-btn-sm';
                 addBtn.textContent = '+ Add';
@@ -227,7 +230,19 @@ export class SchemaExplorer {
                         this.options.onInsertField(field.name);
                     }
                 });
-                fieldDiv.appendChild(addBtn);
+                actionsDiv.appendChild(addBtn);
+
+                const filterBtn = document.createElement('button');
+                filterBtn.className = 'docs-add-btn docs-add-btn-secondary docs-add-btn-sm';
+                filterBtn.textContent = '+ Filter';
+                filterBtn.title = 'Add this field as a filter';
+                filterBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.showFilterDropdown(filterBtn, field.name, type, field);
+                });
+                actionsDiv.appendChild(filterBtn);
+
+                fieldDiv.appendChild(actionsDiv);
 
                 body.appendChild(fieldDiv);
             });
@@ -313,5 +328,73 @@ export class SchemaExplorer {
             : '';
 
         return `query {\n  ${rootField.name}${fieldStr}\n}`;
+    }
+
+    showFilterDropdown(anchorBtn, fieldName, type, field) {
+        // Remove any existing dropdowns
+        const existing = document.querySelector('.filter-operators-dropdown');
+        if (existing) existing.remove();
+
+        const operators = this.getOperatorsForField(type, field);
+        const dropdown = document.createElement('div');
+        dropdown.className = 'filter-operators-dropdown';
+
+        operators.forEach(op => {
+            const item = document.createElement('div');
+            item.className = 'filter-operator-item';
+            item.textContent = op;
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.options.onInsertFilter) {
+                    this.options.onInsertFilter(fieldName, op);
+                }
+                dropdown.remove();
+            });
+            dropdown.appendChild(item);
+        });
+
+        document.body.appendChild(dropdown);
+
+        const rect = anchorBtn.getBoundingClientRect();
+        dropdown.style.top = `${rect.bottom + window.scrollY + 5}px`;
+        dropdown.style.left = `${rect.left + window.scrollX}px`;
+
+        const closeDropdown = (e) => {
+            if (!dropdown.contains(e.target)) {
+                dropdown.remove();
+                document.removeEventListener('click', closeDropdown);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeDropdown), 0);
+    }
+
+    getOperatorsForField(type, field) {
+        let filterTypeName = null;
+
+        if (type.kind === 'OBJECT') {
+            filterTypeName = type.name + 'Filter';
+        } else if (type.kind === 'INPUT_OBJECT') {
+            // If it's already an input object, we might be looking at its fields directly
+            const fieldBaseType = this.findTypeByName(this.getBaseTypeName(field.type));
+            if (fieldBaseType && fieldBaseType.kind === 'INPUT_OBJECT') {
+                return fieldBaseType.inputFields.map(f => f.name);
+            }
+            return ['eq'];
+        }
+
+        if (filterTypeName) {
+            const filterType = this.findTypeByName(filterTypeName);
+            if (filterType && filterType.inputFields) {
+                const filterField = filterType.inputFields.find(f => f.name === field.name);
+                if (filterField) {
+                    const opType = this.findTypeByName(this.getBaseTypeName(filterField.type));
+                    if (opType && opType.inputFields) {
+                        return opType.inputFields.map(f => f.name);
+                    }
+                }
+            }
+        }
+
+        return ['eq']; // Default
     }
 }
