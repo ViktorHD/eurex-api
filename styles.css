@@ -806,6 +806,37 @@ tr:hover td {
     flex-shrink: 0;
 }
 
+.docs-field-actions-container {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.filter-operators-dropdown {
+    position: absolute;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    box-shadow: var(--elevation-2);
+    z-index: 1100;
+    min-width: 100px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.filter-operator-item {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background 0.2s;
+}
+
+.filter-operator-item:hover {
+    background: var(--bg-main);
+    color: var(--navy-blue);
+}
+
 /* Autocomplete Dropdown */
 .autocomplete-dropdown {
     position: absolute;

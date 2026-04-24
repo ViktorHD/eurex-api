@@ -120,6 +120,59 @@ document.addEventListener('DOMContentLoaded', () => {
         queryInput.value = current.substring(0, pos) + '\n      ' + fieldName + current.substring(pos);
     }
 
+    function insertFilterIntoQuery(fieldName, operator) {
+        const current = queryInput.value;
+        const filterStr = `${fieldName}: { ${operator}: "" }`;
+
+        // Case 1: Existing filter block
+        const filterMatch = current.match(/filter\s*:\s*\{/);
+        if (filterMatch) {
+            const startIndex = filterMatch.index + filterMatch[0].length;
+            let braceCount = 0;
+            let closingBraceIndex = -1;
+
+            for (let i = startIndex; i < current.length; i++) {
+                if (current[i] === '{') braceCount++;
+                else if (current[i] === '}') {
+                    if (braceCount === 0) { closingBraceIndex = i; break; }
+                    braceCount--;
+                }
+            }
+
+            if (closingBraceIndex !== -1) {
+                const innerFilter = current.substring(startIndex, closingBraceIndex).trim();
+                const separator = innerFilter ? ', ' : '';
+                queryInput.value = current.substring(0, closingBraceIndex).replace(/\s+$/, '') + separator + filterStr + current.substring(closingBraceIndex);
+                return;
+            }
+        }
+
+        // Case 2: No filter block, find the first query field
+        const firstFieldMatch = current.match(/query\s*\{\s*([a-zA-Z0-9_]+)/);
+        if (firstFieldMatch) {
+            const rootFieldName = firstFieldMatch[1];
+            const fieldEndIndex = firstFieldMatch.index + firstFieldMatch[0].length;
+
+            // Check if it already has arguments by looking at the next non-whitespace character
+            const remainingQuery = current.substring(fieldEndIndex);
+            const nextNonWsMatch = remainingQuery.match(/\S/);
+
+            if (nextNonWsMatch && nextNonWsMatch[0] === '(') {
+                // Insert into existing arguments
+                const argsStartIndex = fieldEndIndex + nextNonWsMatch.index + 1;
+                queryInput.value = current.substring(0, argsStartIndex) + `filter: { ${filterStr} }, ` + current.substring(argsStartIndex);
+            } else {
+                // Add new filter argument
+                queryInput.value = current.substring(0, fieldEndIndex) + `(filter: { ${filterStr} })` + current.substring(fieldEndIndex);
+            }
+            return;
+        }
+
+        // Case 3: Fallback - just append at the cursor
+        const pos = queryInput.selectionStart || current.length;
+        queryInput.value = current.substring(0, pos) + filterStr + current.substring(pos);
+    }
+
     const schemaExplorer = new SchemaExplorer(client, {
         docsTree: document.getElementById('docsTree'),
         docsLoading: document.getElementById('docsLoading'),
@@ -127,6 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         docsSearch: document.getElementById('docsSearch')
     }, {
         onInsertField: insertFieldIntoQuery,
+        onInsertFilter: insertFilterIntoQuery,
         onSetQuery: (query) => { queryInput.value = query; }
     });
 
