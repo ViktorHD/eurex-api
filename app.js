@@ -260,15 +260,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
             return sdl.trim();
         },
-        onRunQuery: (queryText) => {
+        onRunQuery: async (queryText) => {
             queryInput.value = queryText;
             // Optionally auto-open the query pane if it's hidden
             if (queryPane.classList.contains('hidden')) {
                 toggleQueryBtn.click();
             }
-            runQueryBtn.click();
+            return await executeGraphQLQuery(queryText);
         }
     });
+
+    async function executeGraphQLQuery(query) {
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey || !query) {
+            ui.showError('API Key and Query are required.');
+            throw new Error('API Key and Query are required.');
+        }
+
+        ui.hideError();
+        ui.showLoading();
+        ui.disableExportBtns();
+
+        try {
+            const data = await client.request(query);
+
+            if (data.length === 0) {
+                ui.showEmptyState("Query successful, but no data was returned.");
+                tabs.updateActiveState({ data: [] });
+            } else {
+                // Save to tab state
+                tabs.updateActiveState({ data: data, sortCol: null, sortAsc: true, columnFilters: {} });
+                ui.renderTable(data, { sortCol: null, sortAsc: true, columnFilters: {} });
+            }
+            return data;
+        } catch (error) {
+            ui.showError(error.message);
+            throw error;
+        }
+    }
 
     // App Layout Logic
     toggleDocsBtn.addEventListener('click', async () => {
@@ -341,33 +370,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Run execution
     runQueryBtn.addEventListener('click', async () => {
-        const apiKey = apiKeyInput.value.trim();
-        const query = queryInput.value.trim();
-
-        if (!apiKey || !query) {
-            ui.showError('API Key and Query are required.');
-            return;
-        }
-
-        ui.hideError();
-        ui.showLoading();
-        ui.disableExportBtns();
-
         try {
-            const data = await client.request(query);
-            
-            if (data.length === 0) {
-                ui.showEmptyState("Query successful, but no data was returned.");
-                tabs.updateActiveState({ data: [] });
-                return;
-            }
-
-            // Save to tab state
-            tabs.updateActiveState({ data: data, sortCol: null, sortAsc: true, columnFilters: {} });
-            ui.renderTable(data, { sortCol: null, sortAsc: true, columnFilters: {} });
-
-        } catch (error) {
-            ui.showError(error.message);
+            await executeGraphQLQuery(queryInput.value.trim());
+        } catch (e) {
+            // Error already handled in executeGraphQLQuery
         }
     });
 
