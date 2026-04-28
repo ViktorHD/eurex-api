@@ -265,6 +265,10 @@ Guidelines:
 - Keep answers factual and concise.
 - If data has been retrieved using the 'eurex_graphql' tool, it is already displayed in the main application window. DO NOT repeat the data in a table or list within your chat response. Instead, provide a human-readable summary or answer based on that data.
 - Always use Product as filter for queries related to Contracts and SettlementPrices.
+Guidelines:
+- Answer the user's questions clearly in human words.
+- Keep answers factual and concise.
+- Use tables or bullet lists if the data is structured.
 - If you provide a GraphQL query, wrap it in markdown code blocks.`
             });
         }
@@ -463,6 +467,31 @@ query {
             this.claudeHistory.push({ role: 'user', content: toolResults });
         }
 
+
+            const toolResults = [];
+            for (const call of toolCalls) {
+                if (call.name === 'eurex_graphql') {
+                    try {
+                        const result = await this.onRunQuery(call.input.query);
+                        toolResults.push({
+                            type: "tool_result",
+                            tool_use_id: call.id,
+                            content: JSON.stringify(result)
+                        });
+                    } catch (err) {
+                        toolResults.push({
+                            type: "tool_result",
+                            tool_use_id: call.id,
+                            content: err.message,
+                            is_error: true
+                        });
+                    }
+                }
+            }
+
+            this.claudeHistory.push({ role: 'user', content: toolResults });
+        }
+
         throw new Error("Maximum tool execution turns exceeded.");
     }
 
@@ -492,6 +521,7 @@ query {
                     const isGraphQL = part.includes('graphql') ||
                                      /^\s*(query|mutation|subscription|{)/i.test(content) ||
                                      (content.includes('filter:') && content.includes('{'));
+                    const isGraphQL = part.includes('graphql') || content.toLowerCase().includes('query') || content.toLowerCase().includes('{');
 
                     const pre = document.createElement('pre');
                     const codeEl = document.createElement('code');
