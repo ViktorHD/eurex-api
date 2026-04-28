@@ -18,6 +18,7 @@ export class Chatbot {
         this.claudeHistory = [];
         this.claudeSystemPrompt = null;
         this.databricksHistory = [];
+        this.lastToolExecuted = false;
         this.bindEvents();
     }
 
@@ -88,7 +89,10 @@ export class Chatbot {
                 response = await this.callGeminiAPI(text, apiKey);
             }
             this.removeMessage(loadingId);
-            this.addMessage('assistant', response);
+            if (typeof response === 'string') {
+                this.addMessage('assistant', response);
+            }
+            this.lastToolExecuted = false; // Reset for next interaction
         } catch (error) {
             this.removeMessage(loadingId);
             this.addMessage('assistant', `Error: ${error.message}`);
@@ -197,13 +201,15 @@ query {
             const toolCalls = parts.filter(p => p.functionCall);
             if (toolCalls.length === 0) {
                 // Final response
-                return parts.map(p => p.text || '').join('\n');
+                const text = parts.map(p => p.text || '').join('\n');
+                return this.addMessage('assistant', text, this.lastToolExecuted);
             }
 
             // Execute tool calls
             const toolResponses = [];
             for (const call of toolCalls) {
                 if (call.functionCall.name === 'eurex_graphql') {
+                    this.lastToolExecuted = true;
                     try {
                         const query = call.functionCall.args.query;
                         const result = await this.onRunQuery(query);
@@ -321,11 +327,13 @@ Guidelines:
 
             const toolCalls = msg.tool_calls || [];
             if (toolCalls.length === 0) {
-                return msg.content || (typeof msg === 'string' ? msg : JSON.stringify(msg));
+                const text = msg.content || (typeof msg === 'string' ? msg : JSON.stringify(msg));
+                return this.addMessage('assistant', text, this.lastToolExecuted);
             }
 
             for (const call of toolCalls) {
                 if (call.function.name === 'eurex_graphql') {
+                    this.lastToolExecuted = true;
                     try {
                         const args = typeof call.function.arguments === 'string' ? JSON.parse(call.function.arguments) : call.function.arguments;
                         const result = await this.onRunQuery(args.query);
@@ -440,37 +448,14 @@ query {
 
             const toolCalls = data.content.filter(block => block.type === 'tool_use');
             if (toolCalls.length === 0) {
-                return data.content.map(block => block.text || '').join('\n');
+                const text = data.content.map(block => block.text || '').join('\n');
+                return this.addMessage('assistant', text, this.lastToolExecuted);
             }
 
             const toolResults = [];
             for (const call of toolCalls) {
                 if (call.name === 'eurex_graphql') {
-                    try {
-                        const result = await this.onRunQuery(call.input.query);
-                        toolResults.push({
-                            type: "tool_result",
-                            tool_use_id: call.id,
-                            content: JSON.stringify(result)
-                        });
-                    } catch (err) {
-                        toolResults.push({
-                            type: "tool_result",
-                            tool_use_id: call.id,
-                            content: err.message,
-                            is_error: true
-                        });
-                    }
-                }
-            }
-
-            this.claudeHistory.push({ role: 'user', content: toolResults });
-        }
-
-
-            const toolResults = [];
-            for (const call of toolCalls) {
-                if (call.name === 'eurex_graphql') {
+                    this.lastToolExecuted = true;
                     try {
                         const result = await this.onRunQuery(call.input.query);
                         toolResults.push({
@@ -495,7 +480,7 @@ query {
         throw new Error("Maximum tool execution turns exceeded.");
     }
 
-    addMessage(role, text) {
+    addMessage(role, text, stripTables = false) {
         if (typeof text !== 'string') {
             // Handle Claude complex content blocks if necessary
             if (Array.isArray(text)) {
@@ -503,6 +488,36 @@ query {
             } else {
                 text = String(text);
             }
+        }
+
+        // Programmatically strip markdown tables if data is already in the main UI
+        // ONLY if stripTables is true (set when a tool was executed)
+        if (role === 'assistant' && stripTables) {
+            const lines = text.split('\n');
+            let inTable = false;
+            let filteredLines = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                const isTableSeparator = /^\|?\s*:?-+\s*:?(\|?\s*:?-+\s*:?)*\|?$/.test(line);
+                const isTableRow = line.startsWith('|') && line.endsWith('|');
+
+                if (isTableRow || isTableSeparator) {
+                    inTable = true;
+                } else {
+                    if (inTable && line === '') {
+                        // Keep going, might be end of table
+                    } else {
+                        inTable = false;
+                    }
+                }
+
+                if (!inTable) {
+                    filteredLines.push(lines[i]);
+                }
+            }
+            text = filteredLines.join('\n').trim();
+            if (!text) text = "I've updated the results table with the requested data.";
         }
 
         const msgDiv = document.createElement('div');
@@ -521,7 +536,6 @@ query {
                     const isGraphQL = part.includes('graphql') ||
                                      /^\s*(query|mutation|subscription|{)/i.test(content) ||
                                      (content.includes('filter:') && content.includes('{'));
-                    const isGraphQL = part.includes('graphql') || content.toLowerCase().includes('query') || content.toLowerCase().includes('{');
 
                     const pre = document.createElement('pre');
                     const codeEl = document.createElement('code');
