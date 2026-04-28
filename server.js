@@ -10,11 +10,12 @@ app.use(express.static(__dirname));
 
 const DATABRICKS_URL = 'https://dbc-f43533dd-29e2.cloud.databricks.com/serving-endpoints/Eurex_agent/invocations';
 
-const PAYLOADS = (messages) => [
-    { messages },
-    { dataframe_records: [{ messages }] },
+const PAYLOADS = (messages, tools) => [
+    { messages, tools },
+    { dataframe_records: [{ messages, tools }] },
     { dataframe_records: [{ query: messages.at(-1)?.content ?? '' }] },
-    { inputs: { messages } },
+    { inputs: { messages, tools } },
+    { messages },
 ];
 
 app.get('/api/status', (req, res) => {
@@ -27,10 +28,11 @@ app.post('/api/databricks', async (req, res) => {
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     const messages = req.body?.messages ?? [];
+    const tools = req.body?.tools;
     let lastStatus = 500;
     let lastBody = '';
 
-    for (const payload of PAYLOADS(messages)) {
+    for (const payload of PAYLOADS(messages, tools)) {
         try {
             const resp = await fetch(DATABRICKS_URL, {
                 method: 'POST',
