@@ -129,7 +129,7 @@ Guidelines:
 - Always return human-readable answers.
 - Use tables or bullet lists if the data is structured.
 - Keep answers factual and concise.
-- Retrieved results should be presented in a table format.
+- If data has been retrieved using the 'eurex_graphql' tool, it is already displayed in the main application window. DO NOT repeat the data in a table or list within your chat response. Instead, provide a human-readable summary or answer based on that data.
 - Always use Product as filter for queries related to Contracts and SettlementPrices.
 - If the user explicitly asks for a GraphQL query, ALWAYS wrap it in markdown code blocks like this:
 \`\`\`graphql
@@ -251,6 +251,20 @@ query {
 SCHEMA SUMMARY:
 ${schemaSummary}
 
+Your workflow:
+1. Read the Schema Summary above. Never assume which queries or fields exist.
+2. If the user's question requires data, use the 'eurex_graphql' tool to execute a query.
+3. Answer the user's question clearly in human words based on this schema and any data retrieved.
+4. If a field or query is not in the schema, explain that it's not available.
+
+Guidelines:
+- DO NOT output introspection queries (or any GraphQL queries) to the user unless they explicitly ask for a query.
+- Use the 'eurex_graphql' tool to get data needed for your answer.
+- You MUST answer the user's questions in human words.
+- Always return human-readable answers.
+- Keep answers factual and concise.
+- If data has been retrieved using the 'eurex_graphql' tool, it is already displayed in the main application window. DO NOT repeat the data in a table or list within your chat response. Instead, provide a human-readable summary or answer based on that data.
+- Always use Product as filter for queries related to Contracts and SettlementPrices.
 Guidelines:
 - Answer the user's questions clearly in human words.
 - Keep answers factual and concise.
@@ -261,44 +275,79 @@ Guidelines:
 
         this.databricksHistory.push({ role: 'user', content: message });
 
-        const response = await fetch('/api/databricks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: this.databricksHistory })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            if (response.status === 429) {
-                throw new Error('Rate limit exceeded. Please wait and try again.');
+        const tools = [{
+            type: "function",
+            function: {
+                name: "eurex_graphql",
+                description: "Executes a GraphQL query against the Eurex Reference Data API to retrieve data for the assistant to answer questions.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        query: { type: "string" }
+                    },
+                    required: ["query"]
+                }
             }
-            const detail = errorData.error?.detail || '';
-            const msg = errorData.error?.message || `Databricks Agent error (${response.status})`;
-            throw new Error(detail ? `${msg} — ${detail}` : msg);
+        }];
+
+        for (let turn = 0; turn < 5; turn++) {
+            const response = await fetch('/api/databricks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: this.databricksHistory, tools })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                if (response.status === 429) {
+                    throw new Error('Rate limit exceeded. Please wait and try again.');
+                }
+                const detail = errorData.error?.detail || '';
+                const msg = errorData.error?.message || `Databricks Agent error (${response.status})`;
+                throw new Error(detail ? `${msg} — ${detail}` : msg);
+            }
+
+            const data = await response.json();
+            let choice = (data.choices && data.choices[0]) || (data.predictions && data.predictions[0]);
+
+            // Normalize Databricks weird response structures
+            if (data.dataframe_records && data.dataframe_records[0]) choice = { message: data.dataframe_records[0] };
+            if (typeof choice === 'string') choice = { message: { content: choice } };
+
+            const msg = choice?.message || choice;
+            if (!msg) throw new Error(`Unexpected response format from Databricks: ${JSON.stringify(data)}`);
+
+            this.databricksHistory.push(msg);
+
+            const toolCalls = msg.tool_calls || [];
+            if (toolCalls.length === 0) {
+                return msg.content || (typeof msg === 'string' ? msg : JSON.stringify(msg));
+            }
+
+            for (const call of toolCalls) {
+                if (call.function.name === 'eurex_graphql') {
+                    try {
+                        const args = typeof call.function.arguments === 'string' ? JSON.parse(call.function.arguments) : call.function.arguments;
+                        const result = await this.onRunQuery(args.query);
+                        this.databricksHistory.push({
+                            role: 'tool',
+                            tool_call_id: call.id,
+                            name: 'eurex_graphql',
+                            content: JSON.stringify(result)
+                        });
+                    } catch (err) {
+                        this.databricksHistory.push({
+                            role: 'tool',
+                            tool_call_id: call.id,
+                            name: 'eurex_graphql',
+                            content: err.message
+                        });
+                    }
+                }
+            }
         }
 
-        const data = await response.json();
-
-        let replyText = '';
-        if (data.choices && data.choices.length > 0) {
-            replyText = data.choices[0].message?.content || data.choices[0].text || '';
-        } else if (data.predictions && data.predictions.length > 0) {
-            replyText = typeof data.predictions[0] === 'string'
-                ? data.predictions[0]
-                : JSON.stringify(data.predictions[0]);
-        } else if (data.dataframe_records && data.dataframe_records.length > 0) {
-            const rec = data.dataframe_records[0];
-            replyText = rec.output || rec.content || rec.text || JSON.stringify(rec);
-        } else if (typeof data.content === 'string') {
-            replyText = data.content;
-        } else if (typeof data === 'string') {
-            replyText = data;
-        }
-
-        if (!replyText) throw new Error(`Unexpected response format: ${JSON.stringify(data)}`);
-
-        this.databricksHistory.push({ role: 'assistant', content: replyText });
-        return replyText;
+        throw new Error("Maximum tool execution turns exceeded.");
     }
 
     async callClaudeAPI(message, apiKey) {
@@ -332,7 +381,7 @@ Guidelines:
 - Always return human-readable answers.
 - Use tables or bullet lists if the data is structured.
 - Keep answers factual and concise.
-- Retrieved results should be presented in a table format.
+- If data has been retrieved using the 'eurex_graphql' tool, it is already displayed in the main application window. DO NOT repeat the data in a table or list within your chat response. Instead, provide a human-readable summary or answer based on that data.
 - Always use Product as filter for queries related to Contracts and SettlementPrices.
 - If the user explicitly asks for a GraphQL query, ALWAYS wrap it in markdown code blocks like this:
 \`\`\`graphql
@@ -418,6 +467,31 @@ query {
             this.claudeHistory.push({ role: 'user', content: toolResults });
         }
 
+
+            const toolResults = [];
+            for (const call of toolCalls) {
+                if (call.name === 'eurex_graphql') {
+                    try {
+                        const result = await this.onRunQuery(call.input.query);
+                        toolResults.push({
+                            type: "tool_result",
+                            tool_use_id: call.id,
+                            content: JSON.stringify(result)
+                        });
+                    } catch (err) {
+                        toolResults.push({
+                            type: "tool_result",
+                            tool_use_id: call.id,
+                            content: err.message,
+                            is_error: true
+                        });
+                    }
+                }
+            }
+
+            this.claudeHistory.push({ role: 'user', content: toolResults });
+        }
+
         throw new Error("Maximum tool execution turns exceeded.");
     }
 
@@ -443,6 +517,10 @@ query {
                 if (part.startsWith('```')) {
                     // Code block
                     const content = part.replace(/^```(?:\w+)?\n?/, '').replace(/```$/, '').trim();
+                    // More robust GraphQL detection: check for graphql tag OR common GQL keywords at start/structure
+                    const isGraphQL = part.includes('graphql') ||
+                                     /^\s*(query|mutation|subscription|{)/i.test(content) ||
+                                     (content.includes('filter:') && content.includes('{'));
                     const isGraphQL = part.includes('graphql') || content.toLowerCase().includes('query') || content.toLowerCase().includes('{');
 
                     const pre = document.createElement('pre');
