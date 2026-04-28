@@ -4,9 +4,10 @@ import { dirname } from 'path';
 
 const app = express();
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const rootDir = dirname(__dirname);
 
 app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static(rootDir));
 
 const DATABRICKS_URL = 'https://dbc-f43533dd-29e2.cloud.databricks.com/serving-endpoints/Eurex_agent/invocations';
 

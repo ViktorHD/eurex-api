@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="explorer/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -30,6 +30,9 @@
                 </div>
 
                 <div class="action-right">
+                    <a href="https://github.com/eurex-api/api-explorer/blob/main/notebooks/eurex_graphql_tutorial.ipynb" class="secondary-btn notebook-btn" style="text-decoration: none; display: inline-flex; align-items: center;" target="_blank" rel="noopener" title="Open Jupyter Notebooks">
+                        <i data-feather="terminal"></i> Notebooks
+                    </a>
                     <button id="toggleQueryBtn" class="secondary-btn query-btn">
                         <i data-feather="edit-3"></i> Query
                     </button>
@@ -191,7 +194,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="app.js?v=2"></script>
+    <script type="module" src="explorer/app.js?v=2"></script>
     <script>
       feather.replace();
     </script>
