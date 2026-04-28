@@ -5,6 +5,62 @@ import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
 
+/**
+ * Extracts root field names from a GraphQL query string.
+ * @param {string} query
+ * @returns {string[]}
+ */
+function getRootFields(query) {
+    if (!query) return [];
+    const cleanQuery = query.replace(/#.*$/gm, ' ');
+    const firstBraceIndex = cleanQuery.indexOf('{');
+    if (firstBraceIndex === -1) return [];
+
+    let inner = cleanQuery.substring(firstBraceIndex + 1);
+    let fields = [];
+    let braceDepth = 0;
+    let parenDepth = 0;
+    let currentToken = '';
+
+    for (let i = 0; i < inner.length; i++) {
+        const char = inner[i];
+        if (char === '{') {
+            if (braceDepth === 0 && parenDepth === 0) {
+                const t = currentToken.trim().split(/[\s,:]+/).filter(x => x).pop();
+                if (t) fields.push(t);
+                currentToken = '';
+            }
+            braceDepth++;
+        } else if (char === '}') {
+            if (braceDepth === 0) break;
+            braceDepth--;
+        } else if (char === '(') {
+            if (braceDepth === 0 && parenDepth === 0) {
+                const t = currentToken.trim().split(/[\s,:]+/).filter(x => x).pop();
+                if (t) fields.push(t);
+                currentToken = '';
+            }
+            parenDepth++;
+        } else if (char === ')') {
+            parenDepth--;
+        } else if (braceDepth === 0 && parenDepth === 0) {
+            if (/[\s,]/.test(char)) {
+                const parts = currentToken.trim().split(/[\s,:]+/).filter(x => x);
+                if (parts.length > 0) {
+                    for (let j = 0; j < parts.length; j++) fields.push(parts[j]);
+                }
+                currentToken = '';
+            } else {
+                currentToken += char;
+            }
+        }
+    }
+    const finalParts = currentToken.trim().split(/[\s,:]+/).filter(x => x);
+    for (let j = 0; j < finalParts.length; j++) fields.push(finalParts[j]);
+
+    return fields.filter((f, index) => fields.indexOf(f) === index && f && !['query', 'mutation', 'subscription', 'fragment', 'on'].includes(f));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const apiUrlInput = document.getElementById('apiUrl');
     const runQueryBtn = document.getElementById('runQueryBtn');
@@ -71,6 +127,12 @@ document.addEventListener('DOMContentLoaded', () => {
             onTabLoad: (state) => {
                 queryInput.value = state.query;
                 ui.hideError();
+                const resultLabel = document.getElementById('resultLabel');
+                if (resultLabel) {
+                    const isDefaultName = /^Query \d+$/.test(state.name);
+                    resultLabel.textContent = isDefaultName ? 'Result' : state.name;
+                }
+
                 if (state.data && state.data.length > 0) {
                     ui.renderTable(state.data, state);
                 } else {
@@ -281,15 +343,31 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.showLoading();
         ui.disableExportBtns();
 
+        // Dynamic Naming (Update early so it shows even on failure/loading)
+        const rootFields = getRootFields(query);
+        const newName = rootFields.length > 0 ? rootFields.join(', ') : '';
+        const resultLabel = document.getElementById('resultLabel');
+
+        const activeTab = tabs.getActiveState();
+        const tabUpdate = {};
+        if (newName) {
+            tabUpdate.name = newName;
+            if (resultLabel) resultLabel.textContent = newName;
+        } else {
+            tabUpdate.name = 'Query ' + activeTab.id;
+            if (resultLabel) resultLabel.textContent = 'Result';
+        }
+        tabs.updateActiveState(tabUpdate);
+        tabs.render();
+
         try {
             const data = await client.request(query);
 
+            tabs.updateActiveState({ data: data, sortCol: null, sortAsc: true, columnFilters: {} });
+
             if (data.length === 0) {
                 ui.showEmptyState("Query successful, but no data was returned.");
-                tabs.updateActiveState({ data: [] });
             } else {
-                // Save to tab state
-                tabs.updateActiveState({ data: data, sortCol: null, sortAsc: true, columnFilters: {} });
                 ui.renderTable(data, { sortCol: null, sortAsc: true, columnFilters: {} });
             }
             return data;
