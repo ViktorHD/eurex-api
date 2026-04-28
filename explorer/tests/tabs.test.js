@@ -1,4 +1,4 @@
-import { TabManager } from './tabs.js';
+import { TabManager } from '../tabs.js';
 import { jest } from '@jest/globals';
 
 describe('TabManager', () => {

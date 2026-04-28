@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { getTypeName, UIManager } from './ui.js';
+import { getTypeName, UIManager } from '../ui.js';
 
 describe('getTypeName', () => {
     test('returns "Unknown" for null or undefined input', () => {

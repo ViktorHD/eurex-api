@@ -31,7 +31,7 @@ def run_verification():
             page.wait_for_selector("#chatbotWindow:not(.hidden)")
 
             # Take a screenshot of the initial state
-            page.screenshot(path="initial_state.png")
+            page.screenshot(path="explorer/initial_state.png")
 
             # 4. Check if we can switch providers
             print("Switching provider to Gemini")
@@ -44,13 +44,13 @@ def run_verification():
             # But we can verify the UI responds to input
             print("Typing a message")
             page.fill("#chatbotInput", "How many contracts are there for FDAX?")
-            page.screenshot(path="chatbot_typing.png")
+            page.screenshot(path="explorer/chatbot_typing.png")
 
             print("Verification successful (UI components responding)")
 
         except Exception as e:
             print(f"Verification failed: {e}")
-            page.screenshot(path="error.png")
+            page.screenshot(path="explorer/error.png")
         finally:
             context.tracing.stop(path="trace.zip")
             browser.close()
