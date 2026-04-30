@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tableHead: document.getElementById('tableHead'),
         tableBody: document.getElementById('tableBody'),
         recordCounter: document.getElementById('recordCounter'),
-        shareBtn: document.getElementById('shareBtn'),
+        shareBtn: document.getElementById('actionShareBtn'),
         downloadCsvBtn: document.getElementById('downloadCsvBtn'),
         downloadMdBtn: document.getElementById('downloadMdBtn'),
         onStateChange: (state) => {
@@ -517,7 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Share Logic
-    const shareBtn = document.getElementById('shareBtn');
+    const shareBtn = document.getElementById('actionShareBtn');
     const shareModal = document.getElementById('shareModal');
     const closeShareModal = document.getElementById('closeShareModal');
     const shareLinkInput = document.getElementById('shareLinkInput');
