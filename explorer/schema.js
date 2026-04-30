@@ -16,6 +16,7 @@ export class SchemaExplorer {
     }
 
     async fetchSchema() {
+        if (this.schemaData) return this.schemaData;
         if (!this.client.apiKey || !this.client.endpoint) return null;
 
         this.els.docsLoading.classList.remove('hidden');
