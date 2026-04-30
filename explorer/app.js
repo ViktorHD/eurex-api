@@ -117,7 +117,6 @@ document.addEventListener('DOMContentLoaded', () => {
             tabs.updateActiveState(state);
         }
     });
-
     const tabs = new TabManager(
         document.getElementById('tabsBar'),
         document.getElementById('addTabBtn'),
@@ -263,6 +262,157 @@ document.addEventListener('DOMContentLoaded', () => {
     updateProviderFields();
 
     // AI Chatbot Setup
+    const aiInfoModal = document.getElementById('aiInfoModal');
+    const closeAiInfoModal = document.getElementById('closeAiInfoModal');
+    const aiInfoText = document.getElementById('aiInfoText');
+    const copyAiInfoBtn = document.getElementById('copyAiInfoBtn');
+
+    const getSdlSummary = async () => {
+        const schema = await schemaExplorer.fetchSchema();
+        if (!schema) return "Schema not loaded yet.";
+
+        const formatType = (typeObj) => {
+            if (!typeObj) return 'Unknown';
+            if (typeObj.kind === 'NON_NULL') return formatType(typeObj.ofType) + '!';
+            if (typeObj.kind === 'LIST') return '[' + formatType(typeObj.ofType) + ']';
+            return typeObj.name || 'Unknown';
+        };
+
+        let sdl = "";
+        const userTypes = schema.types.filter(t => !t.name.startsWith('__'));
+        userTypes.forEach(type => {
+            if (type.kind === 'OBJECT') {
+                sdl += `type ${type.name} {\n`;
+                if (type.fields) {
+                    type.fields.forEach(f => {
+                        let argsStr = "";
+                        if (f.args && f.args.length > 0) {
+                            argsStr = "(" + f.args.map(a => `${a.name}: ${formatType(a.type)}`).join(", ") + ")";
+                        }
+                        sdl += `  ${f.name}${argsStr}: ${formatType(f.type)}\n`;
+                    });
+                }
+                sdl += `}\n\n`;
+            } else if (type.kind === 'INPUT_OBJECT') {
+                sdl += `input ${type.name} {\n`;
+                if (type.inputFields) {
+                    type.inputFields.forEach(f => {
+                        sdl += `  ${f.name}: ${formatType(f.type)}\n`;
+                    });
+                }
+                sdl += `}\n\n`;
+            } else if (type.kind === 'ENUM') {
+                sdl += `enum ${type.name} {\n`;
+                if (type.enumValues) {
+                    type.enumValues.forEach(v => {
+                        sdl += `  ${v.name}\n`;
+                    });
+                }
+                sdl += `}\n\n`;
+            }
+        });
+        return sdl.trim();
+    };
+
+    const showAiHandoff = async () => {
+        const schemaSDL = await getSdlSummary();
+        const endpoint = apiUrlInput.value.trim();
+        const apiKey = apiKeyInput.value.trim() || DEMO_API_KEY;
+
+        const handoffPrompt = `You are a GraphQL expert assisting a developer with the Eurex API.
+
+### API CONFIGURATION
+- ENDPOINT: ${endpoint}
+- AUTHENTICATION: Use header "X-DBP-APIKEY: ${apiKey}"
+
+### SCHEMA SUMMARY (SDL)
+${schemaSDL}
+
+### INSTRUCTIONS
+1. Help the user write valid GraphQL queries for this API.
+2. Ensure you use the correct field names and types as defined in the SDL.
+3. If the user asks for data visualization, suggest appropriate table columns.
+4. You can assume the user is using the Eurex API Explorer.`;
+
+        aiInfoText.value = handoffPrompt;
+        aiInfoModal.classList.remove('hidden');
+    };
+
+    closeAiInfoModal.addEventListener('click', () => aiInfoModal.classList.add('hidden'));
+    copyAiInfoBtn.addEventListener('click', () => {
+        aiInfoText.select();
+        navigator.clipboard.writeText(aiInfoText.value).then(() => {
+            const originalText = copyAiInfoBtn.textContent;
+            copyAiInfoBtn.textContent = 'Copied!';
+            setTimeout(() => {
+                copyAiInfoBtn.textContent = originalText;
+            }, 2000);
+        });
+    });
+
+    document.getElementById('mobileAskAiBtn').addEventListener('click', showAiHandoff);
+
+    window.addEventListener('click', (e) => {
+        if (e.target === aiInfoModal) aiInfoModal.classList.add('hidden');
+    });
+
+    // Mobile Navigation & More Menu
+    const moreMenuBtn = document.getElementById('moreMenuBtn');
+    const moreMenu = document.getElementById('moreMenu');
+    const bottomNavItems = document.querySelectorAll('.bottom-nav .nav-item');
+
+    function isMobile() {
+        return window.innerWidth <= 768;
+    }
+
+    function switchMobilePane(paneId) {
+        if (!isMobile()) return;
+
+        // Update active nav item
+        bottomNavItems.forEach(item => {
+            item.classList.toggle('active', item.getAttribute('data-pane') === paneId);
+        });
+
+        // Toggle panes
+        queryPane.classList.toggle('hidden', paneId !== 'query');
+        resultsPane.classList.toggle('hidden', paneId !== 'results');
+        docsPane.classList.toggle('hidden', paneId !== 'docs');
+
+        // Special handling for splitters/resizers (hide on mobile)
+        const allSplitters = document.querySelectorAll('.resize-handle');
+        allSplitters.forEach(s => s.classList.add('hidden'));
+
+        // If switching to docs, fetch schema if needed
+        if (paneId === 'docs' && docsPane.querySelector('#docsTree').classList.contains('hidden')) {
+            schemaExplorer.fetchSchema().then(schema => {
+                if (schema) autocomplete.setSchema(schema);
+            });
+        }
+    }
+
+    bottomNavItems.forEach(item => {
+        item.addEventListener('click', () => {
+            const paneId = item.getAttribute('data-pane');
+            switchMobilePane(paneId);
+        });
+    });
+
+    moreMenuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moreMenu.classList.toggle('hidden-menu');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!moreMenu.contains(e.target) && e.target !== moreMenuBtn) {
+            moreMenu.classList.add('hidden-menu');
+        }
+    });
+
+    // Initial mobile state
+    if (isMobile()) {
+        switchMobilePane('query');
+    }
+
     const chatbot = new Chatbot({
         container: document.getElementById('chatbotContainer'),
         window: document.getElementById('chatbotWindow'),
@@ -345,6 +495,11 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.hideError();
         ui.showLoading();
         ui.disableExportBtns();
+
+        // Mobile: switch to results pane on run
+        if (isMobile()) {
+            switchMobilePane('results');
+        }
 
         // Dynamic Naming (Update early so it shows even on failure/loading)
         const rootFields = getRootFields(query);
@@ -460,7 +615,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Export Logic
-    document.getElementById('downloadCsvBtn').addEventListener('click', () => {
+    const downloadCsvAction = () => {
         const data = ui.currentData;
         if (!data || data.length === 0) return;
         
@@ -481,7 +636,7 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadFile(csvRows.join('\n'), 'export.csv', 'text/csv');
     });
 
-    document.getElementById('downloadMdBtn').addEventListener('click', () => {
+    const downloadMdAction = () => {
         const data = ui.currentData;
         if (!data || data.length === 0) return;
 
@@ -504,6 +659,12 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadFile(mdRows.join('\n'), 'export.md', 'text/markdown');
     });
 
+    document.getElementById('downloadCsvBtn').addEventListener('click', downloadCsvAction);
+    document.getElementById('mobileCsvBtn').addEventListener('click', downloadCsvAction);
+
+    document.getElementById('downloadMdBtn').addEventListener('click', downloadMdAction);
+    document.getElementById('mobileMdBtn').addEventListener('click', downloadMdAction);
+
     function downloadFile(content, fileName, mimeType) {
         const blob = new Blob([content], { type: mimeType });
         const url = URL.createObjectURL(blob);
@@ -523,7 +684,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const shareLinkInput = document.getElementById('shareLinkInput');
     const copyShareLinkBtn = document.getElementById('copyShareLinkBtn');
 
-    shareBtn.addEventListener('click', () => {
+    const shareAction = () => {
         const uiState = ui.exportState();
         const state = {
             q: queryInput.value.trim(),
@@ -562,6 +723,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 2000);
         });
     });
+
+    shareBtn.addEventListener('click', shareAction);
+    document.getElementById('mobileShareBtn').addEventListener('click', shareAction);
 
     window.addEventListener('click', (e) => {
         if (e.target === shareModal) {

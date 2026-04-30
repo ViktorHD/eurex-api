@@ -13,6 +13,7 @@ export class UIManager {
         this.sortAsc = true;
         this.columnFilters = {};
         this.currentData = [];
+        this.stickyCols = new Set();
     }
 
     showLoading() {
@@ -160,12 +161,15 @@ export class UIManager {
 
         // Header row
         const trHead = document.createElement('tr');
-        headers.forEach(h => {
+        headers.forEach((h, index) => {
             const th = document.createElement('th');
             th.className = 'sortable-th';
+            if (this.stickyCols.has(h)) th.classList.add('sticky-col');
             if (this.numericCols.has(h)) th.style.textAlign = 'right';
-            th.textContent = h + (this.sortCol === h ? (this.sortAsc ? ' ▲' : ' ▼') : '');
-            th.addEventListener('click', () => {
+
+            const labelSpan = document.createElement('span');
+            labelSpan.textContent = h + (this.sortCol === h ? (this.sortAsc ? ' ▲' : ' ▼') : '');
+            labelSpan.addEventListener('click', () => {
                 if (this.sortCol === h) {
                     this.sortAsc = !this.sortAsc;
                 } else {
@@ -175,6 +179,24 @@ export class UIManager {
                 if (this.els.onStateChange) this.els.onStateChange(this.exportState());
                 this.renderTable(this.currentData, this.exportState());
             });
+            th.appendChild(labelSpan);
+
+            // Pin button
+            const pinBtn = document.createElement('button');
+            pinBtn.className = 'pin-btn' + (this.stickyCols.has(h) ? ' active' : '');
+            pinBtn.innerHTML = '<i data-feather="pin"></i>';
+            pinBtn.title = 'Pin Column';
+            pinBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.stickyCols.has(h)) {
+                    this.stickyCols.delete(h);
+                } else {
+                    this.stickyCols.add(h);
+                }
+                this.renderTable(this.currentData, this.exportState());
+            });
+            th.appendChild(pinBtn);
+
             trHead.appendChild(th);
         });
 
@@ -229,6 +251,7 @@ export class UIManager {
             headers.forEach(h => {
                 const td = document.createElement('td');
                 td.setAttribute('data-label', h);
+                if (this.stickyCols.has(h)) td.classList.add('sticky-col');
                 if (this.numericCols && this.numericCols.has(h)) td.style.textAlign = 'right';
                 let cellVal = item.row[h];
                 td.textContent = this.formatValue(cellVal, h);
@@ -236,14 +259,41 @@ export class UIManager {
             });
             this.els.tableBody.appendChild(tr);
         });
+
+        if (window.feather) window.feather.replace();
     }
 
     autoResizeColumns() {
-        const ths = this.els.resultsTable.querySelectorAll('th');
-        ths.forEach(th => { th.style.width = ''; });
+        const ths = this.els.resultsTable.querySelectorAll('thead tr:first-child th');
+        ths.forEach(th => {
+            th.style.width = '';
+            th.style.left = '';
+        });
+
         requestAnimationFrame(() => {
-            ths.forEach(th => {
-                th.style.width = th.offsetWidth + 'px';
+            let leftOffset = 0;
+            ths.forEach((th, i) => {
+                const width = th.offsetWidth;
+                th.style.width = width + 'px';
+
+                if (th.classList.contains('sticky-col')) {
+                    th.style.left = leftOffset + 'px';
+                    // Also update corresponding filter th and body tds
+                    const filterTh = this.els.tableHead.querySelectorAll('.filter-row th')[i];
+                    if (filterTh) {
+                        filterTh.classList.add('sticky-col');
+                        filterTh.style.left = leftOffset + 'px';
+                    }
+
+                    this.els.tableBody.querySelectorAll('tr').forEach(tr => {
+                        const td = tr.querySelectorAll('td')[i];
+                        if (td) {
+                            td.style.left = leftOffset + 'px';
+                        }
+                    });
+
+                    leftOffset += width;
+                }
             });
         });
     }
