@@ -91,32 +91,55 @@ describe('UIManager', () => {
 
         test('returns string representation for other primitives', () => {
             expect(ui.formatValue(true)).toBe('true');
+            expect(ui.formatValue(false)).toBe('false');
+            expect(ui.formatValue('')).toBe('');
             expect(ui.formatValue('hello')).toBe('hello');
+        });
+
+        test('handles 0 correctly', () => {
+            expect(ui.formatValue(0)).toBe('0');
         });
 
         test('formats numbers using Intl.NumberFormat if colName does not include "id"', () => {
             const val = 1234567.89;
             const formatted = new Intl.NumberFormat().format(val);
             expect(ui.formatValue(val, 'price')).toBe(formatted);
+
+            const negVal = -123.45;
+            const negFormatted = new Intl.NumberFormat().format(negVal);
+            expect(ui.formatValue(negVal, 'delta')).toBe(negFormatted);
         });
 
         test('returns number as string if colName includes "id"', () => {
             const val = 1234567;
             expect(ui.formatValue(val, 'productId')).toBe('1234567');
             expect(ui.formatValue(val, 'ID')).toBe('1234567');
+            expect(ui.formatValue(val, 'InstrumentId')).toBe('1234567');
+            expect(ui.formatValue(val, 'product_id')).toBe('1234567');
         });
 
         test('formats ISO date strings using toLocaleString', () => {
             const isoStr = '2023-10-27T10:00:00Z';
             const expected = new Date(isoStr).toLocaleString();
             expect(ui.formatValue(isoStr)).toBe(expected);
+
+            const isoStrNoZ = '2023-10-27T10:00:00';
+            const expectedNoZ = new Date(isoStrNoZ).toLocaleString();
+            expect(ui.formatValue(isoStrNoZ)).toBe(expectedNoZ);
         });
 
-        test('returns original string if it is not a valid ISO date', () => {
+        test('stringifies Date objects as JSON', () => {
+            const d = new Date('2023-10-27T10:00:00Z');
+            expect(ui.formatValue(d)).toBe(JSON.stringify(d));
+        });
+
+        test('returns original string if it is not a valid ISO date or only partial', () => {
             const invalidDate = '2023-13-45T25:00:00';
             expect(ui.formatValue(invalidDate)).toBe(invalidDate);
             const notADate = 'Not a date';
             expect(ui.formatValue(notADate)).toBe(notADate);
+            const partialDate = '2023-10-27';
+            expect(ui.formatValue(partialDate)).toBe(partialDate);
         });
     });
 
