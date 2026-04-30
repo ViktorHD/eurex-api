@@ -88,13 +88,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const firstSplitter = document.querySelector('.resize-handle:not(#docsSplitter)');
 
     toggleQueryBtn.addEventListener('click', () => {
-        queryPane.classList.toggle('hidden');
-        if (firstSplitter) firstSplitter.classList.toggle('hidden');
+        if (isMobile()) {
+            switchMobilePane('query');
+        } else {
+            queryPane.classList.toggle('hidden');
+            if (firstSplitter) firstSplitter.classList.toggle('hidden');
+        }
     });
 
     closeQueryBtn.addEventListener('click', () => {
-        queryPane.classList.add('hidden');
-        if (firstSplitter) firstSplitter.classList.add('hidden');
+        if (isMobile()) {
+            // No action needed for close on mobile as it's tabbed
+        } else {
+            queryPane.classList.add('hidden');
+            if (firstSplitter) firstSplitter.classList.add('hidden');
+        }
     });
 
     // Submodules Setup
@@ -538,23 +546,33 @@ ${schemaSDL}
 
     // App Layout Logic
     toggleDocsBtn.addEventListener('click', async () => {
-        docsPane.classList.toggle('hidden');
-        const ds = document.getElementById('docsSplitter');
-        if (ds) ds.classList.toggle('hidden');
-        
-        if (!docsPane.classList.contains('hidden')) {
-            const schema = await schemaExplorer.fetchSchema();
-            if (schema) autocomplete.setSchema(schema);
+        if (isMobile()) {
+            switchMobilePane('docs');
+        } else {
+            docsPane.classList.toggle('hidden');
+            const ds = document.getElementById('docsSplitter');
+            if (ds) ds.classList.toggle('hidden');
+
+            if (!docsPane.classList.contains('hidden')) {
+                const schema = await schemaExplorer.fetchSchema();
+                if (schema) autocomplete.setSchema(schema);
+            }
         }
     });
 
     closeDocsBtn.addEventListener('click', () => {
-        docsPane.classList.add('hidden');
-        const ds = document.getElementById('docsSplitter');
-        if (ds) ds.classList.add('hidden');
+        if (isMobile()) {
+            // No action needed for close on mobile
+        } else {
+            docsPane.classList.add('hidden');
+            const ds = document.getElementById('docsSplitter');
+            if (ds) ds.classList.add('hidden');
+        }
     });
 
-    drawerToggle.addEventListener('click', () => {
+    drawerToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         drawerContent.classList.toggle('open');
         const isOpen = drawerContent.classList.contains('open');
         drawerIcon.setAttribute('data-feather', isOpen ? 'chevron-down' : 'chevron-up');
@@ -634,7 +652,7 @@ ${schemaSDL}
         });
 
         downloadFile(csvRows.join('\n'), 'export.csv', 'text/csv');
-    });
+    };
 
     const downloadMdAction = () => {
         const data = ui.currentData;
@@ -657,7 +675,7 @@ ${schemaSDL}
         });
 
         downloadFile(mdRows.join('\n'), 'export.md', 'text/markdown');
-    });
+    };
 
     document.getElementById('downloadCsvBtn').addEventListener('click', downloadCsvAction);
     document.getElementById('mobileCsvBtn').addEventListener('click', downloadCsvAction);
@@ -707,7 +725,7 @@ ${schemaSDL}
 
         shareLinkInput.value = url.toString();
         shareModal.classList.remove('hidden');
-    });
+    };
 
     closeShareModal.addEventListener('click', () => {
         shareModal.classList.add('hidden');
