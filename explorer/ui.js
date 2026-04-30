@@ -56,11 +56,13 @@ export class UIManager {
     enableExportBtns() {
         this.els.downloadCsvBtn.disabled = false;
         this.els.downloadMdBtn.disabled = false;
+        if (this.els.shareBtn) this.els.shareBtn.disabled = false;
     }
 
     disableExportBtns() {
         this.els.downloadCsvBtn.disabled = true;
         this.els.downloadMdBtn.disabled = true;
+        if (this.els.shareBtn) this.els.shareBtn.disabled = true;
     }
 
     formatValue(val, colName) {

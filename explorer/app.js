@@ -5,6 +5,8 @@ import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
 
+const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
+
 /**
  * Extracts root field names from a GraphQL query string.
  * @param {string} query
@@ -108,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tableHead: document.getElementById('tableHead'),
         tableBody: document.getElementById('tableBody'),
         recordCounter: document.getElementById('recordCounter'),
+        shareBtn: document.getElementById('shareBtn'),
         downloadCsvBtn: document.getElementById('downloadCsvBtn'),
         downloadMdBtn: document.getElementById('downloadMdBtn'),
         onStateChange: (state) => {
@@ -332,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    async function executeGraphQLQuery(query) {
+    async function executeGraphQLQuery(query, stateOptions = null) {
         const apiKey = apiKeyInput.value.trim();
         if (!apiKey || !query) {
             ui.showError('API Key and Query are required.');
@@ -363,12 +366,13 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const data = await client.request(query);
 
-            tabs.updateActiveState({ data: data, sortCol: null, sortAsc: true, columnFilters: {} });
+            const tableState = stateOptions || { sortCol: null, sortAsc: true, columnFilters: {} };
+            tabs.updateActiveState({ data: data, ...tableState });
 
             if (data.length === 0) {
                 ui.showEmptyState("Query successful, but no data was returned.");
             } else {
-                ui.renderTable(data, { sortCol: null, sortAsc: true, columnFilters: {} });
+                ui.renderTable(data, tableState);
             }
             return data;
         } catch (error) {
@@ -510,5 +514,97 @@ document.addEventListener('DOMContentLoaded', () => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    }
+
+    // Share Logic
+    const shareBtn = document.getElementById('shareBtn');
+    const shareModal = document.getElementById('shareModal');
+    const closeShareModal = document.getElementById('closeShareModal');
+    const shareLinkInput = document.getElementById('shareLinkInput');
+    const copyShareLinkBtn = document.getElementById('copyShareLinkBtn');
+
+    shareBtn.addEventListener('click', () => {
+        const uiState = ui.exportState();
+        const state = {
+            q: queryInput.value.trim(),
+            e: apiUrlInput.value.trim()
+        };
+
+        // Only include non-default values to keep URL shorter
+        if (uiState.sortCol) state.sc = uiState.sortCol;
+        if (uiState.sortAsc === false) state.sa = false;
+        if (Object.keys(uiState.columnFilters).length > 0) state.cf = uiState.columnFilters;
+
+        // Use a more robust way to encode to base64 for Unicode support
+        const jsonState = JSON.stringify(state);
+        const encodedState = btoa(encodeURIComponent(jsonState).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+            return String.fromCharCode('0x' + p1);
+        }));
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('eurex-api-state', encodedState);
+
+        shareLinkInput.value = url.toString();
+        shareModal.classList.remove('hidden');
+    });
+
+    closeShareModal.addEventListener('click', () => {
+        shareModal.classList.add('hidden');
+    });
+
+    copyShareLinkBtn.addEventListener('click', () => {
+        shareLinkInput.select();
+        navigator.clipboard.writeText(shareLinkInput.value).then(() => {
+            const originalText = copyShareLinkBtn.textContent;
+            copyShareLinkBtn.textContent = 'Copied!';
+            setTimeout(() => {
+                copyShareLinkBtn.textContent = originalText;
+            }, 2000);
+        });
+    });
+
+    window.addEventListener('click', (e) => {
+        if (e.target === shareModal) {
+            shareModal.classList.add('hidden');
+        }
+    });
+
+    // Handle shared link on load
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedStateEncoded = urlParams.get('eurex-api-state');
+    if (sharedStateEncoded) {
+        try {
+            // Robustly decode base64
+            const decodedJson = decodeURIComponent(atob(sharedStateEncoded).split('').map((c) => {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            const s = JSON.parse(decodedJson);
+
+            const query = s.q || s.query;
+            const endpoint = s.e || s.endpoint;
+
+            if (query) queryInput.value = query;
+            if (endpoint) {
+                apiUrlInput.value = endpoint;
+                client.setEndpoint(endpoint);
+            }
+
+            // Set demo key if current key is empty, to ensure "directly provides results"
+            if (!apiKeyInput.value.trim()) {
+                apiKeyInput.value = DEMO_API_KEY;
+                client.setApiKey(DEMO_API_KEY);
+            }
+
+            // Wait a bit for everything to be ready
+            setTimeout(() => {
+                executeGraphQLQuery(query, {
+                    sortCol: s.sc || s.sortCol || null,
+                    sortAsc: s.sa !== undefined ? s.sa : (s.sortAsc !== undefined ? s.sortAsc : true),
+                    columnFilters: s.cf || s.columnFilters || {}
+                }).catch(() => {});
+            }, 500);
+        } catch (e) {
+            console.error('Failed to parse shared state', e);
+        }
     }
 });
