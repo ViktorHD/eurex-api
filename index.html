@@ -30,17 +30,29 @@
                 </div>
 
                 <div class="action-right">
-                    <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="secondary-btn notebooks-btn" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+                    <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="secondary-btn notebooks-btn hide-mobile" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
                         <i data-feather="terminal"></i> Notebooks
                     </a>
-                    <button id="toggleQueryBtn" class="secondary-btn query-btn">
+                    <button id="toggleQueryBtn" class="secondary-btn query-btn hide-mobile">
                         <i data-feather="edit-3"></i> Query
                     </button>
-                    <button id="toggleDocsBtn" class="secondary-btn docs-btn">
+                    <button id="toggleDocsBtn" class="secondary-btn docs-btn hide-mobile">
                         <i data-feather="book"></i> Docs
                     </button>
+                    <button id="moreMenuBtn" class="icon-btn show-mobile-flex hidden"><i data-feather="more-vertical"></i></button>
                 </div>
             </header>
+
+            <!-- More Menu Overlay (Mobile) -->
+            <div id="moreMenu" class="more-menu hidden-menu">
+                <div class="more-menu-content">
+                    <button id="mobileAskAiBtn" class="menu-item"><i data-feather="cpu"></i> Ask AI</button>
+                    <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="menu-item"><i data-feather="terminal"></i> Notebooks</a>
+                    <button id="mobileShareBtn" class="menu-item"><i data-feather="share-2"></i> Share Results</button>
+                    <button id="mobileCsvBtn" class="menu-item"><i data-feather="download"></i> Download CSV</button>
+                    <button id="mobileMdBtn" class="menu-item"><i data-feather="file-text"></i> Download Markdown</button>
+                </div>
+            </div>
 
             <!-- Three Pane Split Layout -->
             <div class="workspace-grid">
@@ -169,6 +181,37 @@ query {
                     </div>
                 </section>
 
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation (Mobile) -->
+    <nav class="bottom-nav">
+        <button class="nav-item active" data-pane="query">
+            <i data-feather="edit-3"></i>
+            <span>Query</span>
+        </button>
+        <button class="nav-item" data-pane="results">
+            <i data-feather="database"></i>
+            <span>Results</span>
+        </button>
+        <button class="nav-item" data-pane="docs">
+            <i data-feather="book"></i>
+            <span>Docs</span>
+        </button>
+    </nav>
+
+    <!-- AI Info Modal -->
+    <div id="aiInfoModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>AI Handoff - API Skill</span>
+                <button id="closeAiInfoModal" class="icon-btn"><i data-feather="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 12px; font-size: 0.875rem; color: var(--text-secondary);">Copy this configuration to your AI assistant (e.g. ChatGPT, Claude) to enable it to help you with the Eurex API.</p>
+                <textarea id="aiInfoText" readonly style="width: 100%; height: 200px; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 12px; font-family: monospace; font-size: 0.75rem; resize: none; margin-bottom: 16px;"></textarea>
+                <button id="copyAiInfoBtn" class="primary-btn" style="width: 100%;">Copy to Clipboard</button>
             </div>
         </div>
     </div>
