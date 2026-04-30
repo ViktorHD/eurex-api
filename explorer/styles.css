@@ -345,12 +345,15 @@ body {
     max-width: 480px;
     background-color: var(--editor-bg);
     color: var(--editor-text);
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
 }
 .results-pane {
     flex: 2;
     overflow: hidden;
 }
-.docs-pane { width: 350px; }
+.docs-pane { width: 350px; z-index: 5; }
 
 /* Resizer Handles */
 .resize-handle {
@@ -369,6 +372,10 @@ body {
 }
 
 .hidden { display: none !important; }
+
+#moreMenu.hidden-menu {
+    display: none !important;
+}
 
 /* Pane Headers */
 .pane-header {
@@ -415,6 +422,7 @@ body {
     display: flex;
     flex-direction: column;
     box-shadow: 0 -2px 4px rgba(0,0,0,0.1); /* Slight shadow to indicate it's over the editor */
+    z-index: 10;
 }
 
 .drawer-header {
@@ -1146,6 +1154,8 @@ tr:hover td {
 
     .hide-mobile { display: none !important; }
     .show-mobile-flex { display: flex !important; }
+
+    #closeQueryBtn, #closeDocsBtn { display: none !important; }
 
     .workspace-grid {
         flex-direction: column;
