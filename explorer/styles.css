@@ -1142,6 +1142,36 @@ tr:hover td {
 }
 
 /* Responsive Layouts */
+
+/* Sticky logic for any screen but useful for mobile */
+.sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 20;
+    background: var(--bg-panel) !important;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
+
+th.sticky-col { z-index: 30; }
+
+/* Pin icon */
+.pin-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    margin-left: 4px;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    font-size: 12px; /* For text-based icons */
+}
+.pin-btn:hover, .pin-btn.active {
+    opacity: 1;
+    color: var(--neon-green);
+}
+.pin-btn i { width: 12px; height: 12px; }
+
 @media (max-width: 768px) {
     .app-nav { display: none; }
     .tabs-bar { display: none; }
@@ -1268,31 +1298,4 @@ tr:hover td {
     td { display: table-cell; }
     td::before { display: none; }
 
-    /* Sticky logic for any screen but useful for mobile */
-    .sticky-col {
-        position: sticky;
-        left: 0;
-        z-index: 20;
-        background: var(--bg-panel) !important;
-        box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-    }
-
-    th.sticky-col { z-index: 30; }
-
-    /* Pin icon */
-    .pin-btn {
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 2px;
-        margin-left: 4px;
-        color: var(--text-secondary);
-        opacity: 0.5;
-        transition: opacity 0.2s;
-    }
-    .pin-btn:hover, .pin-btn.active {
-        opacity: 1;
-        color: var(--neon-green);
-    }
-    .pin-btn i { width: 12px; height: 12px; }
 }

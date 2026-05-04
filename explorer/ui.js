@@ -184,7 +184,7 @@ export class UIManager {
             // Pin button
             const pinBtn = document.createElement('button');
             pinBtn.className = 'pin-btn' + (this.stickyCols.has(h) ? ' active' : '');
-            pinBtn.innerHTML = '<i data-feather="map-pin"></i>';
+            pinBtn.innerHTML = '📌';
             pinBtn.title = 'Pin Column';
             pinBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
