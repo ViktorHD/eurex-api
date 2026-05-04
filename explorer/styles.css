@@ -478,7 +478,7 @@ body {
     flex: 1;
     overflow: auto;
     position: relative;
-    padding: 0 24px 24px; /* Material standard horizontal padding */
+    padding: 0 0 24px 0; /* Remove horizontal padding so sticky column works correctly */
     background-color: var(--bg-panel);
 }
 
