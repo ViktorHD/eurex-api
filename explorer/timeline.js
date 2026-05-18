@@ -1,9 +1,10 @@
 export class TimelineManager {
     constructor(client, els) {
         this.client = client;
-        this.els = els; // { container, content, loading, timezoneSelect, refreshBtn }
+        this.els = els; // { container, content, loading, timezoneSelect, refreshBtn, filterInput }
         this.data = null;
         this.timezone = 'CET'; // Default
+        this.filterText = '';
         this.tooltip = this._createTooltip();
         this.expandedGroups = new Set();
 
@@ -16,6 +17,12 @@ export class TimelineManager {
             this.render();
         });
         this.els.refreshBtn.addEventListener('click', () => this.fetchAndRender());
+        if (this.els.filterInput) {
+            this.els.filterInput.addEventListener('input', (e) => {
+                this.filterText = e.target.value.toLowerCase();
+                this.render();
+            });
+        }
     }
 
     _createTooltip() {
@@ -184,15 +191,39 @@ export class TimelineManager {
 
         this.els.content.innerHTML = '';
 
+        // Add sticky timeline grid at the top of content
+        const grid = document.createElement('div');
+        grid.className = 'timeline-grid';
+        for (let i = 0; i <= 24; i += 2) {
+            const marker = document.createElement('div');
+            marker.className = 'timeline-hour-marker';
+            marker.style.left = `${(i / 24) * 100}%`;
+
+            const label = document.createElement('div');
+            label.className = 'timeline-hour-label';
+            label.textContent = `${String(i).padStart(2, '0')}:00`;
+            marker.appendChild(label);
+            grid.appendChild(marker);
+        }
+        this.els.content.appendChild(grid);
+
         const groupNames = Object.keys(this.data).sort();
         groupNames.forEach(name => {
-            const group = this.data[name];
+            let group = this.data[name];
+
+            // Apply filtering
+            if (this.filterText) {
+                group = group.filter(p => p.Product.toLowerCase().includes(this.filterText) || p.Name.toLowerCase().includes(this.filterText));
+            }
+
+            if (group.length === 0) return;
+
             const groupEl = document.createElement('div');
             groupEl.className = 'timeline-group';
 
             const header = document.createElement('div');
             header.className = 'timeline-group-header';
-            const isExpanded = this.expandedGroups.has(name);
+            const isExpanded = this.expandedGroups.has(name) || this.filterText !== '';
 
             const icon = document.createElement('i');
             icon.setAttribute('data-feather', isExpanded ? 'chevron-down' : 'chevron-right');
@@ -208,31 +239,16 @@ export class TimelineManager {
             });
             groupEl.appendChild(header);
 
-            // Timeline Grid for the group (Header row with hours)
-            const grid = document.createElement('div');
-            grid.className = 'timeline-grid';
-            for (let i = 0; i <= 24; i += 2) {
-                const marker = document.createElement('div');
-                marker.className = 'timeline-hour-marker';
-                marker.style.left = `${(i / 24) * 100}%`;
-
-                const label = document.createElement('div');
-                label.className = 'timeline-hour-label';
-                label.textContent = `${String(i).padStart(2, '0')}:00`;
-                marker.appendChild(label);
-                grid.appendChild(marker);
+            // Representing the group as a whole
+            if (!this.filterText) {
+                this._renderSummaryRow(groupEl, { Name: 'Group Overview', hours: group[0].hours });
             }
-            groupEl.appendChild(grid);
-
-            // Representing the group as a whole (average/common hours)
-            // Or just use the first product's hours for the group summary
-            this._renderProductRow(groupEl, { Name: 'Group Overview', hours: group[0].hours }, true);
 
             if (isExpanded) {
                 const details = document.createElement('div');
                 details.className = 'group-details';
                 group.forEach(p => {
-                    this._renderProductRow(details, p);
+                    this._renderProductDetails(details, p);
                 });
                 groupEl.appendChild(details);
             }
@@ -243,13 +259,13 @@ export class TimelineManager {
         if (window.feather) window.feather.replace();
     }
 
-    _renderProductRow(parent, product, isGroup = false) {
+    _renderSummaryRow(parent, product) {
         const row = document.createElement('div');
         row.className = 'timeline-row';
 
         const label = document.createElement('div');
         label.className = 'timeline-product-label';
-        label.textContent = isGroup ? 'Summary' : product.Product;
+        label.textContent = 'Summary';
         label.title = product.Name;
         row.appendChild(label);
 
@@ -257,67 +273,136 @@ export class TimelineManager {
         barContainer.className = 'timeline-bar-container';
 
         if (product.hours) {
-            let phases = [];
+            const phases = [
+                { start: product.hours.StartContinuousTrading, end: product.hours.EndContinuousTrading, type: 'continuous', label: 'Continuous Trading' },
+                { start: product.hours.StartTES, end: product.hours.EndTES, type: 'tes', label: 'TES' }
+            ];
 
-            if (isGroup) {
-                // Summary only shows main phases
-                phases = [
-                    { start: product.hours.StartContinuousTrading, end: product.hours.EndContinuousTrading, type: 'continuous', label: 'Continuous Trading' },
-                    { start: product.hours.StartTES, end: product.hours.EndTES, type: 'tes', label: 'TES' }
-                ];
-            } else {
-                // Details shows everything
-                phases = [
-                    { start: '00:00:00', end: product.hours.EndOpeningAuction, type: 'opening', label: 'Opening Auction' },
-                    { start: product.hours.StartContinuousTrading, end: product.hours.EndContinuousTrading, type: 'continuous', label: 'Continuous Trading' },
-                    { start: product.hours.EndContinuousTrading, end: product.hours.EndClosingAuction, type: 'closing', label: 'Closing Auction' },
-                    { start: product.hours.StartTES, end: product.hours.EndTES, type: 'tes', label: 'TES' },
-                    { start: product.hours.LTDBook, end: '23:59:59', type: 'ltd-book', label: 'LTD Book' },
-                    { start: product.hours.LTDTES, end: '23:59:59', type: 'ltd-tes', label: 'LTD TES' }
-                ];
-            }
-
-            phases.forEach(phase => {
-                if (phase.start && phase.end) {
-                    const startConverted = this._convertTime(phase.start, 'CET', this.timezone);
-                    const endConverted = this._convertTime(phase.end, 'CET', this.timezone);
-
-                    const startMin = this._timeToMinutes(startConverted);
-                    const endMin = this._timeToMinutes(endConverted);
-
-                    if (startMin !== null && endMin !== null) {
-                        const bar = document.createElement('div');
-                        bar.className = `timeline-bar bar-${phase.type}`;
-
-                        let left, width;
-                        if (endMin >= startMin) {
-                            left = (startMin / 1440) * 100;
-                            width = ((endMin - startMin) / 1440) * 100;
-                        } else {
-                            // Spans across midnight
-                            left = (startMin / 1440) * 100;
-                            width = ((1440 - startMin) / 1440) * 100;
-
-                            // Add second bar for the wrap around
-                            const bar2 = document.createElement('div');
-                            bar2.className = `timeline-bar bar-${phase.type}`;
-                            bar2.style.left = '0%';
-                            bar2.style.width = `${(endMin / 1440) * 100}%`;
-                            this._addTooltip(bar2, `${phase.label}: 00:00 - ${endConverted}`);
-                            barContainer.appendChild(bar2);
-                        }
-
-                        bar.style.left = `${left}%`;
-                        bar.style.width = `${width}%`;
-                        this._addTooltip(bar, `${phase.label}: ${startConverted} - ${endConverted}`);
-                        barContainer.appendChild(bar);
-                    }
-                }
-            });
+            phases.forEach(phase => this._addPhaseToContainer(barContainer, phase));
         }
 
         row.appendChild(barContainer);
         parent.appendChild(row);
+    }
+
+    _renderProductDetails(parent, product) {
+        // Main row with Product name and CLOB
+        const clobRow = document.createElement('div');
+        clobRow.className = 'timeline-row';
+
+        const label = document.createElement('div');
+        label.className = 'timeline-product-label';
+        label.textContent = product.Product;
+        label.title = product.Name;
+        clobRow.appendChild(label);
+
+        const clobContainer = document.createElement('div');
+        clobContainer.className = 'timeline-bar-container';
+
+        if (product.hours) {
+            // CLOB Phases: Opening Auction, Continuous Trading, Closing Auction
+            const phases = [];
+
+            // Opening Auction: from StartContinuousTrading to EndOpeningAuction
+            if (product.hours.StartContinuousTrading && product.hours.EndOpeningAuction) {
+                phases.push({ start: product.hours.StartContinuousTrading, end: product.hours.EndOpeningAuction, type: 'opening', label: 'Opening Auction' });
+            }
+
+            // Continuous Trading: from StartContinuousTrading to EndContinuousTrading
+            if (product.hours.StartContinuousTrading && product.hours.EndContinuousTrading) {
+                phases.push({ start: product.hours.StartContinuousTrading, end: product.hours.EndContinuousTrading, type: 'continuous', label: 'Continuous Trading' });
+            }
+
+            // Closing Auction: from EndContinuousTrading to EndClosingAuction
+            if (product.hours.EndContinuousTrading && product.hours.EndClosingAuction) {
+                phases.push({ start: product.hours.EndContinuousTrading, end: product.hours.EndClosingAuction, type: 'closing', label: 'Closing Auction' });
+            }
+
+            phases.forEach(p => this._addPhaseToContainer(clobContainer, p));
+
+            // LTD Book Marker
+            if (product.hours.LTDBook) {
+                this._addMarkerToContainer(clobContainer, product.hours.LTDBook, 'ltd-book', 'LTD Book');
+            }
+        }
+
+        clobRow.appendChild(clobContainer);
+        parent.appendChild(clobRow);
+
+        // TES Row
+        const tesRow = document.createElement('div');
+        tesRow.className = 'timeline-row sub-row';
+
+        const tesLabel = document.createElement('div');
+        tesLabel.className = 'timeline-product-label';
+        tesLabel.textContent = 'TES';
+        tesRow.appendChild(tesLabel);
+
+        const tesContainer = document.createElement('div');
+        tesContainer.className = 'timeline-bar-container';
+
+        if (product.hours) {
+            if (product.hours.StartTES && product.hours.EndTES) {
+                this._addPhaseToContainer(tesContainer, { start: product.hours.StartTES, end: product.hours.EndTES, type: 'tes', label: 'TES' });
+            }
+            // LTD TES Marker
+            if (product.hours.LTDTES) {
+                this._addMarkerToContainer(tesContainer, product.hours.LTDTES, 'ltd-tes', 'LTD TES');
+            }
+        }
+
+        tesRow.appendChild(tesContainer);
+        parent.appendChild(tesRow);
+    }
+
+    _addPhaseToContainer(container, phase) {
+        if (phase.start && phase.end) {
+            const startConverted = this._convertTime(phase.start, 'CET', this.timezone);
+            const endConverted = this._convertTime(phase.end, 'CET', this.timezone);
+
+            const startMin = this._timeToMinutes(startConverted);
+            const endMin = this._timeToMinutes(endConverted);
+
+            if (startMin !== null && endMin !== null) {
+                const bar = document.createElement('div');
+                bar.className = `timeline-bar bar-${phase.type}`;
+
+                let left, width;
+                if (endMin >= startMin) {
+                    left = (startMin / 1440) * 100;
+                    width = ((endMin - startMin) / 1440) * 100;
+                } else {
+                    // Spans across midnight
+                    left = (startMin / 1440) * 100;
+                    width = ((1440 - startMin) / 1440) * 100;
+
+                    // Add second bar for the wrap around
+                    const bar2 = document.createElement('div');
+                    bar2.className = `timeline-bar bar-${phase.type}`;
+                    bar2.style.left = '0%';
+                    bar2.style.width = `${(endMin / 1440) * 100}%`;
+                    this._addTooltip(bar2, `${phase.label}: 00:00 - ${endConverted}`);
+                    container.appendChild(bar2);
+                }
+
+                bar.style.left = `${left}%`;
+                bar.style.width = `${width}%`;
+                this._addTooltip(bar, `${phase.label}: ${startConverted} - ${endConverted}`);
+                container.appendChild(bar);
+            }
+        }
+    }
+
+    _addMarkerToContainer(container, time, type, label) {
+        const converted = this._convertTime(time, 'CET', this.timezone);
+        const minutes = this._timeToMinutes(converted);
+        if (minutes !== null) {
+            const marker = document.createElement('div');
+            marker.className = `timeline-marker marker-${type}`;
+            marker.style.left = `${(minutes / 1440) * 100}%`;
+            this._addTooltip(marker, `${label}: ${converted}`);
+            container.appendChild(marker);
+        }
     }
 
     _addTooltip(el, text) {
