@@ -84,40 +84,62 @@ document.addEventListener('DOMContentLoaded', () => {
     const queryPane = document.getElementById('queryPane');
     const resultsPane = document.querySelector('.results-pane');
 
+    // Global Nav
+    const navEurexOverview = document.getElementById('nav-eurex-overview');
+    const navApiExplorer = document.getElementById('nav-api-explorer');
+    const actionBar = document.querySelector('.action-bar');
+    const tabsBar = document.getElementById('tabsBar');
+
     // Toggles
-    const tradingHoursTab = document.getElementById('tradingHoursTab');
     const toggleQueryBtn = document.getElementById('toggleQueryBtn');
     const closeQueryBtn = document.getElementById('closeQueryBtn');
     const firstSplitter = document.querySelector('.resize-handle:not(#docsSplitter)');
 
-    function deactivateTimeline() {
-        tradingHoursTab.classList.remove('active');
-        timelinePane.classList.add('hidden');
-        // Re-show usual components if not mobile
-        if (!isMobile()) {
-            resultsPane.classList.remove('hidden');
-            // If query was open before, it might be hidden now, we should decide policy.
-            // Let's just keep their previous state but ensure results are visible.
-        }
-    }
-
-    tradingHoursTab.addEventListener('click', () => {
-        if (tradingHoursTab.classList.contains('active')) {
-            deactivateTimeline();
-        } else {
-            // Activate Timeline
-            tradingHoursTab.classList.add('active');
-            timelinePane.classList.remove('hidden');
-
-            // Hide other panes in workspace grid to give timeline full width
+    function switchAppView(view) {
+        if (view === 'eurex-overview') {
+            navEurexOverview.classList.add('active');
+            navApiExplorer.classList.remove('active');
+            
+            // Hide API Explorer specifics
+            actionBar.classList.add('hidden');
+            tabsBar.classList.add('hidden');
             queryPane.classList.add('hidden');
             resultsPane.classList.add('hidden');
             docsPane.classList.add('hidden');
             document.querySelectorAll('.resize-handle').forEach(h => h.classList.add('hidden'));
-
+            
+            // Show Overview
+            timelinePane.classList.remove('hidden');
             timelineManager.fetchAndRender();
+        } else {
+            navApiExplorer.classList.add('active');
+            navEurexOverview.classList.remove('active');
+            
+            // Show API Explorer specifics
+            actionBar.classList.remove('hidden');
+            tabsBar.classList.remove('hidden');
+            timelinePane.classList.add('hidden');
+            
+            if (!isMobile()) {
+                resultsPane.classList.remove('hidden');
+                // The query pane and docs pane state should be restored based on their toggle buttons
+                // but for simplicity, we'll just show the query pane by default or keep its class
+                // First splitter logic:
+                if (firstSplitter) firstSplitter.classList.toggle('hidden', queryPane.classList.contains('hidden'));
+            }
         }
-    });
+    }
+
+    if (navEurexOverview) {
+        navEurexOverview.addEventListener('click', () => switchAppView('eurex-overview'));
+    }
+    if (navApiExplorer) {
+        navApiExplorer.addEventListener('click', () => switchAppView('api-explorer'));
+    }
+
+    function deactivateTimeline() {
+        switchAppView('api-explorer');
+    }
 
     toggleQueryBtn.addEventListener('click', () => {
         if (isMobile()) {
