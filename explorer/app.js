@@ -118,6 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tableHead: document.getElementById('tableHead'),
         tableBody: document.getElementById('tableBody'),
         recordCounter: document.getElementById('recordCounter'),
+        validityDate: document.getElementById('validityDate'),
         shareBtn: document.getElementById('actionShareBtn'),
         downloadCsvBtn: document.getElementById('downloadCsvBtn'),
         downloadMdBtn: document.getElementById('downloadMdBtn'),
@@ -147,6 +148,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     ui.renderTable(state.data, state);
                 } else {
                     ui.showEmptyState();
+                    if (ui.els.validityDate) {
+                        ui.els.validityDate.textContent = '';
+                        ui.els.validityDate.classList.add('hidden');
+                    }
                 }
             }
         }
@@ -527,13 +532,21 @@ ${schemaSDL}
         tabs.render();
 
         try {
-            const data = await client.request(query);
+            const response = await client.request(query);
+            const data = response.data;
+            const date = response.date;
 
-            const tableState = stateOptions || { sortCol: null, sortAsc: true, columnFilters: {} };
+            const tableState = stateOptions || { sortCol: null, sortAsc: true, columnFilters: {}, date: date };
+            tableState.date = date; // Ensure date is updated with the latest from the response
+
             tabs.updateActiveState({ data: data, ...tableState });
 
             if (data.length === 0) {
                 ui.showEmptyState("Query successful, but no data was returned.");
+                if (ui.els.validityDate) {
+                    ui.els.validityDate.textContent = '';
+                    ui.els.validityDate.classList.add('hidden');
+                }
             } else {
                 ui.renderTable(data, tableState);
             }

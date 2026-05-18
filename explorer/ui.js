@@ -13,6 +13,7 @@ export class UIManager {
         this.sortAsc = true;
         this.columnFilters = {};
         this.currentData = [];
+        this.currentDate = null;
         this.stickyCols = new Set();
     }
 
@@ -89,6 +90,8 @@ export class UIManager {
 
     renderTable(dataArray, stateOptions = {}) {
         this.currentData = dataArray || [];
+        if (stateOptions.date !== undefined) this.currentDate = stateOptions.date;
+
         if (stateOptions.sortCol !== undefined) this.sortCol = stateOptions.sortCol;
         if (stateOptions.sortAsc !== undefined) this.sortAsc = stateOptions.sortAsc;
         if (stateOptions.columnFilters !== undefined) this.columnFilters = stateOptions.columnFilters;
@@ -246,6 +249,14 @@ export class UIManager {
 
         this.els.recordCounter.textContent = `(${filtered.length} of ${this.currentData.length} records)`;
 
+        if (this.currentDate) {
+            this.els.validityDate.textContent = `Records Validity Date: ${this.currentDate}`;
+            this.els.validityDate.classList.remove('hidden');
+        } else {
+            this.els.validityDate.textContent = '';
+            this.els.validityDate.classList.add('hidden');
+        }
+
         filtered.forEach(item => {
             const tr = document.createElement('tr');
             headers.forEach(h => {
@@ -302,7 +313,8 @@ export class UIManager {
         return {
             sortCol: this.sortCol,
             sortAsc: this.sortAsc,
-            columnFilters: { ...this.columnFilters }
+            columnFilters: { ...this.columnFilters },
+            date: this.currentDate
         };
     }
 }
