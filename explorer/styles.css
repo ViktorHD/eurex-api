@@ -155,8 +155,14 @@ body {
     background-color: rgba(0,0,0,0.04);
 }
 
-.tab.active, .tab-fixed.active {
+.tab.active {
     color: var(--navy-blue);
+    border-bottom-color: var(--neon-green);
+}
+
+.tab-fixed.active {
+    color: var(--neon-green) !important;
+    background-color: var(--navy-blue) !important;
     border-bottom-color: var(--neon-green);
 }
 
@@ -378,15 +384,33 @@ body {
 .docs-pane { width: 350px; z-index: 5; }
 
 /* Timeline Styles */
+#timelinePane {
+    background-color: #f0f4f8;
+}
+
+#timelinePane .pane-header {
+    background-color: var(--navy-blue);
+    color: white;
+    border-bottom: 1px solid var(--navy-light);
+}
+
+#timelinePane .pane-header span {
+    color: white;
+}
+
 .timeline-container {
     flex: 1;
     overflow-y: auto;
-    background-color: var(--bg-panel);
+    background-color: transparent;
     padding: 24px;
 }
 
 .timeline-group {
-    margin-bottom: 32px;
+    margin-bottom: 48px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: var(--elevation-1);
+    overflow: hidden;
 }
 
 .timeline-group-header {
@@ -408,10 +432,14 @@ body {
 }
 
 .timeline-grid {
-    position: relative;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: white;
     margin-left: 150px; /* Space for labels */
-    height: 30px;
+    height: 40px;
     border-bottom: 1px solid var(--border-color);
+    padding-top: 20px;
     margin-bottom: 8px;
     min-width: 480px; /* Ensure grid doesn't squash too much */
 }
@@ -469,12 +497,32 @@ body {
 
 .bar-continuous {
     background-color: var(--neon-green);
-    z-index: 2;
+    z-index: 3;
 }
 
 .bar-tes {
     background-color: var(--navy-light);
     opacity: 0.6;
+    z-index: 2;
+}
+
+.bar-opening {
+    background-color: #ffb300;
+    z-index: 1;
+}
+
+.bar-closing {
+    background-color: #f44336;
+    z-index: 1;
+}
+
+.bar-ltd-book {
+    background-color: #9c27b0;
+    z-index: 1;
+}
+
+.bar-ltd-tes {
+    background-color: #673ab7;
     z-index: 1;
 }
 
