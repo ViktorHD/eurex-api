@@ -120,12 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
             tabsBar.classList.remove('hidden');
             timelinePane.classList.add('hidden');
             
-            if (!isMobile()) {
+            if (isMobile()) {
+                switchMobilePane('query');
+            } else {
                 resultsPane.classList.remove('hidden');
-                // The query pane and docs pane state should be restored based on their toggle buttons
-                // but for simplicity, we'll just show the query pane by default or keep its class
-                // First splitter logic:
-                if (firstSplitter) firstSplitter.classList.toggle('hidden', queryPane.classList.contains('hidden'));
+                // Ensure Query pane is always open when switching to or clicking API Explorer
+                queryPane.classList.remove('hidden');
+                if (firstSplitter) firstSplitter.classList.remove('hidden');
             }
         }
     }
