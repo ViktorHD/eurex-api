@@ -289,7 +289,8 @@ document.addEventListener('DOMContentLoaded', () => {
         content: document.getElementById('timelineContent'),
         loading: document.getElementById('timelineLoading'),
         timezoneSelect: document.getElementById('timezoneSelect'),
-        refreshBtn: document.getElementById('refreshTimelineBtn')
+        refreshBtn: document.getElementById('refreshTimelineBtn'),
+        filterInput: document.getElementById('timelineFilter')
     });
 
     const schemaExplorer = new SchemaExplorer(client, {

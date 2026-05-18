@@ -433,21 +433,21 @@ body {
 
 .timeline-grid {
     position: sticky;
-    top: 0;
-    z-index: 50;
+    top: -24px; /* Offset to align with timeline-container padding */
+    z-index: 60;
     background: white;
     margin-left: 150px; /* Space for labels */
     height: 40px;
     border-bottom: 1px solid var(--border-color);
     padding-top: 20px;
-    margin-bottom: 8px;
+    margin-bottom: 16px;
     min-width: 480px; /* Ensure grid doesn't squash too much */
 }
 
 .timeline-hour-marker {
     position: absolute;
     top: 0;
-    bottom: -400px; /* Long enough to cover many rows */
+    bottom: -2000px; /* Cover all rows */
     width: 1px;
     background-color: rgba(0,0,0,0.05);
     pointer-events: none;
@@ -469,6 +469,10 @@ body {
     min-width: 630px; /* 150 + 480 */
 }
 
+.timeline-row.sub-row {
+    height: 32px;
+}
+
 .timeline-product-label {
     width: 150px;
     font-size: 0.85rem;
@@ -477,6 +481,16 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     padding-right: 16px;
+    position: sticky;
+    left: 0;
+    z-index: 20;
+    background: white;
+}
+
+.timeline-row.sub-row .timeline-product-label {
+    padding-left: 20px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
 }
 
 .timeline-bar-container {
@@ -485,7 +499,16 @@ body {
     background: #edf2f7;
     border-radius: 12px;
     position: relative;
-    overflow: hidden;
+    overflow: visible; /* Changed to visible to allow markers to be seen if they extend, but actually overflow:hidden is better for bars. Let's keep it visible for markers */
+}
+
+.timeline-row.sub-row .timeline-bar-container {
+    height: 16px;
+    background: #fdfdfd;
+}
+
+.timeline-row.sub-row .timeline-product-label {
+    background: #fdfdfd;
 }
 
 .timeline-bar {
@@ -497,7 +520,7 @@ body {
 
 .bar-continuous {
     background-color: var(--neon-green);
-    z-index: 3;
+    z-index: 1;
 }
 
 .bar-tes {
@@ -508,12 +531,29 @@ body {
 
 .bar-opening {
     background-color: #ffb300;
-    z-index: 1;
+    z-index: 3;
 }
 
 .bar-closing {
     background-color: #f44336;
-    z-index: 1;
+    z-index: 3;
+}
+
+.timeline-marker {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    width: 2px;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.marker-ltd-book {
+    background-color: #9c27b0;
+}
+
+.marker-ltd-tes {
+    background-color: #673ab7;
 }
 
 .bar-ltd-book {
