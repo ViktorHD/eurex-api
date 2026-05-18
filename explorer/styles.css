@@ -554,13 +554,18 @@ tr:hover td {
     background-color: rgba(0, 206, 125, 0.05); /* Very slight tint on focus */
 }
 
-.record-counter {
+.record-counter, .validity-date {
     font-weight: 400;
     font-size: 0.8rem;
     color: var(--text-secondary);
     margin-left: 8px;
-    text-transform: none; /* Counter doesn't need to be uppercase */
+    text-transform: none; /* Doesn't need to be uppercase */
     letter-spacing: normal;
+}
+
+.validity-date {
+    border-left: 1px solid var(--border-color);
+    padding-left: 8px;
 }
 
 .empty-state {
