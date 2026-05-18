@@ -170,6 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 Object.assign(state, ui.exportState());
             },
             onTabLoad: (state) => {
+                deactivateTimeline();
                 queryInput.value = state.query;
                 ui.hideError();
                 const resultLabel = document.getElementById('resultLabel');
