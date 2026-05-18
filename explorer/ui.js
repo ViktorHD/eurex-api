@@ -250,7 +250,19 @@ export class UIManager {
         this.els.recordCounter.textContent = `(${filtered.length} of ${this.currentData.length} records)`;
 
         if (this.currentDate) {
-            this.els.validityDate.textContent = `Records Validity Date: ${this.currentDate}`;
+            this.els.validityDate.innerHTML = '';
+
+            const separatorSpan = document.createElement('span');
+            separatorSpan.className = 'vd-separator';
+            separatorSpan.textContent = '| ';
+            this.els.validityDate.appendChild(separatorSpan);
+
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'vd-label';
+            labelSpan.textContent = 'Records Validity Date: ';
+            this.els.validityDate.appendChild(labelSpan);
+
+            this.els.validityDate.appendChild(document.createTextNode(this.currentDate));
             this.els.validityDate.classList.remove('hidden');
         } else {
             this.els.validityDate.textContent = '';

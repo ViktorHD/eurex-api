@@ -564,8 +564,15 @@ tr:hover td {
 }
 
 .validity-date {
+    /* Base style for validity date container */
+}
+
+.vd-separator {
+    display: inline;
     border-left: 1px solid var(--border-color);
     padding-left: 8px;
+    margin-right: 4px;
+    color: transparent; /* Use the border as the visual separator on desktop */
 }
 
 .empty-state {
@@ -1191,6 +1198,16 @@ th.sticky-col { z-index: 30; }
     .show-mobile-flex { display: flex !important; }
 
     #closeQueryBtn, #closeDocsBtn { display: none !important; }
+
+    /* Mobile validity date: Hide label and export actions in header */
+    .vd-label { display: none; }
+    .results-actions { display: none; }
+    .vd-separator {
+        color: var(--text-secondary); /* Show the character on mobile */
+        border-left: none;
+        padding-left: 0;
+        margin-left: 8px;
+    }
 
     .workspace-grid {
         flex-direction: column;
