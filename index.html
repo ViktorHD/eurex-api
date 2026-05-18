@@ -16,18 +16,28 @@
         <nav class="app-nav">
             <div class="nav-branding">EX</div>
             
+            <div class="nav-section-title">Functional</div>
             <div class="nav-items">
                 <button class="nav-btn" id="nav-eurex-overview" title="Eurex Overview">
                     <i data-feather="grid"></i>
                     <span class="nav-label">Eurex Overview</span>
                 </button>
+                <button class="nav-btn" id="nav-trading-hours" title="Trading Hours">
+                    <i data-feather="clock"></i>
+                    <span class="nav-label">Trading Hours</span>
+                </button>
             </div>
 
+            <div class="nav-section-title">Developer</div>
             <div class="nav-items">
                 <button class="nav-btn active" id="nav-api-explorer" title="API Explorer">
                     <i data-feather="terminal"></i>
                     <span class="nav-label">API Explorer</span>
                 </button>
+                <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="nav-btn" title="Notebooks" style="text-decoration: none;">
+                    <i data-feather="book-open"></i>
+                    <span class="nav-label">Notebooks</span>
+                </a>
             </div>
         </nav>
 
@@ -45,9 +55,6 @@
                 </div>
 
                 <div class="action-right">
-                    <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="secondary-btn notebooks-btn hide-mobile" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
-                        <i data-feather="terminal"></i> Notebooks
-                    </a>
                     <button id="toggleQueryBtn" class="secondary-btn query-btn hide-mobile">
                         <i data-feather="edit-3"></i> Query
                     </button>
@@ -71,8 +78,19 @@
 
             <!-- Three Pane Split Layout -->
             <div class="workspace-grid">
+
+                <!-- Placeholder Pane: Eurex Overview -->
+                <section class="pane hidden" id="overviewPane" style="flex: 1;">
+                    <div class="empty-state">
+                        <i data-feather="grid"></i>
+                        <div>
+                            <h3>Coming Soon</h3>
+                            <p>Eurex Overview is under development.</p>
+                        </div>
+                    </div>
+                </section>
                 
-                <!-- Timeline Pane: Trading Hours Overview -->
+                <!-- Timeline Pane: Trading Hours -->
                 <section class="pane hidden" id="timelinePane" style="flex: 1;">
                     <div class="pane-header">
                         <span>Trading Hours Overview</span>

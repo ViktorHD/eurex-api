@@ -86,9 +86,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Global Nav
     const navEurexOverview = document.getElementById('nav-eurex-overview');
+    const navTradingHours = document.getElementById('nav-trading-hours');
     const navApiExplorer = document.getElementById('nav-api-explorer');
     const actionBar = document.querySelector('.action-bar');
     const tabsBar = document.getElementById('tabsBar');
+
+    // Panes addition
+    const overviewPane = document.getElementById('overviewPane');
 
     // Toggles
     const toggleQueryBtn = document.getElementById('toggleQueryBtn');
@@ -96,29 +100,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const firstSplitter = document.querySelector('.resize-handle:not(#docsSplitter)');
 
     function switchAppView(view) {
+        // Reset active states
+        navEurexOverview?.classList.remove('active');
+        navTradingHours?.classList.remove('active');
+        navApiExplorer?.classList.remove('active');
+
+        // Hide all major panes
+        overviewPane.classList.add('hidden');
+        timelinePane.classList.add('hidden');
+        queryPane.classList.add('hidden');
+        resultsPane.classList.add('hidden');
+        docsPane.classList.add('hidden');
+        actionBar.classList.add('hidden');
+        tabsBar.classList.add('hidden');
+        document.querySelectorAll('.resize-handle').forEach(h => h.classList.add('hidden'));
+
         if (view === 'eurex-overview') {
-            navEurexOverview.classList.add('active');
-            navApiExplorer.classList.remove('active');
-            
-            // Hide API Explorer specifics
-            actionBar.classList.add('hidden');
-            tabsBar.classList.add('hidden');
-            queryPane.classList.add('hidden');
-            resultsPane.classList.add('hidden');
-            docsPane.classList.add('hidden');
-            document.querySelectorAll('.resize-handle').forEach(h => h.classList.add('hidden'));
-            
-            // Show Overview
+            navEurexOverview?.classList.add('active');
+            overviewPane.classList.remove('hidden');
+        } else if (view === 'trading-hours') {
+            navTradingHours?.classList.add('active');
             timelinePane.classList.remove('hidden');
             timelineManager.fetchAndRender();
         } else {
             navApiExplorer.classList.add('active');
-            navEurexOverview.classList.remove('active');
             
             // Show API Explorer specifics
             actionBar.classList.remove('hidden');
             tabsBar.classList.remove('hidden');
-            timelinePane.classList.add('hidden');
             
             if (isMobile()) {
                 switchMobilePane('query');
@@ -133,6 +142,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (navEurexOverview) {
         navEurexOverview.addEventListener('click', () => switchAppView('eurex-overview'));
+    }
+    if (navTradingHours) {
+        navTradingHours.addEventListener('click', () => switchAppView('trading-hours'));
     }
     if (navApiExplorer) {
         navApiExplorer.addEventListener('click', () => switchAppView('api-explorer'));
