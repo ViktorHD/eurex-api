@@ -241,7 +241,7 @@ export class TimelineManager {
 
             // Representing the group as a whole
             if (!this.filterText) {
-                this._renderSummaryRow(groupEl, { Name: 'Group Overview', hours: group[0].hours });
+                this._renderSummaryRow(groupEl, group);
             }
 
             if (isExpanded) {
@@ -259,26 +259,52 @@ export class TimelineManager {
         if (window.feather) window.feather.replace();
     }
 
-    _renderSummaryRow(parent, product) {
+    _renderSummaryRow(parent, group) {
         const row = document.createElement('div');
         row.className = 'timeline-row';
 
         const label = document.createElement('div');
         label.className = 'timeline-product-label';
         label.textContent = 'Summary';
-        label.title = product.Name;
+        label.title = 'Group Overview';
         row.appendChild(label);
 
         const barContainer = document.createElement('div');
         barContainer.className = 'timeline-bar-container';
 
-        if (product.hours) {
-            const phases = [
-                { start: product.hours.StartContinuousTrading, end: product.hours.EndContinuousTrading, type: 'continuous', label: 'Continuous Trading' },
-                { start: product.hours.StartTES, end: product.hours.EndTES, type: 'tes', label: 'TES' }
-            ];
+        let globalMin = null;
+        let globalMax = null;
+        let minStartStr = null;
+        let maxEndStr = null;
 
-            phases.forEach(phase => this._addPhaseToContainer(barContainer, phase));
+        group.forEach(p => {
+            if (!p.hours) return;
+            const fields = ['StartContinuousTrading', 'EndContinuousTrading', 'StartTES', 'EndTES'];
+            fields.forEach(f => {
+                const val = p.hours[f];
+                if (val) {
+                    const mins = this._timeToMinutes(val);
+                    if (mins !== null) {
+                        if (globalMin === null || mins < globalMin) {
+                            globalMin = mins;
+                            minStartStr = val;
+                        }
+                        if (globalMax === null || mins > globalMax) {
+                            globalMax = mins;
+                            maxEndStr = val;
+                        }
+                    }
+                }
+            });
+        });
+
+        if (minStartStr && maxEndStr) {
+            this._addPhaseToContainer(barContainer, {
+                start: minStartStr,
+                end: maxEndStr,
+                type: 'continuous',
+                label: 'Trading Range'
+            });
         }
 
         row.appendChild(barContainer);

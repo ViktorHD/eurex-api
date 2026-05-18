@@ -433,7 +433,7 @@ body {
 
 .timeline-grid {
     position: sticky;
-    top: -24px; /* Offset to align with timeline-container padding */
+    top: 0;
     z-index: 60;
     background: white;
     margin-left: 150px; /* Space for labels */
