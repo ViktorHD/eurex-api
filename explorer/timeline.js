@@ -45,7 +45,10 @@ export class TimelineManager {
               EndContinuousTrading
               StartTES
               EndTES
+              EndOpeningAuction
               EndClosingAuction
+              LTDBook
+              LTDTES
             }
           }
         }
@@ -131,12 +134,14 @@ export class TimelineManager {
         const d = new Date(`${dateStr}T${timeStr}Z`); // Temporary UTC date
         // We want to know what time it would be in toTz if it's currently timeStr in fromTz.
 
-        // Let's use a simpler way for the three specific cases:
+        // Let's use a simpler way for the specific cases:
         // Input is always CET.
         let targetTz = toTz;
         if (targetTz === 'LOCAL') targetTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (targetTz === 'CET') targetTz = 'Europe/Berlin';
         if (targetTz === 'UTC') targetTz = 'UTC';
+        if (targetTz === 'SGT') targetTz = 'Asia/Singapore';
+        if (targetTz === 'CST') targetTz = 'America/Chicago';
 
         // 1. Parse timeStr as CET
         const cetFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', year:'numeric', month:'numeric', day:'numeric', hour:'numeric', minute:'numeric', second:'numeric'});
@@ -252,10 +257,25 @@ export class TimelineManager {
         barContainer.className = 'timeline-bar-container';
 
         if (product.hours) {
-            const phases = [
-                { start: product.hours.StartContinuousTrading, end: product.hours.EndContinuousTrading, type: 'continuous', label: 'Continuous Trading' },
-                { start: product.hours.StartTES, end: product.hours.EndTES, type: 'tes', label: 'TES' }
-            ];
+            let phases = [];
+
+            if (isGroup) {
+                // Summary only shows main phases
+                phases = [
+                    { start: product.hours.StartContinuousTrading, end: product.hours.EndContinuousTrading, type: 'continuous', label: 'Continuous Trading' },
+                    { start: product.hours.StartTES, end: product.hours.EndTES, type: 'tes', label: 'TES' }
+                ];
+            } else {
+                // Details shows everything
+                phases = [
+                    { start: '00:00:00', end: product.hours.EndOpeningAuction, type: 'opening', label: 'Opening Auction' },
+                    { start: product.hours.StartContinuousTrading, end: product.hours.EndContinuousTrading, type: 'continuous', label: 'Continuous Trading' },
+                    { start: product.hours.EndContinuousTrading, end: product.hours.EndClosingAuction, type: 'closing', label: 'Closing Auction' },
+                    { start: product.hours.StartTES, end: product.hours.EndTES, type: 'tes', label: 'TES' },
+                    { start: product.hours.LTDBook, end: '23:59:59', type: 'ltd-book', label: 'LTD Book' },
+                    { start: product.hours.LTDTES, end: '23:59:59', type: 'ltd-tes', label: 'LTD TES' }
+                ];
+            }
 
             phases.forEach(phase => {
                 if (phase.start && phase.end) {
