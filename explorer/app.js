@@ -4,6 +4,7 @@ import { TabManager } from './tabs.js';
 import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
+import { TimelineManager } from './timeline.js';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
 
@@ -78,21 +79,54 @@ document.addEventListener('DOMContentLoaded', () => {
     // Panes
     const docsPane = document.getElementById('docsPane');
     const closeDocsBtn = document.getElementById('closeDocsBtn');
+    const timelinePane = document.getElementById('timelinePane');
     const workspaceGrid = document.querySelector('.workspace-grid');
     const queryPane = document.getElementById('queryPane');
     const resultsPane = document.querySelector('.results-pane');
 
     // Toggles
+    const tradingHoursTab = document.getElementById('tradingHoursTab');
     const toggleQueryBtn = document.getElementById('toggleQueryBtn');
     const closeQueryBtn = document.getElementById('closeQueryBtn');
     const firstSplitter = document.querySelector('.resize-handle:not(#docsSplitter)');
+
+    function deactivateTimeline() {
+        tradingHoursTab.classList.remove('active');
+        timelinePane.classList.add('hidden');
+        // Re-show usual components if not mobile
+        if (!isMobile()) {
+            resultsPane.classList.remove('hidden');
+            // If query was open before, it might be hidden now, we should decide policy.
+            // Let's just keep their previous state but ensure results are visible.
+        }
+    }
+
+    tradingHoursTab.addEventListener('click', () => {
+        if (tradingHoursTab.classList.contains('active')) {
+            deactivateTimeline();
+        } else {
+            // Activate Timeline
+            tradingHoursTab.classList.add('active');
+            timelinePane.classList.remove('hidden');
+
+            // Hide other panes in workspace grid to give timeline full width
+            queryPane.classList.add('hidden');
+            resultsPane.classList.add('hidden');
+            docsPane.classList.add('hidden');
+            document.querySelectorAll('.resize-handle').forEach(h => h.classList.add('hidden'));
+
+            timelineManager.fetchAndRender();
+        }
+    });
 
     toggleQueryBtn.addEventListener('click', () => {
         if (isMobile()) {
             switchMobilePane('query');
         } else {
+            deactivateTimeline();
             queryPane.classList.toggle('hidden');
-            if (firstSplitter) firstSplitter.classList.toggle('hidden');
+            resultsPane.classList.remove('hidden');
+            if (firstSplitter) firstSplitter.classList.toggle('hidden', queryPane.classList.contains('hidden'));
         }
     });
 
@@ -250,6 +284,14 @@ document.addEventListener('DOMContentLoaded', () => {
         queryInput.value = current.substring(0, pos) + filterStr + current.substring(pos);
     }
 
+    const timelineManager = new TimelineManager(client, {
+        container: document.getElementById('timelineContainer'),
+        content: document.getElementById('timelineContent'),
+        loading: document.getElementById('timelineLoading'),
+        timezoneSelect: document.getElementById('timezoneSelect'),
+        refreshBtn: document.getElementById('refreshTimelineBtn')
+    });
+
     const schemaExplorer = new SchemaExplorer(client, {
         docsTree: document.getElementById('docsTree'),
         docsLoading: document.getElementById('docsLoading'),
@@ -390,6 +432,11 @@ ${schemaSDL}
         queryPane.classList.toggle('hidden', paneId !== 'query');
         resultsPane.classList.toggle('hidden', paneId !== 'results');
         docsPane.classList.toggle('hidden', paneId !== 'docs');
+        timelinePane.classList.toggle('hidden', paneId !== 'hours');
+
+        if (paneId === 'hours') {
+            timelineManager.fetchAndRender();
+        }
 
         // Special handling for splitters/resizers (hide on mobile)
         const allSplitters = document.querySelectorAll('.resize-handle');
@@ -562,7 +609,9 @@ ${schemaSDL}
         if (isMobile()) {
             switchMobilePane('docs');
         } else {
+            deactivateTimeline();
             docsPane.classList.toggle('hidden');
+            resultsPane.classList.remove('hidden');
             const ds = document.getElementById('docsSplitter');
             if (ds) ds.classList.toggle('hidden');
 
@@ -638,6 +687,7 @@ ${schemaSDL}
 
     // Run execution
     runQueryBtn.addEventListener('click', async () => {
+        deactivateTimeline();
         try {
             await executeGraphQLQuery(queryInput.value.trim());
         } catch (e) {
