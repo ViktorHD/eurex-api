@@ -20,6 +20,9 @@
         <div class="app-main">
             <!-- Tabs Bar -->
             <div class="tabs-bar" id="tabsBar">
+                <div class="tab-fixed" id="tradingHoursTab">
+                    <span class="tab-label">Trading Hours Overview</span>
+                </div>
                 <button class="add-tab-btn" id="addTabBtn"><i data-feather="plus"></i></button>
             </div>
 
@@ -57,6 +60,29 @@
             <!-- Three Pane Split Layout -->
             <div class="workspace-grid">
                 
+                <!-- Timeline Pane: Trading Hours Overview -->
+                <section class="pane hidden" id="timelinePane" style="flex: 1;">
+                    <div class="pane-header">
+                        <span>Trading Hours Overview</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <select id="timezoneSelect" style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px; font-size: 0.75rem;">
+                                <option value="UTC">UTC</option>
+                                <option value="CET" selected>CET/CEST</option>
+                                <option value="LOCAL">Local Time</option>
+                            </select>
+                            <button id="refreshTimelineBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                        </div>
+                    </div>
+                    <div id="timelineContainer" class="timeline-container">
+                        <div id="timelineLoading" class="loading hidden" style="padding: 24px;">
+                            <div class="skeleton skeleton-header"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row"></div>
+                        </div>
+                        <div id="timelineContent"></div>
+                    </div>
+                </section>
+
                 <!-- Left Pane: Query Editor & Drawer -->
                 <section class="pane editor-pane" id="queryPane">
                     <div class="pane-header">
@@ -194,6 +220,10 @@ query {
         <button class="nav-item" data-pane="results">
             <i data-feather="database"></i>
             <span>Results</span>
+        </button>
+        <button class="nav-item" data-pane="hours">
+            <i data-feather="clock"></i>
+            <span>Hours</span>
         </button>
         <button class="nav-item" data-pane="docs">
             <i data-feather="book"></i>
