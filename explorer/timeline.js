@@ -191,21 +191,42 @@ export class TimelineManager {
 
         this.els.content.innerHTML = '';
 
-        // Add sticky timeline grid at the top of content
+        // Header row
+        const headerRow = document.createElement('div');
+        headerRow.className = 'timeline-header-row';
+
+        const corner = document.createElement('div');
+        corner.className = 'timeline-corner-label';
+        corner.textContent = 'Product Type / Name';
+        headerRow.appendChild(corner);
+
         const grid = document.createElement('div');
         grid.className = 'timeline-grid';
+
+        // Background for labels area to ensure they are visible on sticky
+        const labelsBg = document.createElement('div');
+        labelsBg.className = 'timeline-labels-bg';
+        grid.appendChild(labelsBg);
+
+        // Add markers and labels
         for (let i = 0; i <= 24; i += 2) {
+            const pos = `${(i / 24) * 100}%`;
+
             const marker = document.createElement('div');
             marker.className = 'timeline-hour-marker';
-            marker.style.left = `${(i / 24) * 100}%`;
+            marker.style.left = pos;
+            grid.appendChild(marker);
 
             const label = document.createElement('div');
             label.className = 'timeline-hour-label';
+            label.style.left = pos;
+            if (i === 0) label.style.transform = 'translateX(4px)';
+            else if (i === 24) label.style.transform = 'translateX(-100%)';
             label.textContent = `${String(i).padStart(2, '0')}:00`;
-            marker.appendChild(label);
-            grid.appendChild(marker);
+            grid.appendChild(label);
         }
-        this.els.content.appendChild(grid);
+        headerRow.appendChild(grid);
+        this.els.content.appendChild(headerRow);
 
         const groupNames = Object.keys(this.data).sort();
         groupNames.forEach(name => {
@@ -249,10 +270,6 @@ export class TimelineManager {
 
         const label = document.createElement('div');
         label.className = 'timeline-product-label group-label';
-
-        const icon = document.createElement('i');
-        icon.setAttribute('data-feather', isExpanded ? 'chevron-down' : 'chevron-right');
-        label.appendChild(icon);
 
         const labelSpan = document.createElement('span');
         labelSpan.textContent = `${name} (${group.length})`;
