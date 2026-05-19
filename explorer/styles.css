@@ -54,7 +54,11 @@ body {
 
 /* 1. Vertical Left Nav */
 .app-nav {
-    width: 240px;
+    width: 70px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
     background-color: var(--navy-blue);
     display: flex;
     flex-direction: column;
@@ -62,7 +66,13 @@ body {
     border-right: none;
     box-shadow: var(--elevation-2);
     padding: 24px 0;
-    z-index: 100;
+    z-index: 1000;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-x: hidden;
+}
+
+.app-nav.expanded {
+    width: 240px;
 }
 
 .nav-branding {
@@ -70,6 +80,14 @@ body {
     font-weight: 700;
     font-size: 1.5rem;
     margin-bottom: 40px;
+    padding: 0;
+    width: 100%;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.app-nav.expanded .nav-branding {
+    text-align: left;
     padding: 0 24px;
 }
 
@@ -83,6 +101,15 @@ body {
     margin-bottom: 8px;
     margin-top: 16px;
     width: 100%;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.app-nav.expanded .nav-section-title {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .nav-items {
@@ -102,19 +129,38 @@ body {
     background: transparent;
     border: none;
     color: rgba(255, 255, 255, 0.7);
-    padding: 12px 24px;
+    padding: 12px 0;
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 12px;
     font-size: 0.9rem;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.app-nav.expanded .nav-btn {
+    justify-content: flex-start;
+    padding: 12px 24px;
 }
 
 .nav-btn i {
     width: 20px;
+    min-width: 20px;
+}
+
+.nav-label {
+    opacity: 0;
+    display: none;
+    transition: opacity 0.2s;
+}
+
+.app-nav.expanded .nav-label {
+    display: inline;
+    opacity: 1;
 }
 
 .nav-btn:hover {
@@ -134,6 +180,7 @@ body {
     flex-direction: column;
     min-width: 0;
     background-color: var(--bg-main); /* Ensure background is applied */
+    margin-left: 70px; /* Space for collapsed sidebar on desktop */
 }
 
 /* 2. Tabs Bar */
@@ -1478,6 +1525,7 @@ th.sticky-col { z-index: 30; }
 
 @media (max-width: 768px) {
     .app-nav { display: none; }
+    .app-main { margin-left: 0; }
     .tabs-bar { display: none; }
     .bottom-nav { display: flex !important; }
     .chatbot-container { display: none; }
