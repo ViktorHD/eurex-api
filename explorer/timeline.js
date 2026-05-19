@@ -218,30 +218,11 @@ export class TimelineManager {
 
             if (group.length === 0) return;
 
-            const groupEl = document.createElement('div');
-            groupEl.className = 'timeline-group';
-
-            const header = document.createElement('div');
-            header.className = 'timeline-group-header';
             const isExpanded = this.expandedGroups.has(name) || this.filterText !== '';
-
-            const icon = document.createElement('i');
-            icon.setAttribute('data-feather', isExpanded ? 'chevron-down' : 'chevron-right');
-            header.appendChild(icon);
-
-            const labelSpan = document.createElement('span');
-            labelSpan.textContent = `${name} (${group.length} Products)`;
-            header.appendChild(labelSpan);
-            header.addEventListener('click', () => {
-                if (this.expandedGroups.has(name)) this.expandedGroups.delete(name);
-                else this.expandedGroups.add(name);
-                this.render();
-            });
-            groupEl.appendChild(header);
 
             // Representing the group as a whole
             if (!this.filterText) {
-                this._renderSummaryRow(groupEl, group);
+                this._renderGroupRow(this.els.content, name, group, isExpanded);
             }
 
             if (isExpanded) {
@@ -250,23 +231,34 @@ export class TimelineManager {
                 group.forEach(p => {
                     this._renderProductDetails(details, p);
                 });
-                groupEl.appendChild(details);
+                this.els.content.appendChild(details);
             }
-
-            this.els.content.appendChild(groupEl);
         });
 
         if (window.feather) window.feather.replace();
     }
 
-    _renderSummaryRow(parent, group) {
+    _renderGroupRow(parent, name, group, isExpanded) {
         const row = document.createElement('div');
-        row.className = 'timeline-row';
+        row.className = 'timeline-row timeline-group-row';
+        row.addEventListener('click', () => {
+            if (this.expandedGroups.has(name)) this.expandedGroups.delete(name);
+            else this.expandedGroups.add(name);
+            this.render();
+        });
 
         const label = document.createElement('div');
-        label.className = 'timeline-product-label';
-        label.textContent = 'Summary';
-        label.title = 'Group Overview';
+        label.className = 'timeline-product-label group-label';
+
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', isExpanded ? 'chevron-down' : 'chevron-right');
+        label.appendChild(icon);
+
+        const labelSpan = document.createElement('span');
+        labelSpan.textContent = `${name} (${group.length})`;
+        label.appendChild(labelSpan);
+
+        label.title = `${name} (${group.length} Products)`;
         row.appendChild(label);
 
         const barContainer = document.createElement('div');

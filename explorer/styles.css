@@ -416,34 +416,8 @@ body {
 .timeline-container {
     flex: 1;
     overflow-y: auto;
-    background-color: transparent;
-    padding: 24px;
-}
-
-.timeline-group {
-    margin-bottom: 48px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: var(--elevation-1);
-    overflow: hidden;
-}
-
-.timeline-group-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    background: var(--bg-main);
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 600;
-    color: var(--navy-blue);
-    margin-bottom: 16px;
-    transition: background 0.2s;
-}
-
-.timeline-group-header:hover {
-    background: #e2e8f0;
+    background-color: white;
+    padding: 0 0 24px 0;
 }
 
 .timeline-grid {
@@ -451,11 +425,11 @@ body {
     top: 0;
     z-index: 60;
     background: white;
-    margin-left: 150px; /* Space for labels */
+    margin-left: 200px; /* Space for labels */
     height: 40px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 2px solid var(--border-color);
     padding-top: 20px;
-    margin-bottom: 16px;
+    margin-bottom: 0;
     min-width: 480px; /* Ensure grid doesn't squash too much */
 }
 
@@ -479,50 +453,75 @@ body {
 .timeline-row {
     display: flex;
     align-items: center;
-    height: 40px;
+    height: 36px;
     position: relative;
-    min-width: 630px; /* 150 + 480 */
+    min-width: 680px; /* 200 + 480 */
+    border-bottom: 1px solid var(--border-color);
 }
 
 .timeline-row.sub-row {
-    height: 32px;
+    height: 28px;
+    border-bottom: 1px solid rgba(0,0,0,0.03);
+}
+
+.timeline-group-row {
+    background-color: var(--bg-main);
+    cursor: pointer;
+}
+
+.timeline-group-row:hover {
+    background-color: #e2e8f0;
 }
 
 .timeline-product-label {
-    width: 150px;
-    font-size: 0.85rem;
+    width: 200px;
+    font-size: 0.8rem;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding-right: 16px;
+    padding: 0 12px;
     position: sticky;
     left: 0;
     z-index: 20;
     background: white;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+    border-right: 1px solid var(--border-color);
+}
+
+.timeline-product-label i {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.timeline-group-row .timeline-product-label {
+    background: inherit;
+    font-weight: 600;
+    color: var(--navy-blue);
 }
 
 .timeline-row.sub-row .timeline-product-label {
-    padding-left: 20px;
-    font-size: 0.75rem;
+    padding-left: 36px;
+    font-size: 0.7rem;
     color: var(--text-secondary);
+    background: #fdfdfd;
 }
 
 .timeline-bar-container {
     flex: 1;
-    height: 24px;
+    height: 20px;
     background: #edf2f7;
-    border-radius: 12px;
+    border-radius: 10px;
     position: relative;
-    overflow: visible; /* Changed to visible to allow markers to be seen if they extend, but actually overflow:hidden is better for bars. Let's keep it visible for markers */
+    overflow: visible;
 }
 
 .timeline-row.sub-row .timeline-bar-container {
-    height: 16px;
-    background: #fdfdfd;
-}
-
-.timeline-row.sub-row .timeline-product-label {
+    height: 14px;
     background: #fdfdfd;
 }
 
@@ -594,9 +593,7 @@ body {
 }
 
 .group-details {
-    margin-left: 24px;
-    border-left: 2px solid var(--border-color);
-    padding-left: 16px;
+    /* No longer needing margins or borders for the onepager look */
 }
 
 /* Resizer Handles */
