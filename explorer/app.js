@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsPane = document.querySelector('.results-pane');
 
     // Global Nav
+    const appNav = document.querySelector('.app-nav');
     const navEurexOverview = document.getElementById('nav-eurex-overview');
     const navTradingHours = document.getElementById('nav-trading-hours');
     const navApiExplorer = document.getElementById('nav-api-explorer');
@@ -148,6 +149,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (navApiExplorer) {
         navApiExplorer.addEventListener('click', () => switchAppView('api-explorer'));
+    }
+
+    // Sidebar Autohide/Unhide logic
+    if (appNav) {
+        appNav.addEventListener('mouseenter', () => {
+            if (!isMobile()) {
+                appNav.classList.add('expanded');
+            }
+        });
+
+        appNav.addEventListener('mouseleave', () => {
+            if (!isMobile()) {
+                appNav.classList.remove('expanded');
+            }
+        });
+
+        // Hide sidebar when a nav item is clicked
+        const navBtns = appNav.querySelectorAll('.nav-btn');
+        navBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!isMobile()) {
+                    appNav.classList.remove('expanded');
+                }
+            });
+        });
     }
 
     function deactivateTimeline() {
