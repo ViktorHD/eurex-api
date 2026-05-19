@@ -694,6 +694,213 @@ body {
     display: contents;
 }
 
+/* Changelog Timeline Styles */
+.changelog-timeline-wrapper {
+    padding: 40px 24px;
+    display: flex;
+    justify-content: center;
+}
+
+.changelog-timeline-container {
+    position: relative;
+    max-width: 800px;
+    width: 100%;
+}
+
+.changelog-axis {
+    position: absolute;
+    left: 20px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border-color);
+    z-index: 1;
+}
+
+.changelog-item {
+    position: relative;
+    margin-bottom: 32px;
+    padding-left: 50px;
+    z-index: 2;
+}
+
+.changelog-dot {
+    position: absolute;
+    left: 15px;
+    top: 12px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--border-color);
+    border: 2px solid var(--bg-panel);
+    transition: all 0.2s;
+}
+
+.changelog-item.past .changelog-dot {
+    background: #a0aec0;
+}
+
+.changelog-item.today .changelog-dot {
+    background: var(--neon-green);
+    box-shadow: 0 0 0 4px rgba(0, 206, 125, 0.2);
+}
+
+.changelog-item.future .changelog-dot {
+    background: var(--navy-blue);
+}
+
+.changelog-item-content {
+    background: var(--bg-panel);
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: var(--elevation-1);
+    border: 1px solid var(--border-color);
+}
+
+.changelog-item.today .changelog-item-content {
+    border-left: 4px solid var(--neon-green);
+}
+
+.changelog-item.future .changelog-item-content {
+    border-left: 4px solid var(--navy-blue);
+}
+
+.changelog-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.changelog-date {
+    font-family: 'Consolas', monospace;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.changelog-type-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: var(--bg-main);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.changelog-description {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.changelog-changes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-main);
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+.changelog-change-val {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+
+.changelog-change-val .label {
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 40px;
+}
+
+.changelog-change-val code {
+    font-family: 'Consolas', monospace;
+    background: var(--border-color);
+    color: var(--text-primary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    word-break: break-all;
+}
+
+.changelog-change-val.new code {
+    color: #2f855a;
+    background: rgba(47, 133, 90, 0.1);
+}
+
+.changelog-change-val.old code {
+    color: #c53030;
+    background: rgba(197, 48, 48, 0.1);
+}
+
+.changelog-query {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--editor-bg);
+    border-radius: 4px;
+    color: var(--editor-text);
+}
+
+.changelog-query .label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.changelog-query pre {
+    margin: 0;
+    overflow-x: auto;
+}
+
+.changelog-query code {
+    font-family: 'Consolas', monospace;
+    font-size: 0.8rem;
+}
+
+.changelog-today-marker {
+    position: relative;
+    margin: 40px 0;
+    display: flex;
+    align-items: center;
+    z-index: 3;
+}
+
+.changelog-today-line {
+    flex: 1;
+    height: 2px;
+    background: var(--neon-green);
+    position: relative;
+}
+
+.changelog-today-line::before {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: -4px;
+    width: 10px;
+    height: 10px;
+    background: var(--neon-green);
+    border-radius: 50%;
+}
+
+.changelog-today-label {
+    background: var(--neon-green);
+    color: var(--navy-blue);
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    border-radius: 4px;
+    margin-left: 12px;
+    letter-spacing: 0.1em;
+}
+
 /* Resizer Handles */
 .resize-handle {
     width: 6px;

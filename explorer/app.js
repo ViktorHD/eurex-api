@@ -5,6 +5,7 @@ import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
 import { TimelineManager } from './timeline.js';
+import { ChangelogManager } from './changelog.js';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
 
@@ -80,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const docsPane = document.getElementById('docsPane');
     const closeDocsBtn = document.getElementById('closeDocsBtn');
     const timelinePane = document.getElementById('timelinePane');
+    const changelogPane = document.getElementById('changelogPane');
     const workspaceGrid = document.querySelector('.workspace-grid');
     const queryPane = document.getElementById('queryPane');
     const resultsPane = document.querySelector('.results-pane');
@@ -89,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const navEurexOverview = document.getElementById('nav-eurex-overview');
     const navTradingHours = document.getElementById('nav-trading-hours');
     const navApiExplorer = document.getElementById('nav-api-explorer');
+    const navChangelog = document.getElementById('nav-changelog');
     const actionBar = document.querySelector('.action-bar');
     const tabsBar = document.getElementById('tabsBar');
 
@@ -105,10 +108,12 @@ document.addEventListener('DOMContentLoaded', () => {
         navEurexOverview?.classList.remove('active');
         navTradingHours?.classList.remove('active');
         navApiExplorer?.classList.remove('active');
+        navChangelog?.classList.remove('active');
 
         // Hide all major panes
         overviewPane.classList.add('hidden');
         timelinePane.classList.add('hidden');
+        changelogPane.classList.add('hidden');
         queryPane.classList.add('hidden');
         resultsPane.classList.add('hidden');
         docsPane.classList.add('hidden');
@@ -123,6 +128,10 @@ document.addEventListener('DOMContentLoaded', () => {
             navTradingHours?.classList.add('active');
             timelinePane.classList.remove('hidden');
             timelineManager.fetchAndRender();
+        } else if (view === 'changelog') {
+            navChangelog?.classList.add('active');
+            changelogPane.classList.remove('hidden');
+            changelogManager.fetchAndRender();
         } else {
             navApiExplorer.classList.add('active');
             
@@ -149,6 +158,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (navApiExplorer) {
         navApiExplorer.addEventListener('click', () => switchAppView('api-explorer'));
+    }
+    if (navChangelog) {
+        navChangelog.addEventListener('click', () => switchAppView('changelog'));
     }
 
     // Sidebar Autohide/Unhide logic
@@ -355,6 +367,13 @@ document.addEventListener('DOMContentLoaded', () => {
         filterInput: document.getElementById('timelineFilter')
     });
 
+    const changelogManager = new ChangelogManager(client, {
+        container: document.getElementById('changelogContainer'),
+        content: document.getElementById('changelogContent'),
+        loading: document.getElementById('changelogLoading'),
+        refreshBtn: document.getElementById('refreshChangelogBtn')
+    });
+
     const schemaExplorer = new SchemaExplorer(client, {
         docsTree: document.getElementById('docsTree'),
         docsLoading: document.getElementById('docsLoading'),
@@ -496,9 +515,13 @@ ${schemaSDL}
         resultsPane.classList.toggle('hidden', paneId !== 'results');
         docsPane.classList.toggle('hidden', paneId !== 'docs');
         timelinePane.classList.toggle('hidden', paneId !== 'hours');
+        changelogPane.classList.toggle('hidden', paneId !== 'changelog');
 
         if (paneId === 'hours') {
             timelineManager.fetchAndRender();
+        }
+        if (paneId === 'changelog') {
+            changelogManager.fetchAndRender();
         }
 
         // Special handling for splitters/resizers (hide on mobile)
