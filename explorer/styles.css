@@ -415,9 +415,39 @@ body {
 
 .timeline-container {
     flex: 1;
-    overflow-y: auto;
+    overflow: auto;
     background-color: white;
-    padding: 0 0 24px 0;
+    padding: 0;
+    position: relative; /* Contain absolute vertical markers */
+}
+
+#timelineContent {
+    display: grid;
+    grid-template-columns: min-content minmax(480px, 1fr);
+    min-width: fit-content;
+    position: relative;
+}
+
+.timeline-header-row {
+    display: contents;
+}
+
+.timeline-corner-label {
+    position: sticky;
+    top: 0;
+    left: 0;
+    z-index: 70;
+    background: white;
+    height: 40px;
+    border-bottom: 2px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
 }
 
 .timeline-grid {
@@ -425,62 +455,50 @@ body {
     top: 0;
     z-index: 60;
     background: white;
-    margin-left: 200px; /* Space for labels */
-    height: 40px;
+    height: 45px;
     border-bottom: 2px solid var(--border-color);
-    padding-top: 20px;
     margin-bottom: 0;
-    min-width: 480px; /* Ensure grid doesn't squash too much */
 }
 
 .timeline-hour-marker {
     position: absolute;
-    top: 0;
-    bottom: -2000px; /* Cover all rows */
+    top: 40px; /* Start lines below header labels */
+    bottom: 0;
     width: 1px;
     background-color: rgba(0,0,0,0.05);
     pointer-events: none;
+    height: 100%; /* Spans full height of grid */
 }
 
 .timeline-hour-label {
     position: absolute;
-    top: -20px;
+    top: 12px;
     font-size: 0.7rem;
+    font-weight: 600;
     color: var(--text-secondary);
     transform: translateX(-50%);
+    z-index: 75;
+}
+
+.timeline-labels-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 25px;
+    background: white;
+    z-index: 70;
 }
 
 .timeline-row {
-    display: flex;
-    align-items: center;
-    height: 36px;
-    position: relative;
-    min-width: 680px; /* 200 + 480 */
-    border-bottom: 1px solid var(--border-color);
-}
-
-.timeline-row.sub-row {
-    height: 28px;
-    border-bottom: 1px solid rgba(0,0,0,0.03);
-}
-
-.timeline-group-row {
-    background-color: var(--bg-main);
-    cursor: pointer;
-}
-
-.timeline-group-row:hover {
-    background-color: #e2e8f0;
+    display: contents;
 }
 
 .timeline-product-label {
-    width: 200px;
     font-size: 0.8rem;
     color: var(--text-primary);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding: 0 12px;
+    padding: 0 24px 0 12px;
     position: sticky;
     left: 0;
     z-index: 20;
@@ -488,20 +506,20 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 100%;
+    height: 36px;
     border-right: 1px solid var(--border-color);
-}
-
-.timeline-product-label i {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .timeline-group-row .timeline-product-label {
-    background: inherit;
+    background: var(--bg-main);
     font-weight: 600;
     color: var(--navy-blue);
+    cursor: pointer;
+}
+
+.timeline-group-row:hover .timeline-product-label {
+    background-color: #e2e8f0;
 }
 
 .timeline-row.sub-row .timeline-product-label {
@@ -509,27 +527,60 @@ body {
     font-size: 0.7rem;
     color: var(--text-secondary);
     background: #fdfdfd;
+    height: 28px;
+    border-bottom: 1px solid rgba(0,0,0,0.03);
 }
 
 .timeline-bar-container {
-    flex: 1;
+    height: 36px;
+    background: white;
+    position: relative;
+    overflow: visible;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+}
+
+.timeline-bar-container::before {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
     height: 20px;
     background: #edf2f7;
     border-radius: 10px;
-    position: relative;
-    overflow: visible;
+}
+
+.timeline-group-row .timeline-bar-container {
+    background-color: var(--bg-main);
+    cursor: pointer;
+}
+
+.timeline-group-row:hover .timeline-bar-container {
+    background-color: #e2e8f0;
 }
 
 .timeline-row.sub-row .timeline-bar-container {
+    height: 28px;
+    background: #fdfdfd;
+    border-bottom: 1px solid rgba(0,0,0,0.03);
+}
+
+.timeline-row.sub-row .timeline-bar-container::before {
     height: 14px;
     background: #fdfdfd;
 }
 
 .timeline-bar {
     position: absolute;
-    height: 100%;
+    height: 20px;
     border-radius: 4px;
     cursor: help;
+}
+
+.timeline-row.sub-row .timeline-bar {
+    height: 14px;
 }
 
 .bar-continuous {
@@ -593,7 +644,7 @@ body {
 }
 
 .group-details {
-    /* No longer needing margins or borders for the onepager look */
+    display: contents;
 }
 
 /* Resizer Handles */
