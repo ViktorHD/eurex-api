@@ -372,6 +372,12 @@ document.addEventListener('DOMContentLoaded', () => {
         content: document.getElementById('changelogContent'),
         loading: document.getElementById('changelogLoading'),
         refreshBtn: document.getElementById('refreshChangelogBtn')
+    }, {
+        onRunQuery: (query) => {
+            queryInput.value = query;
+            switchAppView('api-explorer');
+            executeGraphQLQuery(query).catch(() => {});
+        }
     });
 
     const schemaExplorer = new SchemaExplorer(client, {

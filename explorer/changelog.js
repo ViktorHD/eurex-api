@@ -1,7 +1,8 @@
 export class ChangelogManager {
-    constructor(client, els) {
+    constructor(client, els, options = {}) {
         this.client = client;
         this.els = els; // { container, content, loading, refreshBtn }
+        this.options = options; // { onRunQuery: (query) => void }
         this.data = null;
 
         this.bindEvents();
@@ -140,7 +141,19 @@ export class ChangelogManager {
             if (entry.Query) {
                 const queryDiv = document.createElement('div');
                 queryDiv.className = 'changelog-query';
-                queryDiv.innerHTML = `<span class="label">GraphQL Query:</span> <pre><code>${this._escapeHtml(entry.Query)}</code></pre>`;
+                queryDiv.innerHTML = `<div class="changelog-query-header">
+                    <span class="label">GraphQL Query:</span>
+                    <button class="run-query-btn"><i data-feather="play"></i> Run in Explorer</button>
+                </div>
+                <pre><code>${this._escapeHtml(entry.Query)}</code></pre>`;
+
+                const runBtn = queryDiv.querySelector('.run-query-btn');
+                runBtn.addEventListener('click', () => {
+                    if (this.options.onRunQuery) {
+                        this.options.onRunQuery(entry.Query);
+                    }
+                });
+
                 content.appendChild(queryDiv);
             }
 
