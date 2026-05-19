@@ -38,6 +38,10 @@
                     <i data-feather="book-open"></i>
                     <span class="nav-label">Notebooks</span>
                 </a>
+                <button class="nav-btn" id="nav-changelog" title="Changelog">
+                    <i data-feather="activity"></i>
+                    <span class="nav-label">Changelog</span>
+                </button>
             </div>
         </nav>
 
@@ -90,6 +94,24 @@
                     </div>
                 </section>
                 
+                <!-- Changelog Pane -->
+                <section class="pane hidden" id="changelogPane" style="flex: 1;">
+                    <div class="pane-header">
+                        <span>API Changelog</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <button id="refreshChangelogBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                        </div>
+                    </div>
+                    <div id="changelogContainer" class="timeline-container" style="background: var(--bg-main); overflow-y: auto;">
+                        <div id="changelogLoading" class="loading hidden" style="padding: 24px;">
+                            <div class="skeleton skeleton-header"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row"></div>
+                        </div>
+                        <div id="changelogContent" class="changelog-timeline-wrapper"></div>
+                    </div>
+                </section>
+
                 <!-- Timeline Pane: Trading Hours -->
                 <section class="pane hidden" id="timelinePane" style="flex: 1;">
                     <div class="pane-header">
@@ -261,6 +283,10 @@ query {
         <button class="nav-item" data-pane="docs">
             <i data-feather="book"></i>
             <span>Docs</span>
+        </button>
+        <button class="nav-item" data-pane="changelog">
+            <i data-feather="activity"></i>
+            <span>Changes</span>
         </button>
     </nav>
 
