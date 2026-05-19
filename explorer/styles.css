@@ -713,7 +713,8 @@ body {
     top: 0;
     bottom: 0;
     width: 2px;
-    background: var(--border-color);
+    background: var(--navy-blue);
+    opacity: 0.2;
     z-index: 1;
 }
 
@@ -731,9 +732,10 @@ body {
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: var(--border-color);
+    background: var(--navy-blue);
     border: 2px solid var(--bg-panel);
     transition: all 0.2s;
+    z-index: 2;
 }
 
 .changelog-item.past .changelog-dot {
@@ -846,12 +848,17 @@ body {
     color: var(--editor-text);
 }
 
+.changelog-query-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
 .changelog-query .label {
-    display: block;
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-secondary);
-    margin-bottom: 8px;
 }
 
 .changelog-query pre {
