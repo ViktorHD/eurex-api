@@ -102,7 +102,6 @@ export class TabManager {
             });
 
             tab.addEventListener('click', () => {
-                if (id === this.activeTabId) return;
                 if (this.callbacks.onTabSave) {
                     this.callbacks.onTabSave(this.activeTabId, this.tabStates[this.activeTabId]);
                 }

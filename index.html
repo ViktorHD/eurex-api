@@ -5,21 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="explorer/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
 </head>
 <body>
     <div class="app-layout">
-        <!-- Vertical Left Nav -->
+        <!-- Global Sidebar Navigation -->
         <nav class="app-nav">
-            <div class="nav-branding">Eurex API Explorer</div>
+            <div class="nav-branding">EX</div>
+            
+            <div class="nav-section-title">Functional</div>
+            <div class="nav-items">
+                <button class="nav-btn" id="nav-eurex-overview" title="Eurex Overview">
+                    <i data-feather="grid"></i>
+                    <span class="nav-label">Eurex Overview</span>
+                </button>
+                <button class="nav-btn" id="nav-trading-hours" title="Trading Hours">
+                    <i data-feather="clock"></i>
+                    <span class="nav-label">Trading Hours</span>
+                </button>
+            </div>
+
+            <div class="nav-section-title">Developer</div>
+            <div class="nav-items">
+                <button class="nav-btn active" id="nav-api-explorer" title="API Explorer">
+                    <i data-feather="terminal"></i>
+                    <span class="nav-label">API Explorer</span>
+                </button>
+                <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="nav-btn" title="Notebooks" style="text-decoration: none;">
+                    <i data-feather="book-open"></i>
+                    <span class="nav-label">Notebooks</span>
+                </a>
+                <button class="nav-btn" id="nav-changelog" title="Changelog">
+                    <i data-feather="activity"></i>
+                    <span class="nav-label">Changelog</span>
+                </button>
+            </div>
         </nav>
 
         <div class="app-main">
             <!-- Tabs Bar -->
             <div class="tabs-bar" id="tabsBar">
+
                 <button class="add-tab-btn" id="addTabBtn"><i data-feather="plus"></i></button>
             </div>
 
@@ -30,43 +59,85 @@
                 </div>
 
                 <div class="action-right">
-                    <button id="toggleQueryBtn" class="secondary-btn query-btn">
+                    <button id="toggleQueryBtn" class="secondary-btn query-btn hide-mobile">
                         <i data-feather="edit-3"></i> Query
                     </button>
-                    <button id="toggleDocsBtn" class="secondary-btn docs-btn">
+                    <button id="toggleDocsBtn" class="secondary-btn docs-btn hide-mobile">
                         <i data-feather="book"></i> Docs
                     </button>
-                    <button id="toggleInfoBtn" class="secondary-btn">
-                        <i data-feather="info"></i> Info
-                    </button>
+                    <button id="moreMenuBtn" class="icon-btn show-mobile-flex hidden"><i data-feather="more-vertical"></i></button>
                 </div>
             </header>
 
-            <!-- Info Panel -->
-            <div id="infoPanel" class="info-panel hidden">
-                <div class="info-panel-header">
-                    <span>API Info</span>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                        <button id="refreshInfoBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw"></i></button>
-                        <button id="closeInfoBtn" class="icon-btn"><i data-feather="x"></i></button>
-                    </div>
-                </div>
-                <div class="info-panel-body">
-                    <section class="info-section">
-                        <h2 class="info-section-title">API Status</h2>
-                        <p class="info-subtitle">Last update date per table — <span class="legend ok-leg">● current</span> <span class="legend stale-leg">● delayed</span> <span class="legend error-leg">● unavailable</span></p>
-                        <div id="statusGrid" class="status-grid"></div>
-                    </section>
-                    <section class="info-section">
-                        <h2 class="info-section-title">Changelog</h2>
-                        <div id="changelogContainer" class="changelog-container"></div>
-                    </section>
+            <!-- More Menu Overlay (Mobile) -->
+            <div id="moreMenu" class="more-menu hidden-menu">
+                <div class="more-menu-content">
+                    <button id="mobileAskAiBtn" class="menu-item"><i data-feather="cpu"></i> Ask AI</button>
+                    <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="menu-item"><i data-feather="terminal"></i> Notebooks</a>
+                    <button id="mobileShareBtn" class="menu-item"><i data-feather="share-2"></i> Share Results</button>
+                    <button id="mobileCsvBtn" class="menu-item"><i data-feather="download"></i> Download CSV</button>
+                    <button id="mobileMdBtn" class="menu-item"><i data-feather="file-text"></i> Download Markdown</button>
                 </div>
             </div>
 
             <!-- Three Pane Split Layout -->
             <div class="workspace-grid">
+
+                <!-- Placeholder Pane: Eurex Overview -->
+                <section class="pane hidden" id="overviewPane" style="flex: 1;">
+                    <div class="empty-state">
+                        <i data-feather="grid"></i>
+                        <div>
+                            <h3>Coming Soon</h3>
+                            <p>Eurex Overview is under development.</p>
+                        </div>
+                    </div>
+                </section>
                 
+                <!-- Changelog Pane -->
+                <section class="pane hidden" id="changelogPane" style="flex: 1;">
+                    <div class="pane-header">
+                        <span>API Changelog</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <button id="refreshChangelogBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                        </div>
+                    </div>
+                    <div id="changelogContainer" class="timeline-container" style="background: var(--bg-main); overflow-y: auto;">
+                        <div id="changelogLoading" class="loading hidden" style="padding: 24px;">
+                            <div class="skeleton skeleton-header"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row"></div>
+                        </div>
+                        <div id="changelogContent" class="changelog-timeline-wrapper"></div>
+                    </div>
+                </section>
+
+                <!-- Timeline Pane: Trading Hours -->
+                <section class="pane hidden" id="timelinePane" style="flex: 1;">
+                    <div class="pane-header">
+                        <span>Trading Hours Overview</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <input type="text" id="timelineFilter" placeholder="Filter product..." style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 10px; font-size: 0.75rem; width: 120px; outline: none;">
+                            <select id="timezoneSelect" style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px; font-size: 0.75rem;">
+                                <option value="UTC">UTC</option>
+                                <option value="CET" selected>CET/CEST</option>
+                                <option value="SGT">SGT (Singapore)</option>
+                                <option value="CST">CST/CDT (Chicago)</option>
+                                <option value="LOCAL">Local Time</option>
+                            </select>
+                            <button id="refreshTimelineBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                        </div>
+                    </div>
+                    <div id="timelineContainer" class="timeline-container">
+                        <div id="timelineLoading" class="loading hidden" style="padding: 24px;">
+                            <div class="skeleton skeleton-header"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row"></div>
+                        </div>
+                        <div id="timelineContent"></div>
+                    </div>
+                </section>
+
                 <!-- Left Pane: Query Editor & Drawer -->
                 <section class="pane editor-pane" id="queryPane">
                     <div class="pane-header">
@@ -100,10 +171,25 @@ query {
                         <div class="drawer-content" id="drawerContent">
                             <div class="control-group">
                                 <label>X-DBP-APIKEY</label>
-                                <input type="password" id="apiKey" placeholder="Enter your API key...">
+                                <input type="password" id="apiKey" value="68cdafd2-c5c1-49be-8558-37244ab4f513" placeholder="Enter your API key...">
                             </div>
                             <div class="control-group" style="margin-top: 16px;">
-                                <label>Google Gemini API Key (For AI Chatbot)</label>
+                                <label>AI Chatbot Provider</label>
+                                <select id="aiProvider" style="width: 100%; background: #1a1a2e; color: #e2e8f0; border: 1px solid #2d3748; border-radius: 6px; padding: 8px 10px; font-size: 0.875rem;">
+                                    <option value="databricks">Eurex Agent (Databricks)</option>
+                                    <option value="claude">Claude (Anthropic)</option>
+                                    <option value="gemini">Google Gemini</option>
+                                </select>
+                            </div>
+                            <div class="control-group" style="margin-top: 16px; display: none;" id="claudeKeyGroup">
+                                <label>Claude API Key</label>
+                                <input type="password" id="claudeApiKey" placeholder="Enter Claude API key...">
+                                <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;">
+                                    Get a key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none;">Anthropic Console</a>.
+                                </div>
+                            </div>
+                            <div class="control-group" style="margin-top: 16px; display: none;" id="geminiKeyGroup">
+                                <label>Google Gemini API Key</label>
                                 <input type="password" id="geminiApiKey" placeholder="Enter Gemini API key...">
                                 <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;">
                                     Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none;">Google AI Studio</a>.
@@ -118,8 +204,9 @@ query {
                 <!-- Middle Pane: Results Table -->
                 <section class="pane results-pane">
                     <div class="pane-header">
-                        <span>Result <span id="recordCounter" class="record-counter"></span></span>
+                        <span><span id="resultLabel">Result</span> <span id="recordCounter" class="record-counter"></span> <span id="validityDate" class="validity-date"></span></span>
                         <div class="results-actions">
+                            <button id="actionShareBtn" class="icon-btn" title="Share Results" disabled><i data-feather="share-2"></i> Share</button>
                             <button id="downloadCsvBtn" class="icon-btn" title="Download CSV" disabled><i data-feather="download"></i> CSV</button>
                             <button id="downloadMdBtn" class="icon-btn" title="Download MD" disabled><i data-feather="file-text"></i> MD</button>
                         </div>
@@ -179,6 +266,62 @@ query {
         </div>
     </div>
 
+    <!-- Bottom Navigation (Mobile) -->
+    <nav class="bottom-nav">
+        <button class="nav-item active" data-pane="query">
+            <i data-feather="edit-3"></i>
+            <span>Query</span>
+        </button>
+        <button class="nav-item" data-pane="results">
+            <i data-feather="database"></i>
+            <span>Results</span>
+        </button>
+        <button class="nav-item" data-pane="hours">
+            <i data-feather="clock"></i>
+            <span>Hours</span>
+        </button>
+        <button class="nav-item" data-pane="docs">
+            <i data-feather="book"></i>
+            <span>Docs</span>
+        </button>
+        <button class="nav-item" data-pane="changelog">
+            <i data-feather="activity"></i>
+            <span>Changes</span>
+        </button>
+    </nav>
+
+    <!-- AI Info Modal -->
+    <div id="aiInfoModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>AI Handoff - API Skill</span>
+                <button id="closeAiInfoModal" class="icon-btn"><i data-feather="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 12px; font-size: 0.875rem; color: var(--text-secondary);">Copy this configuration to your AI assistant (e.g. ChatGPT, Claude) to enable it to help you with the Eurex API.</p>
+                <textarea id="aiInfoText" readonly style="width: 100%; height: 200px; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 12px; font-family: monospace; font-size: 0.75rem; resize: none; margin-bottom: 16px;"></textarea>
+                <button id="copyAiInfoBtn" class="primary-btn" style="width: 100%;">Copy to Clipboard</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Modal -->
+    <div id="shareModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>Share Results</span>
+                <button id="closeShareModal" class="icon-btn"><i data-feather="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 16px; font-size: 0.875rem; color: var(--text-secondary);">Anyone with this link can view these results using the Eurex demo API key.</p>
+                <div class="share-input-group">
+                    <input type="text" id="shareLinkInput" readonly>
+                    <button id="copyShareLinkBtn" class="primary-btn" style="height: 36px; padding: 0 16px;">Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Floating Chatbot UI -->
     <div id="chatbotContainer" class="chatbot-container">
         <div id="chatbotWindow" class="chatbot-window hidden">
@@ -201,7 +344,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="app.js"></script>
+    <script type="module" src="explorer/app.js?v=2"></script>
     <script>
       feather.replace();
     </script>

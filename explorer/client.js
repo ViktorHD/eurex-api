@@ -82,10 +82,11 @@ export class GraphQLClient {
     }
 
     _flattenGraphQLResponse(dataObj) {
-        if (!dataObj) return [];
+        if (!dataObj) return { data: [], date: null };
         let targetArray = null;
+        let validityDate = null;
 
-        function findArray(obj) {
+        function findArrayAndDate(obj) {
             if (Array.isArray(obj)) {
                 targetArray = obj;
                 return;
@@ -93,16 +94,21 @@ export class GraphQLClient {
             if (typeof obj === 'object' && obj !== null) {
                 if (Array.isArray(obj.data)) {
                     targetArray = obj.data;
+                    // Validity date is at the same level as the 'data' array
+                    if (obj.date) validityDate = obj.date;
                     return;
                 }
                 for (const key of Object.keys(obj)) {
                     if (targetArray) break;
-                    findArray(obj[key]);
+                    findArrayAndDate(obj[key]);
                 }
             }
         }
 
-        findArray(dataObj);
-        return targetArray || [];
+        findArrayAndDate(dataObj);
+        return {
+            data: targetArray || [],
+            date: validityDate
+        };
     }
 }

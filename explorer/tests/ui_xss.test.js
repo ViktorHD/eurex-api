@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { UIManager } from './ui.js';
+import { UIManager } from '../ui.js';
 
 describe('UIManager XSS Security', () => {
     let ui;
