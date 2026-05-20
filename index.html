@@ -65,6 +65,9 @@
                     <button id="toggleDocsBtn" class="secondary-btn docs-btn hide-mobile">
                         <i data-feather="book"></i> Docs
                     </button>
+                    <button id="toggleInfoBtn" class="secondary-btn hide-mobile">
+                        <i data-feather="info"></i> Info
+                    </button>
                     <button id="moreMenuBtn" class="icon-btn show-mobile-flex hidden"><i data-feather="more-vertical"></i></button>
                 </div>
             </header>
@@ -94,6 +97,17 @@
                     </div>
                 </section>
                 
+                <!-- Info Pane -->
+                <section class="pane hidden" id="infoPane" style="flex: 1;">
+                    <div class="pane-header">
+                        <span>API Info</span>
+                        <button id="closeInfoBtn" class="icon-btn"><i data-feather="x"></i></button>
+                    </div>
+                    <div id="infoContainer" class="timeline-container" style="background: var(--bg-main); overflow-y: auto;">
+                        <div id="statusGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; padding: 24px;"></div>
+                    </div>
+                </section>
+
                 <!-- Changelog Pane -->
                 <section class="pane hidden" id="changelogPane" style="flex: 1;">
                     <div class="pane-header">
