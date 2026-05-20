@@ -4,6 +4,7 @@ import { TabManager } from './tabs.js';
 import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
+import { InfoPanel } from './info.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const apiUrlInput = document.getElementById('apiUrl');
@@ -198,6 +199,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 toggleQueryBtn.click();
             }
             runQueryBtn.click();
+        }
+    });
+
+    // Info Panel Setup
+    const infoPanelEl = document.getElementById('infoPanel');
+    const toggleInfoBtn = document.getElementById('toggleInfoBtn');
+
+    const infoPanel = new InfoPanel(client, {
+        panel: infoPanelEl,
+        statusGrid: document.getElementById('statusGrid'),
+        changelogContainer: document.getElementById('changelogContainer'),
+        closeBtn: document.getElementById('closeInfoBtn'),
+        refreshBtn: document.getElementById('refreshInfoBtn'),
+        onClose: () => {
+            infoPanelEl.classList.add('hidden');
+            workspaceGrid.classList.remove('hidden');
+            toggleInfoBtn.classList.remove('active');
+        }
+    });
+
+    toggleInfoBtn.addEventListener('click', () => {
+        const isShowing = !infoPanelEl.classList.contains('hidden');
+        if (isShowing) {
+            infoPanelEl.classList.add('hidden');
+            workspaceGrid.classList.remove('hidden');
+            toggleInfoBtn.classList.remove('active');
+        } else {
+            workspaceGrid.classList.add('hidden');
+            infoPanelEl.classList.remove('hidden');
+            toggleInfoBtn.classList.add('active');
+            infoPanel.load();
         }
     });
 

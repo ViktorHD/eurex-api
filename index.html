@@ -36,8 +36,33 @@
                     <button id="toggleDocsBtn" class="secondary-btn docs-btn">
                         <i data-feather="book"></i> Docs
                     </button>
+                    <button id="toggleInfoBtn" class="secondary-btn">
+                        <i data-feather="info"></i> Info
+                    </button>
                 </div>
             </header>
+
+            <!-- Info Panel -->
+            <div id="infoPanel" class="info-panel hidden">
+                <div class="info-panel-header">
+                    <span>API Info</span>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <button id="refreshInfoBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw"></i></button>
+                        <button id="closeInfoBtn" class="icon-btn"><i data-feather="x"></i></button>
+                    </div>
+                </div>
+                <div class="info-panel-body">
+                    <section class="info-section">
+                        <h2 class="info-section-title">API Status</h2>
+                        <p class="info-subtitle">Last update date per table — <span class="legend ok-leg">● current</span> <span class="legend stale-leg">● delayed</span> <span class="legend error-leg">● unavailable</span></p>
+                        <div id="statusGrid" class="status-grid"></div>
+                    </section>
+                    <section class="info-section">
+                        <h2 class="info-section-title">Changelog</h2>
+                        <div id="changelogContainer" class="changelog-container"></div>
+                    </section>
+                </div>
+            </div>
 
             <!-- Three Pane Split Layout -->
             <div class="workspace-grid">
