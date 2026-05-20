@@ -6,6 +6,7 @@ import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
 import { TimelineManager } from './timeline.js';
 import { ChangelogManager } from './changelog.js';
+import { InfoPanel } from './info.js';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
 
@@ -379,6 +380,36 @@ document.addEventListener('DOMContentLoaded', () => {
             executeGraphQLQuery(query).catch(() => {});
         }
     });
+
+    const infoPane = document.getElementById('infoPane');
+    const toggleInfoBtn = document.getElementById('toggleInfoBtn');
+    const closeInfoBtn = document.getElementById('closeInfoBtn');
+
+    const infoPanel = new InfoPanel(client, {
+        panel: infoPane,
+        statusGrid: document.getElementById('statusGrid'),
+        changelogContainer: document.getElementById('infoContainer'),
+        closeBtn: closeInfoBtn,
+        refreshBtn: null,
+        onClose: () => {
+            infoPane.classList.add('hidden');
+        }
+    });
+
+    if (toggleInfoBtn) {
+        toggleInfoBtn.addEventListener('click', () => {
+            infoPane.classList.toggle('hidden');
+            if (!infoPane.classList.contains('hidden')) {
+                infoPanel.load();
+            }
+        });
+    }
+
+    if (closeInfoBtn) {
+        closeInfoBtn.addEventListener('click', () => {
+            infoPane.classList.add('hidden');
+        });
+    }
 
     const schemaExplorer = new SchemaExplorer(client, {
         docsTree: document.getElementById('docsTree'),
