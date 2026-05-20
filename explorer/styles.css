@@ -696,7 +696,7 @@ body {
 
 /* Changelog Timeline Styles */
 .changelog-timeline-wrapper {
-    padding: 40px 24px;
+    padding: 24px 0;
     display: flex;
     justify-content: center;
 }

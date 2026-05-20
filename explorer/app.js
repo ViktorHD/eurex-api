@@ -5,7 +5,6 @@ import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
 import { TimelineManager } from './timeline.js';
-import { ChangelogManager } from './changelog.js';
 import { InfoPanel } from './info.js';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
@@ -82,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const docsPane = document.getElementById('docsPane');
     const closeDocsBtn = document.getElementById('closeDocsBtn');
     const timelinePane = document.getElementById('timelinePane');
-    const changelogPane = document.getElementById('changelogPane');
+    const infoPane = document.getElementById('infoPane');
     const workspaceGrid = document.querySelector('.workspace-grid');
     const queryPane = document.getElementById('queryPane');
     const resultsPane = document.querySelector('.results-pane');
@@ -92,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const navEurexOverview = document.getElementById('nav-eurex-overview');
     const navTradingHours = document.getElementById('nav-trading-hours');
     const navApiExplorer = document.getElementById('nav-api-explorer');
-    const navChangelog = document.getElementById('nav-changelog');
+    const navInfo = document.getElementById('nav-info');
     const actionBar = document.querySelector('.action-bar');
     const tabsBar = document.getElementById('tabsBar');
 
@@ -109,12 +108,12 @@ document.addEventListener('DOMContentLoaded', () => {
         navEurexOverview?.classList.remove('active');
         navTradingHours?.classList.remove('active');
         navApiExplorer?.classList.remove('active');
-        navChangelog?.classList.remove('active');
+        navInfo?.classList.remove('active');
 
         // Hide all major panes
         overviewPane.classList.add('hidden');
         timelinePane.classList.add('hidden');
-        changelogPane.classList.add('hidden');
+        infoPane.classList.add('hidden');
         queryPane.classList.add('hidden');
         resultsPane.classList.add('hidden');
         docsPane.classList.add('hidden');
@@ -129,10 +128,10 @@ document.addEventListener('DOMContentLoaded', () => {
             navTradingHours?.classList.add('active');
             timelinePane.classList.remove('hidden');
             timelineManager.fetchAndRender();
-        } else if (view === 'changelog') {
-            navChangelog?.classList.add('active');
-            changelogPane.classList.remove('hidden');
-            changelogManager.fetchAndRender();
+        } else if (view === 'info') {
+            navInfo?.classList.add('active');
+            infoPane.classList.remove('hidden');
+            infoPanel.load();
         } else {
             navApiExplorer.classList.add('active');
             
@@ -160,8 +159,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (navApiExplorer) {
         navApiExplorer.addEventListener('click', () => switchAppView('api-explorer'));
     }
-    if (navChangelog) {
-        navChangelog.addEventListener('click', () => switchAppView('changelog'));
+    if (navInfo) {
+        navInfo.addEventListener('click', () => switchAppView('info'));
     }
 
     // Sidebar Autohide/Unhide logic
@@ -368,48 +367,23 @@ document.addEventListener('DOMContentLoaded', () => {
         filterInput: document.getElementById('timelineFilter')
     });
 
-    const changelogManager = new ChangelogManager(client, {
-        container: document.getElementById('changelogContainer'),
-        content: document.getElementById('changelogContent'),
-        loading: document.getElementById('changelogLoading'),
-        refreshBtn: document.getElementById('refreshChangelogBtn')
+    const infoPanel = new InfoPanel(client, {
+        panel: infoPane,
+        statusGrid: document.getElementById('statusGrid'),
+        changelogContent: document.getElementById('changelogContent'),
+        changelogLoading: document.getElementById('changelogLoading'),
+        closeBtn: document.getElementById('closeInfoBtn'),
+        refreshBtn: document.getElementById('refreshInfoBtn')
     }, {
         onRunQuery: (query) => {
             queryInput.value = query;
             switchAppView('api-explorer');
             executeGraphQLQuery(query).catch(() => {});
-        }
-    });
-
-    const infoPane = document.getElementById('infoPane');
-    const toggleInfoBtn = document.getElementById('toggleInfoBtn');
-    const closeInfoBtn = document.getElementById('closeInfoBtn');
-
-    const infoPanel = new InfoPanel(client, {
-        panel: infoPane,
-        statusGrid: document.getElementById('statusGrid'),
-        changelogContainer: document.getElementById('infoContainer'),
-        closeBtn: closeInfoBtn,
-        refreshBtn: null,
+        },
         onClose: () => {
-            infoPane.classList.add('hidden');
+            switchAppView('api-explorer');
         }
     });
-
-    if (toggleInfoBtn) {
-        toggleInfoBtn.addEventListener('click', () => {
-            infoPane.classList.toggle('hidden');
-            if (!infoPane.classList.contains('hidden')) {
-                infoPanel.load();
-            }
-        });
-    }
-
-    if (closeInfoBtn) {
-        closeInfoBtn.addEventListener('click', () => {
-            infoPane.classList.add('hidden');
-        });
-    }
 
     const schemaExplorer = new SchemaExplorer(client, {
         docsTree: document.getElementById('docsTree'),
@@ -552,13 +526,13 @@ ${schemaSDL}
         resultsPane.classList.toggle('hidden', paneId !== 'results');
         docsPane.classList.toggle('hidden', paneId !== 'docs');
         timelinePane.classList.toggle('hidden', paneId !== 'hours');
-        changelogPane.classList.toggle('hidden', paneId !== 'changelog');
+        infoPane.classList.toggle('hidden', paneId !== 'info');
 
         if (paneId === 'hours') {
             timelineManager.fetchAndRender();
         }
-        if (paneId === 'changelog') {
-            changelogManager.fetchAndRender();
+        if (paneId === 'info') {
+            infoPanel.load();
         }
 
         // Special handling for splitters/resizers (hide on mobile)

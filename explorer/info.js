@@ -22,26 +22,26 @@ const STATUS_NAMES = [
     'Expirations', 'TESProfiles'
 ];
 
-function unwrapTypeName(typeObj) {
-    if (!typeObj) return null;
-    if (typeObj.name) return typeObj.name;
-    return unwrapTypeName(typeObj.ofType);
-}
-
 export class InfoPanel {
-    constructor(client, elements) {
+    constructor(client, elements, options = {}) {
         this.client = client;
-        this.panel = elements.panel;
-        this.statusGrid = elements.statusGrid;
-        this.changelogContainer = elements.changelogContainer;
-        this.onClose = elements.onClose;
+        this.els = elements; // { panel, statusGrid, changelogContent, changelogLoading, closeBtn, refreshBtn }
+        this.options = options; // { onRunQuery }
+        this.changelogData = null;
 
-        elements.closeBtn.addEventListener('click', () => {
-            if (this.onClose) this.onClose();
-        });
+        this.bindEvents();
+    }
 
-        if (elements.refreshBtn) {
-            elements.refreshBtn.addEventListener('click', () => this.load());
+    bindEvents() {
+        if (this.els.closeBtn) {
+            this.els.closeBtn.addEventListener('click', () => {
+                if (this.options.onClose) this.options.onClose();
+                else this.els.panel.classList.add('hidden');
+            });
+        }
+
+        if (this.els.refreshBtn) {
+            this.els.refreshBtn.addEventListener('click', () => this.load());
         }
     }
 
@@ -53,16 +53,24 @@ export class InfoPanel {
     }
 
     async loadStatus() {
-        this._setContent(this.statusGrid, 'loading', 'Checking API status…');
+        this._setContent(this.els.statusGrid, 'loading', 'Checking API status…');
 
         try {
             const data = await this.client.request(STATUS_QUERY, false);
             const today = new Date().toISOString().split('T')[0];
 
-            this.statusGrid.innerHTML = '';
+            this.els.statusGrid.innerHTML = '';
             STATUS_NAMES.forEach(name => {
                 const date = data?.[name]?.date ?? null;
-                const state = date ? (date === today ? 'ok' : 'stale') : 'error';
+
+                let state = 'error';
+                if (date) {
+                    if (name === 'Changelog' || name === 'DeliverableBonds') {
+                        state = 'ok';
+                    } else {
+                        state = (date === today) ? 'ok' : 'stale';
+                    }
+                }
 
                 const card = document.createElement('div');
                 card.className = `status-card ${state}`;
@@ -85,108 +93,185 @@ export class InfoPanel {
                 info.appendChild(dateEl);
                 card.appendChild(dot);
                 card.appendChild(info);
-                this.statusGrid.appendChild(card);
+                this.els.statusGrid.appendChild(card);
             });
         } catch (err) {
-            this._setContent(this.statusGrid, 'error', err.message);
+            this._setContent(this.els.statusGrid, 'error', err.message);
         }
     }
 
     async loadChangelog() {
-        this._setContent(this.changelogContainer, 'loading', 'Loading changelog…');
+        if (this.els.changelogLoading) this.els.changelogLoading.classList.remove('hidden');
+        if (this.els.changelogContent) this.els.changelogContent.innerHTML = '';
+
+        const query = `
+        query {
+          Changelog {
+            data {
+              Date
+              Type
+              OldValue
+              NewValue
+              Description
+              Query
+            }
+          }
+        }
+        `;
 
         try {
-            const dataFields = await this._fetchChangelogDataFields();
-
-            const query = dataFields.length > 0
-                ? `query { Changelog { date data { ${dataFields.join(' ')} } } }`
-                : `query { Changelog { date } }`;
-
-            const res = await this.client.request(query, false);
-            const changelog = res?.Changelog;
-
-            this.changelogContainer.innerHTML = '';
-
-            if (!changelog) {
-                this._setContent(this.changelogContainer, 'empty', 'No data available.');
-                return;
+            const response = await this.client.request(query, false);
+            if (!response || !response.Changelog || !response.Changelog.data) {
+                throw new Error("No changelog data found.");
             }
 
-            if (changelog.date) {
-                const p = document.createElement('p');
-                p.className = 'info-date-label';
-                p.textContent = `Data as of: ${changelog.date}`;
-                this.changelogContainer.appendChild(p);
-            }
-
-            const rows = changelog.data || [];
-            if (rows.length === 0) {
-                const p = document.createElement('p');
-                p.className = 'info-empty';
-                p.textContent = 'No changelog entries found.';
-                this.changelogContainer.appendChild(p);
-                return;
-            }
-
-            this.changelogContainer.appendChild(this._buildTable(rows));
+            this.changelogData = response.Changelog.data;
+            this.renderChangelog();
         } catch (err) {
-            this._setContent(this.changelogContainer, 'error', err.message);
+            if (this.els.changelogContent) {
+                this.els.changelogContent.innerHTML = `<div class="error-card"><p>${err.message}</p></div>`;
+            }
+        } finally {
+            if (this.els.changelogLoading) this.els.changelogLoading.classList.add('hidden');
         }
     }
 
-    async _fetchChangelogDataFields() {
-        const INTROSPECT = `query {
-            __schema {
-                queryType { name }
-                types {
-                    name kind
-                    fields {
-                        name
-                        type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }
-                    }
-                }
+    renderChangelog() {
+        if (!this.changelogData || !this.els.changelogContent) return;
+
+        const container = this.els.changelogContent;
+        container.innerHTML = '';
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const sortedData = [...this.changelogData].sort((a, b) => new Date(b.Date) - new Date(a.Date));
+
+        const timelineWrapper = document.createElement('div');
+        timelineWrapper.className = 'changelog-timeline-container';
+
+        const axis = document.createElement('div');
+        axis.className = 'changelog-axis';
+        timelineWrapper.appendChild(axis);
+
+        let todayMarkerAdded = false;
+
+        sortedData.forEach((entry) => {
+            const entryDate = new Date(entry.Date);
+            entryDate.setHours(0, 0, 0, 0);
+
+            if (!todayMarkerAdded && entryDate <= today) {
+                this._addTodayMarker(timelineWrapper);
+                todayMarkerAdded = true;
             }
-        }`;
 
-        const schemaData = await this.client.request(INTROSPECT, false);
-        const schema = schemaData.__schema;
-        const queryType = schema.types.find(t => t.name === schema.queryType.name);
+            const item = document.createElement('div');
+            const isFuture = entryDate > today;
+            const isToday = entryDate.getTime() === today.getTime();
 
-        const changelogField = queryType?.fields?.find(f => f.name === 'Changelog');
-        const resultType = schema.types.find(t => t.name === unwrapTypeName(changelogField?.type));
-        const dataField = resultType?.fields?.find(f => f.name === 'data');
-        const recordType = schema.types.find(t => t.name === unwrapTypeName(dataField?.type));
+            item.className = `changelog-item ${isFuture ? 'future' : (isToday ? 'today' : 'past')}`;
 
-        return (recordType?.fields || []).map(f => f.name);
+            const dot = document.createElement('div');
+            dot.className = 'changelog-dot';
+            item.appendChild(dot);
+
+            const content = document.createElement('div');
+            content.className = 'changelog-item-content';
+
+            const header = document.createElement('div');
+            header.className = 'changelog-item-header';
+
+            const dateSpan = document.createElement('span');
+            dateSpan.className = 'changelog-date';
+            dateSpan.textContent = entry.Date;
+            header.appendChild(dateSpan);
+
+            const typeSpan = document.createElement('span');
+            typeSpan.className = 'changelog-type-badge';
+            typeSpan.textContent = entry.Type;
+            header.appendChild(typeSpan);
+
+            content.appendChild(header);
+
+            if (entry.Description) {
+                const desc = document.createElement('p');
+                desc.className = 'changelog-description';
+                desc.textContent = entry.Description;
+                content.appendChild(desc);
+            }
+
+            if (entry.OldValue || entry.NewValue) {
+                const changes = document.createElement('div');
+                changes.className = 'changelog-changes';
+
+                if (entry.OldValue) {
+                    const oldVal = document.createElement('div');
+                    oldVal.className = 'changelog-change-val old';
+                    oldVal.innerHTML = `<span class="label">Old:</span> <code>${this._escapeHtml(entry.OldValue)}</code>`;
+                    changes.appendChild(oldVal);
+                }
+
+                if (entry.NewValue) {
+                    const newVal = document.createElement('div');
+                    newVal.className = 'changelog-change-val new';
+                    newVal.innerHTML = `<span class="label">New:</span> <code>${this._escapeHtml(entry.NewValue)}</code>`;
+                    changes.appendChild(newVal);
+                }
+                content.appendChild(changes);
+            }
+
+            if (entry.Query) {
+                const queryDiv = document.createElement('div');
+                queryDiv.className = 'changelog-query';
+                queryDiv.innerHTML = `<div class="changelog-query-header">
+                    <span class="label">GraphQL Query:</span>
+                    <button class="run-query-btn"><i data-feather="play"></i> Run in Explorer</button>
+                </div>
+                <pre><code>${this._escapeHtml(entry.Query)}</code></pre>`;
+
+                const runBtn = queryDiv.querySelector('.run-query-btn');
+                runBtn.addEventListener('click', () => {
+                    if (this.options.onRunQuery) {
+                        this.options.onRunQuery(entry.Query);
+                    }
+                });
+
+                content.appendChild(queryDiv);
+            }
+
+            item.appendChild(content);
+            timelineWrapper.appendChild(item);
+        });
+
+        if (!todayMarkerAdded) {
+            this._addTodayMarker(timelineWrapper);
+        }
+
+        container.appendChild(timelineWrapper);
+        if (window.feather) window.feather.replace();
     }
 
-    _buildTable(rows) {
-        const headers = Object.keys(rows[0]);
-        const table = document.createElement('table');
+    _addTodayMarker(parent) {
+        const marker = document.createElement('div');
+        marker.className = 'changelog-today-marker';
 
-        const thead = document.createElement('thead');
-        const headRow = document.createElement('tr');
-        headers.forEach(h => {
-            const th = document.createElement('th');
-            th.textContent = h;
-            headRow.appendChild(th);
-        });
-        thead.appendChild(headRow);
-        table.appendChild(thead);
+        const line = document.createElement('div');
+        line.className = 'changelog-today-line';
+        marker.appendChild(line);
 
-        const tbody = document.createElement('tbody');
-        rows.forEach(row => {
-            const tr = document.createElement('tr');
-            headers.forEach(h => {
-                const td = document.createElement('td');
-                const val = row[h];
-                td.textContent = val !== null && val !== undefined ? String(val) : '';
-                tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-        return table;
+        const label = document.createElement('div');
+        label.className = 'changelog-today-label';
+        label.textContent = 'TODAY';
+        marker.appendChild(label);
+
+        parent.appendChild(marker);
+    }
+
+    _escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     _setContent(el, type, text) {

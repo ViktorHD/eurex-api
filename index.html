@@ -38,9 +38,9 @@
                     <i data-feather="book-open"></i>
                     <span class="nav-label">Notebooks</span>
                 </a>
-                <button class="nav-btn" id="nav-changelog" title="Changelog">
-                    <i data-feather="activity"></i>
-                    <span class="nav-label">Changelog</span>
+                <button class="nav-btn" id="nav-info" title="Info">
+                    <i data-feather="info"></i>
+                    <span class="nav-label">Info</span>
                 </button>
             </div>
         </nav>
@@ -64,9 +64,6 @@
                     </button>
                     <button id="toggleDocsBtn" class="secondary-btn docs-btn hide-mobile">
                         <i data-feather="book"></i> Docs
-                    </button>
-                    <button id="toggleInfoBtn" class="secondary-btn hide-mobile">
-                        <i data-feather="info"></i> Info
                     </button>
                     <button id="moreMenuBtn" class="icon-btn show-mobile-flex hidden"><i data-feather="more-vertical"></i></button>
                 </div>
@@ -97,32 +94,29 @@
                     </div>
                 </section>
                 
-                <!-- Info Pane -->
-                <section class="pane hidden" id="infoPane" style="flex: 1;">
+                <!-- Info & Status Pane -->
+                <section class="pane hidden" id="infoPane" style="flex: 1; display: flex; flex-direction: column;">
                     <div class="pane-header">
-                        <span>API Info</span>
-                        <button id="closeInfoBtn" class="icon-btn"><i data-feather="x"></i></button>
-                    </div>
-                    <div id="infoContainer" class="timeline-container" style="background: var(--bg-main); overflow-y: auto;">
-                        <div id="statusGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; padding: 24px;"></div>
-                    </div>
-                </section>
-
-                <!-- Changelog Pane -->
-                <section class="pane hidden" id="changelogPane" style="flex: 1;">
-                    <div class="pane-header">
-                        <span>API Changelog</span>
+                        <span>API Status & Changelog</span>
                         <div style="display: flex; align-items: center; gap: 12px;">
-                            <button id="refreshChangelogBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                            <button id="refreshInfoBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                            <button id="closeInfoBtn" class="icon-btn hide-mobile"><i data-feather="x"></i></button>
                         </div>
                     </div>
-                    <div id="changelogContainer" class="timeline-container" style="background: var(--bg-main); overflow-y: auto;">
-                        <div id="changelogLoading" class="loading hidden" style="padding: 24px;">
-                            <div class="skeleton skeleton-header"></div>
-                            <div class="skeleton skeleton-row"></div>
-                            <div class="skeleton skeleton-row"></div>
+                    <div class="info-scroll-container" style="flex: 1; overflow-y: auto; background: var(--bg-main);">
+                        <div id="statusSection" style="padding: 24px 24px 0 24px;">
+                            <h3 style="margin-bottom: 16px; color: var(--text-primary); font-size: 1rem; font-weight: 600;">API Status</h3>
+                            <div id="statusGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;"></div>
                         </div>
-                        <div id="changelogContent" class="changelog-timeline-wrapper"></div>
+                        <div id="changelogSection" style="padding: 24px;">
+                             <h3 style="margin-bottom: 16px; color: var(--text-primary); font-size: 1rem; font-weight: 600;">Changelog</h3>
+                             <div id="changelogLoading" class="loading hidden">
+                                <div class="skeleton skeleton-header"></div>
+                                <div class="skeleton skeleton-row"></div>
+                                <div class="skeleton skeleton-row"></div>
+                            </div>
+                            <div id="changelogContent" class="changelog-timeline-wrapper"></div>
+                        </div>
                     </div>
                 </section>
 
@@ -298,9 +292,9 @@ query {
             <i data-feather="book"></i>
             <span>Docs</span>
         </button>
-        <button class="nav-item" data-pane="changelog">
-            <i data-feather="activity"></i>
-            <span>Changes</span>
+        <button class="nav-item" data-pane="info">
+            <i data-feather="info"></i>
+            <span>Info</span>
         </button>
     </nav>
 
