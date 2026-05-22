@@ -237,39 +237,32 @@ export class UIManager {
 
         if (this.sortCol) {
             filtered = [...filtered].sort((a, b) => {
-                let ra = a.row[this.sortCol];
-                let rb = b.row[this.sortCol];
+                const ra = a.row[this.sortCol];
+                const rb = b.row[this.sortCol];
 
                 if (ra === rb) return 0;
                 if (ra === null || ra === undefined) return 1;
                 if (rb === null || rb === undefined) return -1;
 
-                // Handle Date objects
-                if (ra instanceof Date) ra = ra.toISOString();
-                if (rb instanceof Date) rb = rb.toISOString();
-
                 let comparison = 0;
                 if (typeof ra === 'number' && typeof rb === 'number') {
                     comparison = ra - rb;
-                } else if (typeof ra === 'string' && typeof rb === 'string') {
-                    const isDateA = /^\d{4}-\d{2}-\d{2}/.test(ra);
-                    const isDateB = /^\d{4}-\d{2}-\d{2}/.test(rb);
-
-                    if (isDateA && isDateB) {
-                        const da = new Date(ra), db = new Date(rb);
-                        if (!isNaN(da.getTime()) && !isNaN(db.getTime())) {
-                            comparison = da.getTime() - db.getTime();
-                        } else {
-                            comparison = ra.localeCompare(rb, undefined, { numeric: true });
-                        }
-                    } else {
-                        comparison = ra.localeCompare(rb, undefined, { numeric: true });
-                    }
                 } else {
-                    // Fallback for mixed types or other types using display string
                     const sa = a._s[this.sortCol] || '';
                     const sb = b._s[this.sortCol] || '';
-                    comparison = sa.localeCompare(sb, undefined, { numeric: true });
+                    const isDateA = sa.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+                    const isDateB = sb.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+
+                    if (isDateA && isDateB) {
+                        comparison = new Date(sa) - new Date(sb);
+                    } else {
+                        const na = parseFloat(sa), nb = parseFloat(sb);
+                        if (!isNaN(na) && !isNaN(nb) && !isDateA && !isDateB) {
+                            comparison = na - nb;
+                        } else {
+                            comparison = sa.localeCompare(sb);
+                        }
+                    }
                 }
                 return this.sortAsc ? comparison : -comparison;
             });
