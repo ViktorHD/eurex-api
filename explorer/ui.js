@@ -237,13 +237,43 @@ export class UIManager {
 
         if (this.sortCol) {
             filtered = [...filtered].sort((a, b) => {
-                const va = a._s[this.sortCol] || '', vb = b._s[this.sortCol] || '';
-                
-                const na = parseFloat(va), nb = parseFloat(vb);
-                if (!isNaN(na) && !isNaN(nb)) {
-                    return this.sortAsc ? na - nb : nb - na;
+                const ra = a.row[this.sortCol];
+                const rb = b.row[this.sortCol];
+
+                if (ra === rb) return 0;
+                if (ra === null || ra === undefined) return 1;
+                if (rb === null || rb === undefined) return -1;
+
+                let comparison = 0;
+                if (typeof ra === 'number' && typeof rb === 'number') {
+                    comparison = ra - rb;
+                } else if (typeof ra === 'string' && typeof rb === 'string') {
+                    const isDateA = /^\d{4}-\d{2}-\d{2}/.test(ra);
+                    const isDateB = /^\d{4}-\d{2}-\d{2}/.test(rb);
+
+                    if (isDateA && isDateB) {
+                        const da = new Date(ra), db = new Date(rb);
+                        if (!isNaN(da.getTime()) && !isNaN(db.getTime())) {
+                            comparison = da - db;
+                        } else {
+                            comparison = ra.localeCompare(rb);
+                        }
+                    } else {
+                        // Check if they are actually numbers in strings without using parseFloat (to avoid year truncation)
+                        const na = Number(ra), nb = Number(rb);
+                        if (!isNaN(na) && !isNaN(nb) && ra.trim() !== '' && rb.trim() !== '') {
+                            comparison = na - nb;
+                        } else {
+                            comparison = ra.localeCompare(rb);
+                        }
+                    }
+                } else {
+                    // Fallback for mixed types or other types using display string
+                    const sa = a._s[this.sortCol] || '';
+                    const sb = b._s[this.sortCol] || '';
+                    comparison = sa.localeCompare(sb);
                 }
-                return this.sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+                return this.sortAsc ? comparison : -comparison;
             });
         }
 
