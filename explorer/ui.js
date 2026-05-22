@@ -237,13 +237,34 @@ export class UIManager {
 
         if (this.sortCol) {
             filtered = [...filtered].sort((a, b) => {
-                const va = a._s[this.sortCol] || '', vb = b._s[this.sortCol] || '';
-                
-                const na = parseFloat(va), nb = parseFloat(vb);
-                if (!isNaN(na) && !isNaN(nb)) {
-                    return this.sortAsc ? na - nb : nb - na;
+                const ra = a.row[this.sortCol];
+                const rb = b.row[this.sortCol];
+
+                if (ra === rb) return 0;
+                if (ra === null || ra === undefined) return 1;
+                if (rb === null || rb === undefined) return -1;
+
+                let comparison = 0;
+                if (typeof ra === 'number' && typeof rb === 'number') {
+                    comparison = ra - rb;
+                } else {
+                    const sa = a._s[this.sortCol] || '';
+                    const sb = b._s[this.sortCol] || '';
+                    const isDateA = sa.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+                    const isDateB = sb.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+
+                    if (isDateA && isDateB) {
+                        comparison = new Date(sa) - new Date(sb);
+                    } else {
+                        const na = parseFloat(sa), nb = parseFloat(sb);
+                        if (!isNaN(na) && !isNaN(nb) && !isDateA && !isDateB) {
+                            comparison = na - nb;
+                        } else {
+                            comparison = sa.localeCompare(sb);
+                        }
+                    }
                 }
-                return this.sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+                return this.sortAsc ? comparison : -comparison;
             });
         }
 
