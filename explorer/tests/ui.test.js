@@ -118,14 +118,12 @@ describe('UIManager', () => {
             expect(ui.formatValue(val, 'product_id')).toBe('1234567');
         });
 
-        test('formats ISO date strings using toLocaleString', () => {
+        test('returns raw ISO date strings without conversion', () => {
             const isoStr = '2023-10-27T10:00:00Z';
-            const expected = new Date(isoStr).toLocaleString();
-            expect(ui.formatValue(isoStr)).toBe(expected);
+            expect(ui.formatValue(isoStr)).toBe(isoStr);
 
             const isoStrNoZ = '2023-10-27T10:00:00';
-            const expectedNoZ = new Date(isoStrNoZ).toLocaleString();
-            expect(ui.formatValue(isoStrNoZ)).toBe(expectedNoZ);
+            expect(ui.formatValue(isoStrNoZ)).toBe(isoStrNoZ);
         });
 
         test('stringifies Date objects as JSON', () => {
@@ -133,17 +131,14 @@ describe('UIManager', () => {
             expect(ui.formatValue(d)).toBe(JSON.stringify(d));
         });
 
-        test('returns original string if it is not a valid ISO date', () => {
-            const invalidDate = '2023-13-45T25:00:00';
-            expect(ui.formatValue(invalidDate)).toBe(invalidDate);
+        test('returns original string if it is not a date', () => {
             const notADate = 'Not a date';
             expect(ui.formatValue(notADate)).toBe(notADate);
         });
 
-        test('formats partial ISO date (YYYY-MM-DD)', () => {
+        test('returns raw partial ISO date (YYYY-MM-DD) without conversion', () => {
             const partialDate = '2023-10-27';
-            const expected = new Date(partialDate).toLocaleString();
-            expect(ui.formatValue(partialDate)).toBe(expected);
+            expect(ui.formatValue(partialDate)).toBe(partialDate);
         });
     });
 
