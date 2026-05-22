@@ -80,7 +80,7 @@ export class UIManager {
         }
         
         // Formatting ISO dates
-        if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
             const d = new Date(val);
             if (!isNaN(d.getTime())) return d.toLocaleString();
         }
@@ -237,12 +237,16 @@ export class UIManager {
 
         if (this.sortCol) {
             filtered = [...filtered].sort((a, b) => {
-                const ra = a.row[this.sortCol];
-                const rb = b.row[this.sortCol];
+                let ra = a.row[this.sortCol];
+                let rb = b.row[this.sortCol];
 
                 if (ra === rb) return 0;
                 if (ra === null || ra === undefined) return 1;
                 if (rb === null || rb === undefined) return -1;
+
+                // Handle Date objects
+                if (ra instanceof Date) ra = ra.toISOString();
+                if (rb instanceof Date) rb = rb.toISOString();
 
                 let comparison = 0;
                 if (typeof ra === 'number' && typeof rb === 'number') {

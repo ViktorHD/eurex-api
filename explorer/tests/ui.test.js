@@ -133,13 +133,17 @@ describe('UIManager', () => {
             expect(ui.formatValue(d)).toBe(JSON.stringify(d));
         });
 
-        test('returns original string if it is not a valid ISO date or only partial', () => {
+        test('returns original string if it is not a valid ISO date', () => {
             const invalidDate = '2023-13-45T25:00:00';
             expect(ui.formatValue(invalidDate)).toBe(invalidDate);
             const notADate = 'Not a date';
             expect(ui.formatValue(notADate)).toBe(notADate);
+        });
+
+        test('formats partial ISO date (YYYY-MM-DD)', () => {
             const partialDate = '2023-10-27';
-            expect(ui.formatValue(partialDate)).toBe(partialDate);
+            const expected = new Date(partialDate).toLocaleString();
+            expect(ui.formatValue(partialDate)).toBe(expected);
         });
     });
 
