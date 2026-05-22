@@ -79,11 +79,6 @@ export class UIManager {
             return new Intl.NumberFormat().format(val);
         }
         
-        // Formatting ISO dates
-        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
-            const d = new Date(val);
-            if (!isNaN(d.getTime())) return d.toLocaleString();
-        }
         
         return String(val);
     }
@@ -250,8 +245,8 @@ export class UIManager {
                 } else {
                     const sa = a._s[this.sortCol] || '';
                     const sb = b._s[this.sortCol] || '';
-                    const isDateA = sa.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
-                    const isDateB = sb.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+                    const isDateA = sa.match(/^\d{4}-\d{2}-\d{2}/);
+                    const isDateB = sb.match(/^\d{4}-\d{2}-\d{2}/);
 
                     if (isDateA && isDateB) {
                         comparison = new Date(sa) - new Date(sb);
