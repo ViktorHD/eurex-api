@@ -254,24 +254,18 @@ export class UIManager {
                     if (isDateA && isDateB) {
                         const da = new Date(ra), db = new Date(rb);
                         if (!isNaN(da.getTime()) && !isNaN(db.getTime())) {
-                            comparison = da - db;
+                            comparison = da.getTime() - db.getTime();
                         } else {
-                            comparison = ra.localeCompare(rb);
+                            comparison = ra.localeCompare(rb, undefined, { numeric: true });
                         }
                     } else {
-                        // Check if they are actually numbers in strings without using parseFloat (to avoid year truncation)
-                        const na = Number(ra), nb = Number(rb);
-                        if (!isNaN(na) && !isNaN(nb) && ra.trim() !== '' && rb.trim() !== '') {
-                            comparison = na - nb;
-                        } else {
-                            comparison = ra.localeCompare(rb);
-                        }
+                        comparison = ra.localeCompare(rb, undefined, { numeric: true });
                     }
                 } else {
                     // Fallback for mixed types or other types using display string
                     const sa = a._s[this.sortCol] || '';
                     const sb = b._s[this.sortCol] || '';
-                    comparison = sa.localeCompare(sb);
+                    comparison = sa.localeCompare(sb, undefined, { numeric: true });
                 }
                 return this.sortAsc ? comparison : -comparison;
             });
