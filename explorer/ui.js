@@ -80,7 +80,7 @@ export class UIManager {
         }
         
         // Formatting ISO dates
-        if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
             const d = new Date(val);
             if (!isNaN(d.getTime())) return d.toLocaleString();
         }
