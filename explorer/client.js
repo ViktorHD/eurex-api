@@ -34,7 +34,11 @@ export class GraphQLClient {
         }
 
         const fetchPromise = this._executeRequest(query, flatten).then(data => {
-            if (data.length > 0) {
+            const hasData = flatten
+                ? (data && data.data && data.data.length > 0)
+                : (data && Object.keys(data).length > 0);
+
+            if (hasData) {
                 this.cache.set(cacheKey, { timestamp: Date.now(), data });
             }
             this.inFlight.delete(cacheKey);
@@ -83,32 +87,59 @@ export class GraphQLClient {
 
     _flattenGraphQLResponse(dataObj) {
         if (!dataObj) return { data: [], date: null };
-        let targetArray = null;
-        let validityDate = null;
 
-        function findArrayAndDate(obj) {
-            if (Array.isArray(obj)) {
-                targetArray = obj;
-                return;
+        const results = [];
+
+        function getFirstArray(obj) {
+            let found = { array: null, date: null };
+
+            function search(o) {
+                if (Array.isArray(o)) {
+                    found.array = o;
+                    return true;
+                }
+                if (typeof o === 'object' && o !== null) {
+                    if (Array.isArray(o.data)) {
+                        found.array = o.data;
+                        if (o.date) found.date = o.date;
+                        return true;
+                    }
+                    for (const key of Object.keys(o)) {
+                        if (search(o[key])) return true;
+                    }
+                }
+                return false;
             }
-            if (typeof obj === 'object' && obj !== null) {
-                if (Array.isArray(obj.data)) {
-                    targetArray = obj.data;
-                    // Validity date is at the same level as the 'data' array
-                    if (obj.date) validityDate = obj.date;
-                    return;
-                }
-                for (const key of Object.keys(obj)) {
-                    if (targetArray) break;
-                    findArrayAndDate(obj[key]);
-                }
+
+            search(obj);
+            return found;
+        }
+
+        for (const [key, value] of Object.entries(dataObj)) {
+            const { array, date } = getFirstArray(value);
+            if (array) {
+                results.push({
+                    name: key,
+                    data: array,
+                    date: date
+                });
             }
         }
 
-        findArrayAndDate(dataObj);
+        if (results.length === 0) return { data: [], date: null };
+
+        if (results.length === 1) {
+            return {
+                data: results[0].data,
+                date: results[0].date,
+                name: results[0].name
+            };
+        }
+
         return {
-            data: targetArray || [],
-            date: validityDate
+            data: results,
+            isMultiTable: true,
+            date: results[0] ? results[0].date : null
         };
     }
 }

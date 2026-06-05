@@ -221,9 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
         errorBox: document.getElementById('errorBox'),
         loadingIndicator: document.getElementById('loadingIndicator'),
         emptyState: document.getElementById('emptyState'),
-        resultsTable: document.getElementById('resultsTable'),
-        tableHead: document.getElementById('tableHead'),
-        tableBody: document.getElementById('tableBody'),
+        resultsContainer: document.getElementById('resultsContainer'),
         recordCounter: document.getElementById('recordCounter'),
         validityDate: document.getElementById('validityDate'),
         shareBtn: document.getElementById('actionShareBtn'),
@@ -680,8 +678,10 @@ ${schemaSDL}
             const data = response.data;
             const date = response.date;
 
-            const tableState = stateOptions || { sortCol: null, sortAsc: true, columnFilters: {}, date: date };
+            const tableState = stateOptions || { date: date };
             tableState.date = date; // Ensure date is updated with the latest from the response
+            if (response.isMultiTable) tableState.isMultiTable = true;
+            if (response.name) tableState.name = response.name;
 
             tabs.updateActiveState({ data: data, ...tableState });
 

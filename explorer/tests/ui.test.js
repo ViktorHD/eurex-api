@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { getTypeName, UIManager } from '../ui.js';
+import { getTypeName, UIManager, DataTable } from '../ui.js';
 
 describe('getTypeName', () => {
     test('returns "Unknown" for null or undefined input', () => {
@@ -79,66 +79,84 @@ describe('UIManager', () => {
     });
 
     describe('formatValue', () => {
+        let dt;
+        beforeEach(() => {
+            global.document = {
+                createElement: jest.fn().mockReturnValue({
+                    appendChild: jest.fn(),
+                    classList: { add: jest.fn(), remove: jest.fn() },
+                    style: {},
+                    setAttribute: jest.fn()
+                }),
+                createTextNode: jest.fn()
+            };
+            dt = new DataTable({ innerHTML: '', appendChild: jest.fn(), querySelectorAll: jest.fn().mockReturnValue([]) }, []);
+        });
+
+        afterEach(() => {
+            delete global.document;
+        });
+
         test('returns empty string for null or undefined', () => {
-            expect(ui.formatValue(null)).toBe('');
-            expect(ui.formatValue(undefined)).toBe('');
+            expect(dt.formatValue(null)).toBe('');
+            expect(dt.formatValue(undefined)).toBe('');
         });
 
         test('returns JSON string for objects', () => {
             const obj = { key: 'value', nested: { a: 1 } };
-            expect(ui.formatValue(obj)).toBe(JSON.stringify(obj));
+            expect(dt.formatValue(obj)).toBe(JSON.stringify(obj));
         });
 
         test('returns string representation for other primitives', () => {
-            expect(ui.formatValue(true)).toBe('true');
-            expect(ui.formatValue(false)).toBe('false');
-            expect(ui.formatValue('')).toBe('');
-            expect(ui.formatValue('hello')).toBe('hello');
+            expect(dt.formatValue(true)).toBe('true');
+            expect(dt.formatValue(false)).toBe('false');
+            expect(dt.formatValue('')).toBe('');
+            expect(dt.formatValue('hello')).toBe('hello');
         });
 
         test('handles 0 correctly', () => {
-            expect(ui.formatValue(0)).toBe('0');
+            expect(dt.formatValue(0)).toBe('0');
         });
 
         test('formats numbers using Intl.NumberFormat if colName does not include "id"', () => {
             const val = 1234567.89;
             const formatted = new Intl.NumberFormat().format(val);
-            expect(ui.formatValue(val, 'price')).toBe(formatted);
+            expect(dt.formatValue(val, 'price')).toBe(formatted);
 
             const negVal = -123.45;
             const negFormatted = new Intl.NumberFormat().format(negVal);
-            expect(ui.formatValue(negVal, 'delta')).toBe(negFormatted);
+            expect(dt.formatValue(negVal, 'delta')).toBe(negFormatted);
         });
 
         test('returns number as string if colName includes "id"', () => {
             const val = 1234567;
-            expect(ui.formatValue(val, 'productId')).toBe('1234567');
-            expect(ui.formatValue(val, 'ID')).toBe('1234567');
-            expect(ui.formatValue(val, 'InstrumentId')).toBe('1234567');
-            expect(ui.formatValue(val, 'product_id')).toBe('1234567');
+            expect(dt.formatValue(val, 'productId')).toBe('1234567');
+            expect(dt.formatValue(val, 'ID')).toBe('1234567');
+            expect(dt.formatValue(val, 'InstrumentId')).toBe('1234567');
+            expect(dt.formatValue(val, 'product_id')).toBe('1234567');
         });
 
         test('returns raw ISO date strings without conversion', () => {
             const isoStr = '2023-10-27T10:00:00Z';
-            expect(ui.formatValue(isoStr)).toBe(isoStr);
+            expect(dt.formatValue(isoStr)).toBe(isoStr);
 
             const isoStrNoZ = '2023-10-27T10:00:00';
-            expect(ui.formatValue(isoStrNoZ)).toBe(isoStrNoZ);
+            expect(dt.formatValue(isoStrNoZ)).toBe(isoStrNoZ);
         });
 
         test('stringifies Date objects as JSON', () => {
             const d = new Date('2023-10-27T10:00:00Z');
-            expect(ui.formatValue(d)).toBe(JSON.stringify(d));
+            expect(dt.formatValue(d)).toBe(JSON.stringify(d));
         });
 
         test('returns original string if it is not a date', () => {
             const notADate = 'Not a date';
-            expect(ui.formatValue(notADate)).toBe(notADate);
+            expect(dt.formatValue(notADate)).toBe(notADate);
         });
 
         test('returns raw partial ISO date (YYYY-MM-DD) without conversion', () => {
             const partialDate = '2023-10-27';
-            expect(ui.formatValue(partialDate)).toBe(partialDate);
+            expect(dt.formatValue(partialDate)).toBe(partialDate);
         });
     });
 
