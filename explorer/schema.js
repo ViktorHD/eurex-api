@@ -51,7 +51,7 @@ export class SchemaExplorer {
         `;
 
         try {
-            const data = await this.client.request(INTROSPECTION_QUERY, false);
+            const data = await this.client.request(INTROSPECTION_QUERY, null, false);
             if (!data || !data.__schema) throw new Error("Invalid schema response.");
             this.schemaData = data.__schema;
             this.renderSchema('');
