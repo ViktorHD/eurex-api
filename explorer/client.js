@@ -10,12 +10,12 @@ export class GraphQLClient {
     setEndpoint(url) { this.endpoint = url; }
     setApiKey(key) { this.apiKey = key; }
 
-    async request(query, flatten = true) {
+    async request(query, variables = null, flatten = true) {
         if (!this.apiKey || !query) {
             throw new Error('API Key and Query are required.');
         }
 
-        const cacheKey = JSON.stringify({ query, endpoint: this.endpoint, apiKey: this.apiKey, flatten });
+        const cacheKey = JSON.stringify({ query, variables, endpoint: this.endpoint, apiKey: this.apiKey, flatten });
         const now = Date.now();
 
         // Check cache
@@ -33,7 +33,7 @@ export class GraphQLClient {
             return this.inFlight.get(cacheKey);
         }
 
-        const fetchPromise = this._executeRequest(query, flatten).then(data => {
+        const fetchPromise = this._executeRequest(query, variables, flatten).then(data => {
             const hasData = flatten
                 ? (data && data.data && data.data.length > 0)
                 : (data && Object.keys(data).length > 0);
@@ -52,16 +52,19 @@ export class GraphQLClient {
         return fetchPromise;
     }
 
-    async _executeRequest(query, flatten) {
+    async _executeRequest(query, variables, flatten) {
         let response;
         try {
+            const body = { query };
+            if (variables) body.variables = variables;
+
             response = await fetch(this.endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-DBP-APIKEY': this.apiKey
                 },
-                body: JSON.stringify({ query })
+                body: JSON.stringify(body)
             });
         } catch (networkErr) {
             throw new Error(`Network Error: Ensure the URL is correct and you have an internet connection. (${networkErr.message})`);
