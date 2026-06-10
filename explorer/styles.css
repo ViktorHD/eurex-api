@@ -968,6 +968,28 @@ body {
     line-height: 1.5;
 }
 
+.variables-editor {
+    width: 100%;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid #4a5568;
+    border-radius: 4px;
+    color: #e2e8f0;
+    font-family: 'Consolas', monospace;
+    font-size: 0.85rem;
+    padding: 12px;
+    resize: vertical;
+    min-height: 100px;
+    outline: none;
+    line-height: 1.4;
+    transition: all 0.2s;
+}
+
+.variables-editor:focus {
+    background: rgba(0,0,0,0.5);
+    border-color: var(--neon-green);
+    box-shadow: 0 0 0 2px rgba(0, 206, 125, 0.2);
+}
+
 /* Bottom Drawer */
 .editor-drawer {
     border-top: 1px solid #4a5568;

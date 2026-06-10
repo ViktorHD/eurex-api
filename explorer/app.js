@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Editor Elements
     const queryInput = document.getElementById('queryInput');
+    const variablesInput = document.getElementById('variablesInput');
     const drawerToggle = document.getElementById('drawerToggle');
     const drawerContent = document.getElementById('drawerContent');
     const drawerIcon = document.getElementById('drawerIcon');
@@ -237,12 +238,14 @@ document.addEventListener('DOMContentLoaded', () => {
         {
             onTabSave: (id, state) => {
                 state.query = queryInput.value;
+                state.variables = variablesInput.value;
                 state.data = ui.currentData;
                 Object.assign(state, ui.exportState());
             },
             onTabLoad: (state) => {
                 deactivateTimeline();
-                queryInput.value = state.query;
+                queryInput.value = state.query || '';
+                variablesInput.value = state.variables || '';
                 ui.hideError();
                 const resultLabel = document.getElementById('resultLabel');
                 if (resultLabel) {
@@ -464,12 +467,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const schemaSDL = await getSdlSummary();
         const endpoint = apiUrlInput.value.trim();
         const apiKey = apiKeyInput.value.trim() || DEMO_API_KEY;
+        const variables = variablesInput.value.trim();
 
         const handoffPrompt = `You are a GraphQL expert assisting a developer with the Eurex API.
 
 ### API CONFIGURATION
 - ENDPOINT: ${endpoint}
 - AUTHENTICATION: Use header "X-DBP-APIKEY: ${apiKey}"
+${variables ? `- VARIABLES: ${variables}` : ''}
 
 ### SCHEMA SUMMARY (SDL)
 ${schemaSDL}
@@ -579,6 +584,7 @@ ${schemaSDL}
         getApiKey: () => document.getElementById('geminiApiKey').value.trim(),
         getClaudeApiKey: () => document.getElementById('claudeApiKey').value.trim(),
         getProvider: () => document.getElementById('aiProvider').value,
+        getVariables: () => variablesInput.value.trim(),
         getSchemaSummary: async () => {
             const schema = await schemaExplorer.fetchSchema();
             if (!schema) return "Schema not loaded yet.";
@@ -630,21 +636,37 @@ ${schemaSDL}
 
             return sdl.trim();
         },
-        onRunQuery: async (queryText) => {
+        onRunQuery: async (queryText, variablesObj) => {
             queryInput.value = queryText;
+            if (variablesObj) {
+                variablesInput.value = JSON.stringify(variablesObj, null, 2);
+            }
             // Optionally auto-open the query pane if it's hidden
             if (queryPane.classList.contains('hidden')) {
                 toggleQueryBtn.click();
             }
-            return await executeGraphQLQuery(queryText);
+            return await executeGraphQLQuery(queryText, null, variablesObj);
         }
     });
 
-    async function executeGraphQLQuery(query, stateOptions = null) {
+    async function executeGraphQLQuery(query, stateOptions = null, explicitVariables = null) {
         const apiKey = apiKeyInput.value.trim();
         if (!apiKey || !query) {
             ui.showError('API Key and Query are required.');
             throw new Error('API Key and Query are required.');
+        }
+
+        let variables = explicitVariables;
+        if (!variables) {
+            const variablesRaw = variablesInput.value.trim();
+            if (variablesRaw) {
+                try {
+                    variables = JSON.parse(variablesRaw);
+                } catch (e) {
+                    ui.showError('Invalid JSON in Variables: ' + e.message);
+                    throw e;
+                }
+            }
         }
 
         ui.hideError();
@@ -674,7 +696,7 @@ ${schemaSDL}
         tabs.render();
 
         try {
-            const response = await client.request(query);
+            const response = await client.request(query, variables);
             const data = response.data;
             const date = response.date;
 
@@ -866,6 +888,7 @@ ${schemaSDL}
         const uiState = ui.exportState();
         const state = {
             q: queryInput.value.trim(),
+            v: variablesInput.value.trim(),
             e: apiUrlInput.value.trim()
         };
 
@@ -940,9 +963,11 @@ ${schemaSDL}
             const s = JSON.parse(decodedJson);
 
             const query = s.q || s.query;
+            const variables = s.v || s.variables;
             const endpoint = s.e || s.endpoint;
 
             if (query) queryInput.value = query;
+            if (variables) variablesInput.value = variables;
             if (endpoint) {
                 apiUrlInput.value = endpoint;
                 client.setEndpoint(endpoint);

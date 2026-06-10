@@ -11,6 +11,7 @@ export class Chatbot {
         this.getClaudeApiKey = options.getClaudeApiKey;
         this.getDatabricksToken = options.getDatabricksToken;
         this.getProvider = options.getProvider;
+        this.getVariables = options.getVariables;
         this.getSchemaSummary = options.getSchemaSummary;
         this.onRunQuery = options.onRunQuery;
 
@@ -113,12 +114,20 @@ export class Chatbot {
                 console.warn("Failed to get schema summary for chatbot context", e);
             }
 
+            let currentVariables = "";
+            try {
+                if (this.getVariables) currentVariables = this.getVariables();
+            } catch (e) {}
+
             this.geminiSystemPrompt = `You are derivatives expert, Eurex T7 functional expert and assistant that answers user questions about Eurex functionality, products and contracts using the Eurex Reference Data GraphQL API.
         
 Here is the Eurex GraphQL Schema summary. You MUST use this to understand available queries, fields, and types (e.g. Contracts, Products, TradingHours) to answer the user's questions.
 
 SCHEMA SUMMARY:
 ${schemaSummary}
+
+CURRENT VARIABLES:
+${currentVariables || "None"}
 
 Your workflow:
 1. Read the Schema Summary above. Never assume which queries or fields exist.
@@ -155,7 +164,8 @@ query {
                 parameters: {
                     type: "OBJECT",
                     properties: {
-                        query: { type: "STRING" }
+                        query: { type: "STRING" },
+                        variables: { type: "OBJECT", description: "JSON object containing GraphQL variables" }
                     },
                     required: ["query"]
                 }
@@ -212,7 +222,8 @@ query {
                     this.lastToolExecuted = true;
                     try {
                         const query = call.functionCall.args.query;
-                        const result = await this.onRunQuery(query);
+                        const variables = call.functionCall.args.variables || null;
+                        const result = await this.onRunQuery(query, variables);
                         toolResponses.push({
                             functionResponse: {
                                 name: "eurex_graphql",
@@ -250,12 +261,20 @@ query {
                 console.warn("Failed to get schema summary for chatbot context", e);
             }
 
+            let currentVariables = "";
+            try {
+                if (this.getVariables) currentVariables = this.getVariables();
+            } catch (e) {}
+
             this.databricksHistory.push({
                 role: 'system',
                 content: `You are derivatives expert, Eurex T7 functional expert and assistant that answers user questions about Eurex functionality, products and contracts using the Eurex Reference Data GraphQL API.
 
 SCHEMA SUMMARY:
 ${schemaSummary}
+
+CURRENT VARIABLES:
+${currentVariables || "None"}
 
 Your workflow:
 1. Read the Schema Summary above. Never assume which queries or fields exist.
@@ -289,7 +308,8 @@ Guidelines:
                 parameters: {
                     type: "object",
                     properties: {
-                        query: { type: "string" }
+                        query: { type: "string" },
+                        variables: { type: "object", description: "JSON object containing GraphQL variables" }
                     },
                     required: ["query"]
                 }
@@ -336,7 +356,7 @@ Guidelines:
                     this.lastToolExecuted = true;
                     try {
                         const args = typeof call.function.arguments === 'string' ? JSON.parse(call.function.arguments) : call.function.arguments;
-                        const result = await this.onRunQuery(args.query);
+                        const result = await this.onRunQuery(args.query, args.variables || null);
                         this.databricksHistory.push({
                             role: 'tool',
                             tool_call_id: call.id,
@@ -369,12 +389,20 @@ Guidelines:
                 console.warn("Failed to get schema summary for chatbot context", e);
             }
 
+            let currentVariables = "";
+            try {
+                if (this.getVariables) currentVariables = this.getVariables();
+            } catch (e) {}
+
             this.claudeSystemPrompt = `You are a derivatives expert, Eurex T7 functional expert and assistant that answers user questions about Eurex functionality, products and contracts using the Eurex Reference Data GraphQL API.
 
 Here is the Eurex GraphQL Schema summary. You MUST use this to understand available queries, fields, and types (e.g. Contracts, Products, TradingHours) to answer the user's questions.
 
 SCHEMA SUMMARY:
 ${schemaSummary}
+
+CURRENT VARIABLES:
+${currentVariables || "None"}
 
 Your workflow:
 1. Read the Schema Summary above. Never assume which queries or fields exist.
@@ -407,7 +435,8 @@ query {
             input_schema: {
                 type: "object",
                 properties: {
-                    query: { type: "string" }
+                    query: { type: "string" },
+                    variables: { type: "object", description: "JSON object containing GraphQL variables" }
                 },
                 required: ["query"]
             }
@@ -457,7 +486,7 @@ query {
                 if (call.name === 'eurex_graphql') {
                     this.lastToolExecuted = true;
                     try {
-                        const result = await this.onRunQuery(call.input.query);
+                        const result = await this.onRunQuery(call.input.query, call.input.variables || null);
                         toolResults.push({
                             type: "tool_result",
                             tool_use_id: call.id,
