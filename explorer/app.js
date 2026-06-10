@@ -869,10 +869,27 @@ ${schemaSDL}
             e: apiUrlInput.value.trim()
         };
 
-        // Only include non-default values to keep URL shorter
-        if (uiState.sortCol) state.sc = uiState.sortCol;
-        if (uiState.sortAsc === false) state.sa = false;
-        if (Object.keys(uiState.columnFilters).length > 0) state.cf = uiState.columnFilters;
+        // Handle table states (sorting, filtering, etc.)
+        if (uiState.tables && uiState.tables.length > 0) {
+            if (uiState.tables.length === 1) {
+                // Legacy/Single table support
+                const t = uiState.tables[0];
+                if (t.sortCol) state.sc = t.sortCol;
+                if (t.sortAsc === false) state.sa = false;
+                if (t.columnFilters && Object.keys(t.columnFilters).length > 0) state.cf = t.columnFilters;
+                if (t.stickyCols && t.stickyCols.length > 0) state.stc = t.stickyCols;
+            } else {
+                // Multi-table support
+                state.ts = uiState.tables.map(t => {
+                    const ts = {};
+                    if (t.sortCol) ts.sc = t.sortCol;
+                    if (t.sortAsc === false) ts.sa = false;
+                    if (t.columnFilters && Object.keys(t.columnFilters).length > 0) ts.cf = t.columnFilters;
+                    if (t.stickyCols && t.stickyCols.length > 0) ts.stc = t.stickyCols;
+                    return ts;
+                });
+            }
+        }
 
         // Use a more robust way to encode to base64 for Unicode support
         const jsonState = JSON.stringify(state);
@@ -939,11 +956,25 @@ ${schemaSDL}
 
             // Wait a bit for everything to be ready
             setTimeout(() => {
-                executeGraphQLQuery(query, {
-                    sortCol: s.sc || s.sortCol || null,
-                    sortAsc: s.sa !== undefined ? s.sa : (s.sortAsc !== undefined ? s.sortAsc : true),
-                    columnFilters: s.cf || s.columnFilters || {}
-                }).catch(() => {});
+                const tableOptions = {};
+
+                if (s.ts) {
+                    // New multi-table format
+                    tableOptions.tables = s.ts.map(t => ({
+                        sortCol: t.sc || t.sortCol || null,
+                        sortAsc: t.sa !== undefined ? t.sa : (t.sortAsc !== undefined ? t.sortAsc : true),
+                        columnFilters: t.cf || t.columnFilters || {},
+                        stickyCols: t.stc || t.stickyCols || []
+                    }));
+                } else {
+                    // Backward compatibility / Single table
+                    tableOptions.sortCol = s.sc || s.sortCol || null;
+                    tableOptions.sortAsc = s.sa !== undefined ? s.sa : (s.sortAsc !== undefined ? s.sortAsc : true);
+                    tableOptions.columnFilters = s.cf || s.columnFilters || {};
+                    tableOptions.stickyCols = s.stc || s.stickyCols || [];
+                }
+
+                executeGraphQLQuery(query, tableOptions).catch(() => {});
             }, 500);
         } catch (e) {
             console.error('Failed to parse shared state', e);
