@@ -56,7 +56,7 @@ export class InfoPanel {
         this._setContent(this.els.statusGrid, 'loading', 'Checking API status…');
 
         try {
-            const data = await this.client.request(STATUS_QUERY, false);
+            const data = await this.client.request(STATUS_QUERY, null, false);
             const today = new Date().toISOString().split('T')[0];
 
             this.els.statusGrid.innerHTML = '';
@@ -120,7 +120,7 @@ export class InfoPanel {
         `;
 
         try {
-            const response = await this.client.request(query, false);
+            const response = await this.client.request(query, null, false);
             if (!response || !response.Changelog || !response.Changelog.data) {
                 throw new Error("No changelog data found.");
             }

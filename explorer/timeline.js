@@ -62,7 +62,7 @@ export class TimelineManager {
         `;
 
         try {
-            const response = await this.client.request(query, false);
+            const response = await this.client.request(query, null, false);
             if (response.errors) throw new Error(response.errors[0].message);
 
             const products = response.ProductInfos.data;
