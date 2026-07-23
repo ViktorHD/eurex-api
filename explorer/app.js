@@ -164,15 +164,24 @@ document.addEventListener('DOMContentLoaded', () => {
         navInfo.addEventListener('click', () => switchAppView('info'));
     }
 
-    // Sidebar Autohide/Unhide logic
+    // Sidebar Autohide/Unhide logic with 300ms hover delay
     if (appNav) {
+        let expandTimeout = null;
+
         appNav.addEventListener('mouseenter', () => {
             if (!isMobile()) {
-                appNav.classList.add('expanded');
+                if (expandTimeout) clearTimeout(expandTimeout);
+                expandTimeout = setTimeout(() => {
+                    appNav.classList.add('expanded');
+                }, 300);
             }
         });
 
         appNav.addEventListener('mouseleave', () => {
+            if (expandTimeout) {
+                clearTimeout(expandTimeout);
+                expandTimeout = null;
+            }
             if (!isMobile()) {
                 appNav.classList.remove('expanded');
             }
@@ -182,6 +191,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const navBtns = appNav.querySelectorAll('.nav-btn');
         navBtns.forEach(btn => {
             btn.addEventListener('click', () => {
+                if (expandTimeout) {
+                    clearTimeout(expandTimeout);
+                    expandTimeout = null;
+                }
                 if (!isMobile()) {
                     appNav.classList.remove('expanded');
                 }
@@ -197,10 +210,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isMobile()) {
             switchMobilePane('query');
         } else {
-            deactivateTimeline();
-            queryPane.classList.toggle('hidden');
-            resultsPane.classList.remove('hidden');
-            if (firstSplitter) firstSplitter.classList.toggle('hidden', queryPane.classList.contains('hidden'));
+            const isApiExplorerActive = navApiExplorer?.classList.contains('active');
+            if (!isApiExplorerActive) {
+                switchAppView('api-explorer');
+                queryPane.classList.remove('hidden');
+                if (firstSplitter) firstSplitter.classList.remove('hidden');
+            } else {
+                queryPane.classList.toggle('hidden');
+                resultsPane.classList.remove('hidden');
+                if (firstSplitter) firstSplitter.classList.toggle('hidden', queryPane.classList.contains('hidden'));
+            }
         }
     });
 
