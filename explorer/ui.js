@@ -157,6 +157,7 @@ export class DataTable {
             pinBtn.className = 'pin-btn' + (this.stickyCols.has(h) ? ' active' : '');
             pinBtn.innerHTML = '📌';
             pinBtn.title = 'Pin Column';
+            pinBtn.setAttribute('aria-label', 'Pin Column');
             pinBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (this.stickyCols.has(h)) {

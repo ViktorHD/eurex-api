@@ -575,6 +575,7 @@ query {
                     if (isGraphQL) {
                         const runBtn = document.createElement('button');
                         runBtn.className = 'run-query-btn';
+                        runBtn.setAttribute('aria-label', 'Run query');
 
                         const iconI = document.createElement('i');
                         iconI.setAttribute('data-feather', 'play');
