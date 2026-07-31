@@ -77,7 +77,7 @@
                     <button id="toggleDocsBtn" class="secondary-btn docs-btn hide-mobile">
                         <i data-feather="book"></i> Docs
                     </button>
-                    <button id="moreMenuBtn" class="icon-btn show-mobile-flex hidden"><i data-feather="more-vertical"></i></button>
+                    <button id="moreMenuBtn" class="icon-btn show-mobile-flex hidden" aria-label="More options"><i data-feather="more-vertical"></i></button>
                 </div>
             </header>
 
@@ -113,8 +113,8 @@
                     <div class="pane-header">
                         <span>API Status & Changelog</span>
                         <div style="display: flex; align-items: center; gap: 12px;">
-                            <button id="refreshInfoBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
-                            <button id="closeInfoBtn" class="icon-btn hide-mobile"><i data-feather="x"></i></button>
+                            <button id="refreshInfoBtn" class="icon-btn" title="Refresh" aria-label="Refresh API Status"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                            <button id="closeInfoBtn" class="icon-btn hide-mobile" aria-label="Close API Status"><i data-feather="x"></i></button>
                         </div>
                     </div>
                     <div class="info-scroll-container" style="flex: 1; overflow-y: auto; background: var(--bg-main);">
@@ -147,7 +147,7 @@
                                 <option value="CST">CST/CDT (Chicago)</option>
                                 <option value="LOCAL">Local Time</option>
                             </select>
-                            <button id="refreshTimelineBtn" class="icon-btn" title="Refresh"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                            <button id="refreshTimelineBtn" class="icon-btn" title="Refresh" aria-label="Refresh Trading Hours"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
                         </div>
                     </div>
                     <div id="timelineContainer" class="timeline-container">
@@ -169,7 +169,7 @@
                                 <i data-feather="play" style="width: 14px; height: 14px;"></i> Run
                             </button>
                         </div>
-                        <button id="closeQueryBtn" class="icon-btn"><i data-feather="x"></i></button>
+                        <button id="closeQueryBtn" class="icon-btn" aria-label="Close Query Pane"><i data-feather="x"></i></button>
                     </div>
                     <textarea id="queryInput" class="code-editor" spellcheck="false">
 query {
@@ -265,7 +265,7 @@ query {
                 <section class="pane docs-pane hidden" id="docsPane">
                     <div class="pane-header">
                         <span>Schema Explorer</span>
-                        <button id="closeDocsBtn" class="icon-btn"><i data-feather="x"></i></button>
+                        <button id="closeDocsBtn" class="icon-btn" aria-label="Close Schema Explorer"><i data-feather="x"></i></button>
                     </div>
                     <div class="docs-content" id="docsContent">
                         <input type="text" id="docsSearch" placeholder="Search types and fields..." class="docs-search">
@@ -318,7 +318,7 @@ query {
         <div class="modal-content">
             <div class="modal-header">
                 <span>AI Handoff - API Skill</span>
-                <button id="closeAiInfoModal" class="icon-btn"><i data-feather="x"></i></button>
+                <button id="closeAiInfoModal" class="icon-btn" aria-label="Close AI Info"><i data-feather="x"></i></button>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 12px; font-size: 0.875rem; color: var(--text-secondary);">Copy this configuration to your AI assistant (e.g. ChatGPT, Claude) to enable it to help you with the Eurex API.</p>
@@ -333,7 +333,7 @@ query {
         <div class="modal-content">
             <div class="modal-header">
                 <span>Share Results</span>
-                <button id="closeShareModal" class="icon-btn"><i data-feather="x"></i></button>
+                <button id="closeShareModal" class="icon-btn" aria-label="Close Share Settings"><i data-feather="x"></i></button>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 16px; font-size: 0.875rem; color: var(--text-secondary);">Anyone with this link can view these results using the Eurex demo API key.</p>
@@ -350,7 +350,7 @@ query {
         <div id="chatbotWindow" class="chatbot-window hidden">
             <div class="chatbot-header">
                 <span>Eurex AI Assistant</span>
-                <button id="closeChatbotBtn" class="icon-btn" style="color: white;"><i data-feather="x"></i></button>
+                <button id="closeChatbotBtn" class="icon-btn" style="color: white;" aria-label="Close AI Assistant"><i data-feather="x"></i></button>
             </div>
             <div id="chatbotMessages" class="chatbot-messages">
                 <div class="chat-message assistant">
@@ -359,7 +359,7 @@ query {
             </div>
             <div class="chatbot-input-area">
                 <textarea id="chatbotInput" placeholder="Ask a question or request a query..." rows="2"></textarea>
-                <button id="sendChatbotBtn" class="icon-btn"><i data-feather="send"></i></button>
+                <button id="sendChatbotBtn" class="icon-btn" aria-label="Send Message"><i data-feather="send"></i></button>
             </div>
         </div>
         <button id="toggleChatbotBtn" class="chatbot-toggle-btn">
