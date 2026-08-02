@@ -150,6 +150,7 @@ export class SchemaExplorer {
                 const rootField = rootFieldMap[type.name];
                 const fullBtn = document.createElement('button');
                 fullBtn.className = 'docs-add-btn docs-add-btn-inline';
+                fullBtn.setAttribute('aria-label', 'Add inline query');
                 fullBtn.textContent = '+ Query';
                 fullBtn.title = 'Generate full query for ' + type.name;
                 fullBtn.addEventListener('click', (e) => {
@@ -223,6 +224,7 @@ export class SchemaExplorer {
 
                 const addBtn = document.createElement('button');
                 addBtn.className = 'docs-add-btn docs-add-btn-secondary docs-add-btn-sm';
+                addBtn.setAttribute('aria-label', 'Add field to query');
                 addBtn.textContent = '+ Add';
                 addBtn.title = 'Add this field to the current query';
                 addBtn.addEventListener('click', (e) => {
@@ -235,6 +237,7 @@ export class SchemaExplorer {
 
                 const filterBtn = document.createElement('button');
                 filterBtn.className = 'docs-add-btn docs-add-btn-secondary docs-add-btn-sm';
+                filterBtn.setAttribute('aria-label', 'Add filter for field');
                 filterBtn.textContent = '+ Filter';
                 filterBtn.title = 'Add this field as a filter';
                 filterBtn.addEventListener('click', (e) => {

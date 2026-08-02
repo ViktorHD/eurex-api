@@ -155,6 +155,8 @@ export class DataTable {
             // Pin button
             const pinBtn = document.createElement('button');
             pinBtn.className = 'pin-btn' + (this.stickyCols.has(h) ? ' active' : '');
+            pinBtn.setAttribute('aria-label', 'Pin column ' + h);
+            pinBtn.title = 'Pin column ' + h;
             pinBtn.innerHTML = '📌';
             pinBtn.title = 'Pin Column';
             pinBtn.addEventListener('click', (e) => {
@@ -260,6 +262,8 @@ export class DataTable {
                     const btn = document.createElement('button');
                     btn.className = 'expand-btn';
                     const isExpanded = this.expandedRows.has(item.originalIndex);
+                    btn.setAttribute('aria-label', isExpanded ? 'Collapse row' : 'Expand row');
+                    btn.title = isExpanded ? 'Collapse row' : 'Expand row';
                     btn.innerHTML = `<i data-feather="${isExpanded ? 'chevron-down' : 'chevron-right'}"></i> ${nestedData.length} items`;
                     btn.addEventListener('click', () => {
                         if (this.expandedRows.has(item.originalIndex)) {
