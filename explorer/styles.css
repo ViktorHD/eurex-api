@@ -2108,3 +2108,9 @@ th.sticky-col { z-index: 30; }
     td::before { display: none; }
 
 }
+
+/* Add global focus-visible styles for accessibility */
+*:focus-visible {
+    outline: 2px solid var(--neon-green);
+    outline-offset: 2px;
+}
