@@ -10,6 +10,49 @@ const CYCLE_COLORS = {
 };
 const DEFAULT_CYCLE_COLOR = '#757575';
 
+export function formatDateToDDMMYYYY(dateStr) {
+    if (!dateStr) return '';
+    if (dateStr.includes('.')) return dateStr;
+    const parts = dateStr.split('T')[0].split('-');
+    if (parts.length === 3) {
+        const [y, m, d] = parts;
+        return `${d.padStart(2, '0')}.${m.padStart(2, '0')}.${y}`;
+    }
+    return dateStr;
+}
+
+export function generateStrikesCsv(symbol, contractDateFormatted, startStrike, endStrike, distance) {
+    const start = Number(startStrike);
+    const end = Number(endStrike);
+    const step = Number(distance);
+    if (Number.isNaN(start) || Number.isNaN(end) || Number.isNaN(step) || step <= 0 || start > end) {
+        throw new Error('Invalid strike range or distance');
+    }
+    const lines = ['Symbol;ContractDate;StrikePrice'];
+    let current = start;
+    let count = 0;
+    const maxCount = 10000;
+    while (current <= end + 1e-9 && count < maxCount) {
+        const strikeVal = Number(current.toFixed(6));
+        lines.push(`${symbol};${contractDateFormatted};${strikeVal}`);
+        current += step;
+        count++;
+    }
+    return lines.join('\r\n');
+}
+
+export function downloadCsvFile(filename, csvContent) {
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', filename);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 export class OverviewManager {
     constructor(client, els) {
         this.client = client; // shared GraphQLClient instance (same one used by the Query pane)
@@ -37,6 +80,100 @@ export class OverviewManager {
                 if (this._lastChart) this._renderChart(this._lastChart.normalRows, this._lastChart.lepoRows, this._lastChart.product, this._lastChart.allRows);
             });
         }
+
+        const modal = document.getElementById('requestStrikesModal');
+        const closeBtn = document.getElementById('closeRequestStrikesModal');
+        const cancelBtn = document.getElementById('cancelRequestStrikesBtn');
+        const form = document.getElementById('requestStrikesForm');
+
+        if (modal) {
+            const closeModal = () => modal.classList.add('hidden');
+            if (closeBtn) closeBtn.addEventListener('click', closeModal);
+            if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeModal();
+            });
+
+            if (form) {
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const symbol = document.getElementById('reqSymbol')?.value || '';
+                    const contractDate = document.getElementById('reqContractDate')?.value || '';
+                    const startStrike = document.getElementById('reqStartStrike')?.value;
+                    const endStrike = document.getElementById('reqEndStrike')?.value;
+                    const distance = document.getElementById('reqStrikeDistance')?.value;
+
+                    try {
+                        const csvContent = generateStrikesCsv(symbol, contractDate, startStrike, endStrike, distance);
+                        const filename = `additional_strikes_${symbol}_${contractDate}.csv`;
+                        downloadCsvFile(filename, csvContent);
+                        closeModal();
+                    } catch (err) {
+                        alert(err.message || 'Error generating CSV');
+                    }
+                });
+            }
+        }
+    }
+
+    openRequestStrikesModal(product, rawDates, sortedStrikes) {
+        const modal = document.getElementById('requestStrikesModal');
+        if (!modal) return;
+
+        const symbolInput = document.getElementById('reqSymbol');
+        const dateSelect = document.getElementById('reqContractDate');
+        const startInput = document.getElementById('reqStartStrike');
+        const endInput = document.getElementById('reqEndStrike');
+        const distanceInput = document.getElementById('reqStrikeDistance');
+        const distanceHint = document.getElementById('reqDistanceHint');
+
+        if (symbolInput) symbolInput.value = product || '';
+        if (startInput) startInput.value = '';
+        if (endInput) endInput.value = '';
+        if (distanceInput) distanceInput.value = '';
+
+        const step = this._strikeStep(sortedStrikes || []);
+        if (distanceHint) {
+            distanceHint.textContent = step && Number.isFinite(step)
+                ? `Default strike distance for ${product}: ${step}`
+                : '';
+        }
+
+        if (dateSelect) {
+            const formattedDates = [...new Set((rawDates || []).map(d => formatDateToDDMMYYYY(d)))].filter(Boolean);
+            dateSelect.innerHTML = formattedDates
+                .map(d => `<option value="${d}">${d}</option>`)
+                .join('');
+        }
+
+        modal.classList.remove('hidden');
+        if (window.feather) window.feather.replace();
+    }
+
+    _createChartHeader(titleText, product, dates, strikes) {
+        const header = document.createElement('div');
+        header.className = 'overview-chart-header';
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = titleText;
+        header.appendChild(titleSpan);
+
+        if (product && strikes && strikes.length > 0) {
+            const reqBtn = document.createElement('button');
+            reqBtn.type = 'button';
+            reqBtn.className = 'primary-btn';
+            reqBtn.style.height = '32px';
+            reqBtn.style.padding = '0 12px';
+            reqBtn.style.fontSize = '0.75rem';
+            reqBtn.innerHTML = `<i data-feather="plus-circle" style="width: 14px; height: 14px;"></i> Request additional strikes`;
+            reqBtn.addEventListener('click', () => this.openRequestStrikesModal(product, dates, strikes));
+            header.appendChild(reqBtn);
+        }
+
+        return header;
     }
 
     _createTooltip() {
@@ -459,11 +596,10 @@ export class OverviewManager {
         }
         legend.innerHTML = legendHtml;
 
-        const header = document.createElement('div');
-        header.className = 'overview-chart-header';
         const flexCount = normalRows.filter(r => r.ContractCycle === 'FLEXIBLE').length;
-        header.textContent = `${product} — ${normalRows.length} contracts across ${dates.length} contract dates`
+        const titleText = `${product} — ${normalRows.length} contracts across ${dates.length} contract dates`
             + (flexCount > 0 ? ` (includes ${flexCount} flexible)` : '');
+        const header = this._createChartHeader(titleText, product, dates, strikes);
 
         this.els.content.innerHTML = '';
         this.els.content.appendChild(header);
@@ -633,9 +769,10 @@ export class OverviewManager {
             return `<span class="overview-legend-item"><span class="overview-legend-swatch" style="background:${color}"></span>${cycle}</span>`;
         }).join('');
 
-        const header = document.createElement('div');
-        header.className = 'overview-chart-header';
-        header.textContent = `${product} — ${points.length} contracts with delta coverage`;
+        const deltaDates = [...new Set(points.map(p => p.ContractDate))].sort();
+        const deltaStrikes = [...new Set(points.map(p => Number(p.Strike)))].sort((a, b) => a - b);
+        const titleText = `${product} — ${points.length} contracts with delta coverage`;
+        const header = this._createChartHeader(titleText, product, deltaDates, deltaStrikes);
 
         this.els.content.innerHTML = '';
         this.els.content.appendChild(header);
@@ -720,9 +857,8 @@ export class OverviewManager {
             this._redraw3DScene();
         });
 
-        const header = document.createElement('div');
-        header.className = 'overview-chart-header';
-        header.textContent = `${product} — ${points.length} contracts (3D: Delta \u00d7 Strike \u00d7 Contract Date)`;
+        const titleText = `${product} — ${points.length} contracts (3D: Delta \u00d7 Strike \u00d7 Contract Date)`;
+        const header = this._createChartHeader(titleText, product, dates, strikes);
 
         this.els.content.innerHTML = '';
         this.els.content.appendChild(header);
