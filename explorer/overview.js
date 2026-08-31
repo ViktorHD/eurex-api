@@ -21,23 +21,51 @@ export function formatDateToDDMMYYYY(dateStr) {
     return dateStr;
 }
 
-export function generateStrikesCsv(symbol, contractDateFormatted, startStrike, endStrike, distance) {
-    const start = Number(startStrike);
-    const end = Number(endStrike);
-    const step = Number(distance);
-    if (Number.isNaN(start) || Number.isNaN(end) || Number.isNaN(step) || step <= 0 || start > end) {
+export function generateStrikesCsv(symbol, contractDateOrEntries, startStrike, endStrike, distance) {
+    let entries = [];
+    if (Array.isArray(contractDateOrEntries)) {
+        entries = contractDateOrEntries;
+    } else {
+        entries = [{
+            contractDate: contractDateOrEntries,
+            startStrike,
+            endStrike,
+            distance
+        }];
+    }
+
+    if (!entries.length) {
         throw new Error('Invalid strike range or distance');
     }
+
     const lines = ['Symbol;ContractDate;StrikePrice'];
-    let current = start;
-    let count = 0;
+    const seen = new Set();
     const maxCount = 10000;
-    while (current <= end + 1e-9 && count < maxCount) {
-        const strikeVal = Number(current.toFixed(6));
-        lines.push(`${symbol};${contractDateFormatted};${strikeVal}`);
-        current += step;
-        count++;
+    let count = 0;
+
+    for (const entry of entries) {
+        const date = entry.contractDate || entry.ContractDate;
+        const start = Number(entry.startStrike ?? entry.StartStrike);
+        const end = Number(entry.endStrike ?? entry.EndStrike);
+        const step = Number(entry.distance ?? entry.Distance);
+
+        if (!date || Number.isNaN(start) || Number.isNaN(end) || Number.isNaN(step) || step <= 0 || start > end) {
+            throw new Error('Invalid strike range or distance');
+        }
+
+        let current = start;
+        while (current <= end + 1e-9 && count < maxCount) {
+            const strikeVal = Number(current.toFixed(6));
+            const line = `${symbol};${date};${strikeVal}`;
+            if (!seen.has(line)) {
+                seen.add(line);
+                lines.push(line);
+            }
+            current += step;
+            count++;
+        }
     }
+
     return lines.join('\r\n');
 }
 
@@ -85,6 +113,7 @@ export class OverviewManager {
         const closeBtn = document.getElementById('closeRequestStrikesModal');
         const cancelBtn = document.getElementById('cancelRequestStrikesBtn');
         const form = document.getElementById('requestStrikesForm');
+        const addRowBtn = document.getElementById('addReqRowBtn');
 
         if (modal) {
             const closeModal = () => modal.classList.add('hidden');
@@ -94,18 +123,39 @@ export class OverviewManager {
                 if (e.target === modal) closeModal();
             });
 
+            if (addRowBtn) {
+                addRowBtn.addEventListener('click', () => {
+                    this._addRequestStrikeRow();
+                });
+            }
+
             if (form) {
                 form.addEventListener('submit', (e) => {
                     e.preventDefault();
                     const symbol = document.getElementById('reqSymbol')?.value || '';
-                    const contractDate = document.getElementById('reqContractDate')?.value || '';
-                    const startStrike = document.getElementById('reqStartStrike')?.value;
-                    const endStrike = document.getElementById('reqEndStrike')?.value;
-                    const distance = document.getElementById('reqStrikeDistance')?.value;
+                    const rowEls = document.querySelectorAll('.req-strike-row');
+                    const entries = [];
+
+                    rowEls.forEach(row => {
+                        const dateSelect = row.querySelector('.req-contract-date');
+                        const startInput = row.querySelector('.req-start-strike');
+                        const endInput = row.querySelector('.req-end-strike');
+                        const distanceInput = row.querySelector('.req-strike-distance');
+
+                        if (dateSelect && startInput && endInput && distanceInput) {
+                            entries.push({
+                                contractDate: dateSelect.value,
+                                startStrike: startInput.value,
+                                endStrike: endInput.value,
+                                distance: distanceInput.value
+                            });
+                        }
+                    });
 
                     try {
-                        const csvContent = generateStrikesCsv(symbol, contractDate, startStrike, endStrike, distance);
-                        const filename = `additional_strikes_${symbol}_${contractDate}.csv`;
+                        const csvContent = generateStrikesCsv(symbol, entries);
+                        const todayFormatted = formatDateToDDMMYYYY(new Date().toISOString().split('T')[0]);
+                        const filename = `additional_strikes_${symbol}_${todayFormatted}.csv`;
                         downloadCsvFile(filename, csvContent);
                         closeModal();
                     } catch (err) {
@@ -116,21 +166,66 @@ export class OverviewManager {
         }
     }
 
+    _addRequestStrikeRow(defaultDate = '') {
+        const container = document.getElementById('reqRowsContainer');
+        if (!container) return;
+
+        const row = document.createElement('div');
+        row.className = 'req-strike-row';
+        row.style.cssText = 'padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-main); position: relative;';
+
+        const datesHtml = (this._modalDates || [])
+            .map(d => `<option value="${d}" ${d === defaultDate ? 'selected' : ''}>${d}</option>`)
+            .join('');
+
+        const isFirst = container.children.length === 0;
+
+        row.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">Contract Date</label>
+                ${!isFirst ? `<button type="button" class="icon-btn remove-req-row-btn" aria-label="Remove range row" title="Remove range row" style="color: #ff1744; padding: 2px;"><i data-feather="trash-2" style="width: 14px; height: 14px;"></i></button>` : ''}
+            </div>
+            <div style="margin-bottom: 8px;">
+                <select class="req-contract-date" required style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
+                    ${datesHtml}
+                </select>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <div style="flex: 1;">
+                    <label style="display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 2px; color: var(--text-secondary);">Start Strike</label>
+                    <input type="number" step="any" class="req-start-strike" required placeholder="e.g. 4500" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 2px; color: var(--text-secondary);">End Strike</label>
+                    <input type="number" step="any" class="req-end-strike" required placeholder="e.g. 4600" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 2px; color: var(--text-secondary);">Distance</label>
+                    <input type="number" step="any" class="req-strike-distance" required placeholder="e.g. 25" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
+                </div>
+            </div>
+        `;
+
+        const removeBtn = row.querySelector('.remove-req-row-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                row.remove();
+            });
+        }
+
+        container.appendChild(row);
+        if (window.feather) window.feather.replace();
+    }
+
     openRequestStrikesModal(product, rawDates, sortedStrikes) {
         const modal = document.getElementById('requestStrikesModal');
         if (!modal) return;
 
         const symbolInput = document.getElementById('reqSymbol');
-        const dateSelect = document.getElementById('reqContractDate');
-        const startInput = document.getElementById('reqStartStrike');
-        const endInput = document.getElementById('reqEndStrike');
-        const distanceInput = document.getElementById('reqStrikeDistance');
         const distanceHint = document.getElementById('reqDistanceHint');
+        const container = document.getElementById('reqRowsContainer');
 
         if (symbolInput) symbolInput.value = product || '';
-        if (startInput) startInput.value = '';
-        if (endInput) endInput.value = '';
-        if (distanceInput) distanceInput.value = '';
 
         const step = this._strikeStep(sortedStrikes || []);
         if (distanceHint) {
@@ -139,11 +234,12 @@ export class OverviewManager {
                 : '';
         }
 
-        if (dateSelect) {
-            const formattedDates = [...new Set((rawDates || []).map(d => formatDateToDDMMYYYY(d)))].filter(Boolean);
-            dateSelect.innerHTML = formattedDates
-                .map(d => `<option value="${d}">${d}</option>`)
-                .join('');
+        const formattedDates = [...new Set((rawDates || []).map(d => formatDateToDDMMYYYY(d)))].filter(Boolean);
+        this._modalDates = formattedDates;
+
+        if (container) {
+            container.innerHTML = '';
+            this._addRequestStrikeRow(formattedDates[0] || '');
         }
 
         modal.classList.remove('hidden');
