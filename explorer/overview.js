@@ -21,10 +21,13 @@ export function formatDateToDDMMYYYY(dateStr) {
     return dateStr;
 }
 
-export function generateStrikesCsv(symbol, contractDateOrEntries, startStrike, endStrike, distance) {
+export function generateStrikesCsv(symbol, contractDateOrEntries, startStrike, endStrike, distance, existingStrikes = null) {
     let entries = [];
     if (Array.isArray(contractDateOrEntries)) {
         entries = contractDateOrEntries;
+        if (startStrike && (startStrike instanceof Set || Array.isArray(startStrike))) {
+            existingStrikes = startStrike;
+        }
     } else {
         entries = [{
             contractDate: contractDateOrEntries,
@@ -36,6 +39,11 @@ export function generateStrikesCsv(symbol, contractDateOrEntries, startStrike, e
 
     if (!entries.length) {
         throw new Error('Invalid strike range or distance');
+    }
+
+    let existingSet = null;
+    if (existingStrikes) {
+        existingSet = existingStrikes instanceof Set ? existingStrikes : new Set(existingStrikes);
     }
 
     const lines = ['Symbol;ContractDate;StrikePrice'];
@@ -58,10 +66,13 @@ export function generateStrikesCsv(symbol, contractDateOrEntries, startStrike, e
             let current = start;
             while (current <= end + 1e-9 && count < maxCount) {
                 const strikeVal = Number(current.toFixed(6));
-                const line = `${symbol};${date};${strikeVal}`;
-                if (!seen.has(line)) {
-                    seen.add(line);
-                    lines.push(line);
+                const key = `${date}|${strikeVal}`;
+                if (!existingSet || !existingSet.has(key)) {
+                    const line = `${symbol};${date};${strikeVal}`;
+                    if (!seen.has(line)) {
+                        seen.add(line);
+                        lines.push(line);
+                    }
                 }
                 current += step;
                 count++;
@@ -72,24 +83,49 @@ export function generateStrikesCsv(symbol, contractDateOrEntries, startStrike, e
     return lines.join('\r\n');
 }
 
-export function generateStrikeRequestEmailText(symbol, entries) {
+export function generateStrikeRequestEmailText(symbol, entries, existingStrikes = null) {
+    let existingSet = null;
+    if (existingStrikes) {
+        existingSet = existingStrikes instanceof Set ? existingStrikes : new Set(existingStrikes);
+    }
+
     const rows = [];
+    let totalNewStrikes = 0;
+
     for (const entry of entries) {
         const rawDate = entry.contractDates || entry.contractDate || entry.ContractDate;
         const dates = Array.isArray(rawDate) ? rawDate : [rawDate];
-        const start = entry.startStrike ?? entry.StartStrike;
-        const end = entry.endStrike ?? entry.EndStrike;
-        const distance = entry.distance ?? entry.Distance;
+        const start = Number(entry.startStrike ?? entry.StartStrike);
+        const end = Number(entry.endStrike ?? entry.EndStrike);
+        const distance = Number(entry.distance ?? entry.Distance);
 
         for (const d of dates) {
-            rows.push({
-                symbol: String(symbol),
-                contractDate: String(d),
-                startStrike: String(start),
-                endStrike: String(end),
-                distance: String(distance)
-            });
+            let current = start;
+            let newCount = 0;
+            while (current <= end + 1e-9) {
+                const strikeVal = Number(current.toFixed(6));
+                const key = `${d}|${strikeVal}`;
+                if (!existingSet || !existingSet.has(key)) {
+                    newCount++;
+                }
+                current += distance;
+            }
+
+            if (newCount > 0) {
+                totalNewStrikes += newCount;
+                rows.push({
+                    symbol: String(symbol),
+                    contractDate: String(d),
+                    startStrike: String(start),
+                    endStrike: String(end),
+                    distance: String(distance)
+                });
+            }
         }
+    }
+
+    if (rows.length === 0) {
+        return '';
     }
 
     const colHeaders = {
@@ -135,7 +171,7 @@ export function generateStrikeRequestEmailText(symbol, entries) {
     }
     tableLines.push(sepLine);
 
-    return `Dear Eurex Operations Team,\n\nPlease add the following strike prices for ${symbol} for the next trading day:\n\n${tableLines.join('\n')}\n\nNote: The requested strikes CSV file has been downloaded and is attached to this email.\n\nThank you,\nBest regards`;
+    return `Dear Eurex Operations Team,\n\nPlease add the following strike prices for ${symbol} for the next trading day:\n\n${tableLines.join('\n')}\n\nTotal new strikes to add: ${totalNewStrikes}\n\nNote: The requested strikes CSV file has been downloaded and is attached to this email.\n\nThank you,\nBest regards`;
 }
 
 export function downloadCsvFile(filename, csvContent) {
@@ -158,6 +194,7 @@ export class OverviewManager {
         this.currentProduct = null;
         this.tooltip = this._createTooltip();
         this._lastChart = null; // { normalRows, lepoRows, product } for instant view-mode switching
+        this._existingContractsSet = new Set(); // Stores "date|strike" for standard listed Contracts
 
         this.bindEvents();
     }
@@ -227,12 +264,18 @@ export class OverviewManager {
                 prepareMailBtn.addEventListener('click', () => {
                     const { symbol, entries } = extractEntries();
                     try {
-                        const csvContent = generateStrikesCsv(symbol, entries);
+                        const csvContent = generateStrikesCsv(symbol, entries, this._existingContractsSet);
+                        const csvLines = csvContent.split('\r\n').filter(Boolean);
+                        if (csvLines.length <= 1) {
+                            alert('All requested strikes are already listed.');
+                            return;
+                        }
+
                         const todayFormatted = formatDateToDDMMYYYY(new Date().toISOString().split('T')[0]);
                         const filename = `additional_strikes_${symbol}_${todayFormatted}.csv`;
                         downloadCsvFile(filename, csvContent);
 
-                        const emailBody = generateStrikeRequestEmailText(symbol, entries);
+                        const emailBody = generateStrikeRequestEmailText(symbol, entries, this._existingContractsSet);
                         const mailtoUrl = `mailto:eurextrading@eurex.com?subject=${encodeURIComponent(`Request for Additional Strikes - ${symbol} for Next Trading Day`)}&body=${encodeURIComponent(emailBody)}`;
                         window.location.href = mailtoUrl;
 
@@ -249,7 +292,13 @@ export class OverviewManager {
                     const { symbol, entries } = extractEntries();
 
                     try {
-                        const csvContent = generateStrikesCsv(symbol, entries);
+                        const csvContent = generateStrikesCsv(symbol, entries, this._existingContractsSet);
+                        const csvLines = csvContent.split('\r\n').filter(Boolean);
+                        if (csvLines.length <= 1) {
+                            alert('All requested strikes are already listed.');
+                            return;
+                        }
+
                         const todayFormatted = formatDateToDDMMYYYY(new Date().toISOString().split('T')[0]);
                         const filename = `additional_strikes_${symbol}_${todayFormatted}.csv`;
                         downloadCsvFile(filename, csvContent);
@@ -477,17 +526,25 @@ export class OverviewManager {
             const response = await this.client.request(contractsQuery, null, false);
             if (response.errors) throw new Error(response.errors[0].message);
 
+            this._existingContractsSet = new Set();
             const contractRows = (response.Contracts.data || [])
                 .filter(r => r.Strike !== null && r.Strike !== undefined)
-                .map(r => ({
-                    Strike: r.Strike,
-                    ContractDate: r.ContractDate,
-                    ContractCycle: (r.ContractCycle || '').toUpperCase(),
-                    ExpirationDate: r.ExpirationDate,
-                    RefPrice: r.PreviousDaySettlementPrice,
-                    CallPut: (r.CallPut || '').toUpperCase(),
-                    Delta: this._signedDelta(r.OptionsDelta, r.CallPut)
-                }));
+                .map(r => {
+                    const formattedDate = formatDateToDDMMYYYY(r.ContractDate);
+                    const strikeVal = Number(r.Strike);
+                    if (formattedDate && !Number.isNaN(strikeVal)) {
+                        this._existingContractsSet.add(`${formattedDate}|${Number(strikeVal.toFixed(6))}`);
+                    }
+                    return {
+                        Strike: r.Strike,
+                        ContractDate: r.ContractDate,
+                        ContractCycle: (r.ContractCycle || '').toUpperCase(),
+                        ExpirationDate: r.ExpirationDate,
+                        RefPrice: r.PreviousDaySettlementPrice,
+                        CallPut: (r.CallPut || '').toUpperCase(),
+                        Delta: this._signedDelta(r.OptionsDelta, r.CallPut)
+                    };
+                });
 
             // FlexibleContracts are not offered for every product; a failure here shouldn't break the standard view.
             let flexRows = [];
