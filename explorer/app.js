@@ -914,12 +914,39 @@ ${schemaSDL}
 
     // Share Logic
     const shareBtn = document.getElementById('actionShareBtn');
+    const shareOverviewBtn = document.getElementById('shareOverviewBtn');
     const shareModal = document.getElementById('shareModal');
     const closeShareModal = document.getElementById('closeShareModal');
     const shareLinkInput = document.getElementById('shareLinkInput');
     const copyShareLinkBtn = document.getElementById('copyShareLinkBtn');
 
+    const shareOverviewAction = () => {
+        const productInput = document.getElementById('overviewProductInput');
+        const viewSelect = document.getElementById('overviewViewSelect');
+        const state = {
+            view: 'eurex-overview',
+            p: productInput ? productInput.value.trim() : '',
+            m: viewSelect ? viewSelect.value : 'strike',
+            e: apiUrlInput.value.trim()
+        };
+
+        const jsonState = JSON.stringify(state);
+        const encodedState = btoa(encodeURIComponent(jsonState).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+            return String.fromCharCode('0x' + p1);
+        }));
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('eurex-api-state', encodedState);
+
+        shareLinkInput.value = url.toString();
+        shareModal.classList.remove('hidden');
+    };
+
     const shareAction = () => {
+        if (navEurexOverview?.classList.contains('active')) {
+            shareOverviewAction();
+            return;
+        }
         const uiState = ui.exportState();
         const state = {
             q: queryInput.value.trim(),
@@ -978,6 +1005,7 @@ ${schemaSDL}
     });
 
     shareBtn.addEventListener('click', shareAction);
+    if (shareOverviewBtn) shareOverviewBtn.addEventListener('click', shareOverviewAction);
     document.getElementById('mobileShareBtn').addEventListener('click', shareAction);
 
     window.addEventListener('click', (e) => {
@@ -997,12 +1025,9 @@ ${schemaSDL}
             }).join(''));
             const s = JSON.parse(decodedJson);
 
-            const query = s.q || s.query;
-            const variables = s.v || s.variables;
+            const view = s.view;
             const endpoint = s.e || s.endpoint;
 
-            if (query) queryInput.value = query;
-            if (variables) variablesInput.value = variables;
             if (endpoint) {
                 apiUrlInput.value = endpoint;
                 client.setEndpoint(endpoint);
@@ -1014,28 +1039,51 @@ ${schemaSDL}
                 client.setApiKey(DEMO_API_KEY);
             }
 
-            // Wait a bit for everything to be ready
-            setTimeout(() => {
-                const tableOptions = {};
+            if (view === 'eurex-overview') {
+                switchAppView('eurex-overview');
+                const overviewProductInput = document.getElementById('overviewProductInput');
+                const overviewViewSelect = document.getElementById('overviewViewSelect');
+                if (s.p && overviewProductInput) overviewProductInput.value = s.p;
+                if (s.m && overviewViewSelect) overviewViewSelect.value = s.m;
 
-                if (s.ts) {
-                    // New multi-table format
-                    tableOptions.tables = s.ts.map(t => ({
-                        sortCol: t.sc || t.sortCol || null,
-                        sortAsc: t.sa !== undefined ? t.sa : (t.sortAsc !== undefined ? t.sortAsc : true),
-                        columnFilters: t.cf || t.columnFilters || {},
-                        stickyCols: t.stc || t.stickyCols || []
-                    }));
-                } else {
-                    // Backward compatibility / Single table
-                    tableOptions.sortCol = s.sc || s.sortCol || null;
-                    tableOptions.sortAsc = s.sa !== undefined ? s.sa : (s.sortAsc !== undefined ? s.sortAsc : true);
-                    tableOptions.columnFilters = s.cf || s.columnFilters || {};
-                    tableOptions.stickyCols = s.stc || s.stickyCols || [];
-                }
+                setTimeout(() => {
+                    if (!overviewProductsLoaded) {
+                        overviewProductsLoaded = true;
+                        overviewManager.loadProducts().then(() => overviewManager.fetchAndRender());
+                    } else {
+                        overviewManager.fetchAndRender();
+                    }
+                }, 100);
+            } else {
+                const query = s.q || s.query;
+                const variables = s.v || s.variables;
 
-                executeGraphQLQuery(query, tableOptions).catch(() => {});
-            }, 500);
+                if (query) queryInput.value = query;
+                if (variables) variablesInput.value = variables;
+
+                // Wait a bit for everything to be ready
+                setTimeout(() => {
+                    const tableOptions = {};
+
+                    if (s.ts) {
+                        // New multi-table format
+                        tableOptions.tables = s.ts.map(t => ({
+                            sortCol: t.sc || t.sortCol || null,
+                            sortAsc: t.sa !== undefined ? t.sa : (t.sortAsc !== undefined ? t.sortAsc : true),
+                            columnFilters: t.cf || t.columnFilters || {},
+                            stickyCols: t.stc || t.stickyCols || []
+                        }));
+                    } else {
+                        // Backward compatibility / Single table
+                        tableOptions.sortCol = s.sc || s.sortCol || null;
+                        tableOptions.sortAsc = s.sa !== undefined ? s.sa : (s.sortAsc !== undefined ? s.sortAsc : true);
+                        tableOptions.columnFilters = s.cf || s.columnFilters || {};
+                        tableOptions.stickyCols = s.stc || s.stickyCols || [];
+                    }
+
+                    executeGraphQLQuery(query, tableOptions).catch(() => {});
+                }, 500);
+            }
         } catch (e) {
             console.error('Failed to parse shared state', e);
         }
