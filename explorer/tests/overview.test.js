@@ -40,5 +40,16 @@ describe('Overview Additional Strikes Helpers', () => {
             expect(() => generateStrikesCsv('OEXP', '29.09.2023', 4500, 4550, -5)).toThrow('Invalid strike range or distance');
             expect(() => generateStrikesCsv('OEXP', '29.09.2023', 4500, 4550, 0)).toThrow('Invalid strike range or distance');
         });
+
+        test('handles array of entries with multiple contract dates and deduplicates lines', () => {
+            const entries = [
+                { contractDate: '29.09.2023', startStrike: 4500, endStrike: 4525, distance: 25 },
+                { contractDate: '29.09.2023', startStrike: 4525, endStrike: 4550, distance: 25 },
+                { contractDate: '20.10.2023', startStrike: 4600, endStrike: 4600, distance: 25 }
+            ];
+            const result = generateStrikesCsv('OEXP', entries);
+            const expected = 'Symbol;ContractDate;StrikePrice\r\nOEXP;29.09.2023;4500\r\nOEXP;29.09.2023;4525\r\nOEXP;29.09.2023;4550\r\nOEXP;20.10.2023;4600';
+            expect(result).toBe(expected);
+        });
     });
 });

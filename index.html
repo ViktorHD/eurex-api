@@ -306,43 +306,35 @@ query {
 
     <!-- Request Additional Strikes Modal -->
     <div id="requestStrikesModal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 650px; max-height: 90vh; display: flex; flex-direction: column;">
             <div class="modal-header">
                 <span>Request Additional Strikes</span>
                 <button id="closeRequestStrikesModal" class="icon-btn" aria-label="Close Request Additional Strikes modal" title="Close Request Additional Strikes modal"><i data-feather="x"></i></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="overflow-y: auto; max-height: calc(90vh - 60px);">
                 <form id="requestStrikesForm">
-                    <div style="margin-bottom: 16px;">
+                    <div style="margin-bottom: 12px;">
                         <label for="reqSymbol" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: var(--text-primary);">Symbol / Product</label>
                         <input type="text" id="reqSymbol" readonly style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-main); color: var(--text-primary); font-size: 0.9rem;">
                     </div>
-                    <div style="margin-bottom: 16px;">
-                        <label for="reqContractDate" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: var(--text-primary);">Contract Date</label>
-                        <select id="reqContractDate" required style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.9rem;"></select>
-                    </div>
-                    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-                        <div style="flex: 1;">
-                            <label for="reqStartStrike" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: var(--text-primary);">Start Strike</label>
-                            <input type="number" step="any" id="reqStartStrike" required placeholder="e.g. 4500" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.9rem;">
-                        </div>
-                        <div style="flex: 1;">
-                            <label for="reqEndStrike" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: var(--text-primary);">End Strike</label>
-                            <input type="number" step="any" id="reqEndStrike" required placeholder="e.g. 4600" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.9rem;">
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 16px;">
-                        <label for="reqStrikeDistance" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: var(--text-primary);">Strike Distance</label>
-                        <input type="number" step="any" id="reqStrikeDistance" required placeholder="e.g. 25" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.9rem;">
-                        <div id="reqDistanceHint" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;"></div>
+                    <div id="reqDistanceHint" style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 12px;"></div>
+
+                    <div id="reqRowsContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px;">
+                        <!-- Dynamic strike range rows will be rendered here -->
                     </div>
 
-                    <div style="margin-top: 20px; padding: 12px; background: rgba(0, 206, 125, 0.1); border-left: 4px solid var(--neon-green); border-radius: 4px; font-size: 0.825rem; color: var(--navy-blue); line-height: 1.4;">
+                    <div style="margin-bottom: 16px;">
+                        <button type="button" id="addReqRowBtn" class="secondary-btn" style="height: 32px; padding: 0 12px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px;">
+                            <i data-feather="plus" style="width: 14px; height: 14px;"></i> Add Contract Date / Range
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 16px; padding: 12px; background: rgba(0, 206, 125, 0.1); border-left: 4px solid var(--neon-green); border-radius: 4px; font-size: 0.825rem; color: var(--navy-blue); line-height: 1.4;">
                         <i data-feather="info" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i>
                         Please send the generated CSV file to <a href="mailto:eurextrading@eurex.com" style="color: var(--navy-blue); font-weight: 600; text-decoration: underline;">eurextrading@eurex.com</a> for processing.
                     </div>
 
-                    <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 8px;">
+                    <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
                         <button type="button" id="cancelRequestStrikesBtn" class="secondary-btn" style="height: 36px; padding: 0 16px; font-size: 0.8rem;">Cancel</button>
                         <button type="submit" class="primary-btn" style="height: 36px; padding: 0 16px; font-size: 0.8rem;"><i data-feather="download" style="width: 14px; height: 14px;"></i> Generate CSV</button>
                     </div>
