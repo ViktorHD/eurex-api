@@ -6,6 +6,7 @@ import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
 import { TimelineManager } from './timeline.js';
 import { InfoPanel } from './info.js';
+import { OverviewManager } from './overview.js';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
 
@@ -125,6 +126,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (view === 'eurex-overview') {
             navEurexOverview?.classList.add('active');
             overviewPane.classList.remove('hidden');
+            if (!overviewProductsLoaded) {
+                overviewProductsLoaded = true;
+                overviewManager.loadProducts().then(() => overviewManager.fetchAndRender());
+            }
         } else if (view === 'trading-hours') {
             navTradingHours?.classList.add('active');
             timelinePane.classList.remove('hidden');
@@ -236,6 +241,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const client = new GraphQLClient(apiUrlInput.value.trim(), apiKeyInput.value.trim());
     apiKeyInput.addEventListener('input', () => client.setApiKey(apiKeyInput.value.trim()));
     apiUrlInput.addEventListener('input', () => client.setEndpoint(apiUrlInput.value.trim()));
+
+    const overviewManager = new OverviewManager(client, {
+        container: document.getElementById('overviewContainer'),
+        content: document.getElementById('overviewContent'),
+        loading: document.getElementById('overviewLoading'),
+        productInput: document.getElementById('overviewProductInput'),
+        productList: document.getElementById('overviewProductList'),
+        refreshBtn: document.getElementById('refreshOverviewBtn'),
+        viewSelect: document.getElementById('overviewViewSelect')
+    });
+    let overviewProductsLoaded = false;
 
     const ui = new UIManager({
         errorBox: document.getElementById('errorBox'),
