@@ -1,4 +1,4 @@
-import { formatDateToDDMMYYYY, generateStrikesCsv } from '../overview.js';
+import { formatDateToDDMMYYYY, generateStrikesCsv, generateStrikeRequestEmailText } from '../overview.js';
 
 describe('Overview Additional Strikes Helpers', () => {
     describe('formatDateToDDMMYYYY', () => {
@@ -50,6 +50,31 @@ describe('Overview Additional Strikes Helpers', () => {
             const result = generateStrikesCsv('OEXP', entries);
             const expected = 'Symbol;ContractDate;StrikePrice\r\nOEXP;29.09.2023;4500\r\nOEXP;29.09.2023;4525\r\nOEXP;29.09.2023;4550\r\nOEXP;20.10.2023;4600';
             expect(result).toBe(expected);
+        });
+
+        test('handles entry with contractDates array for single strike pattern', () => {
+            const entries = [
+                { contractDates: ['29.09.2023', '20.10.2023'], startStrike: 4500, endStrike: 4525, distance: 25 }
+            ];
+            const result = generateStrikesCsv('OEXP', entries);
+            const expected = 'Symbol;ContractDate;StrikePrice\r\nOEXP;29.09.2023;4500\r\nOEXP;29.09.2023;4525\r\nOEXP;20.10.2023;4500\r\nOEXP;20.10.2023;4525';
+            expect(result).toBe(expected);
+        });
+    });
+
+    describe('generateStrikeRequestEmailText', () => {
+        test('generates business style email text with ASCII table', () => {
+            const entries = [
+                { contractDates: ['29.09.2023', '20.10.2023'], startStrike: 4500, endStrike: 4600, distance: 25 }
+            ];
+            const text = generateStrikeRequestEmailText('OEXP', entries);
+
+            expect(text).toContain('Dear Eurex Operations Team,');
+            expect(text).toContain('Please add the following strike prices for OEXP for the next trading day:');
+            expect(text).toContain('| Symbol | Contract Date | Start Strike | End Strike | Distance |');
+            expect(text).toContain('| OEXP   | 29.09.2023    | 4500         | 4600       | 25       |');
+            expect(text).toContain('| OEXP   | 20.10.2023    | 4500         | 4600       | 25       |');
+            expect(text).toContain('Note: The requested strikes CSV file has been downloaded and is attached to this email.');
         });
     });
 });

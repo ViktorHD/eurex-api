@@ -44,29 +44,98 @@ export function generateStrikesCsv(symbol, contractDateOrEntries, startStrike, e
     let count = 0;
 
     for (const entry of entries) {
-        const date = entry.contractDate || entry.ContractDate;
+        const rawDate = entry.contractDates || entry.contractDate || entry.ContractDate;
+        const dates = Array.isArray(rawDate) ? rawDate : [rawDate];
         const start = Number(entry.startStrike ?? entry.StartStrike);
         const end = Number(entry.endStrike ?? entry.EndStrike);
         const step = Number(entry.distance ?? entry.Distance);
 
-        if (!date || Number.isNaN(start) || Number.isNaN(end) || Number.isNaN(step) || step <= 0 || start > end) {
+        if (!dates.length || dates.some(d => !d) || Number.isNaN(start) || Number.isNaN(end) || Number.isNaN(step) || step <= 0 || start > end) {
             throw new Error('Invalid strike range or distance');
         }
 
-        let current = start;
-        while (current <= end + 1e-9 && count < maxCount) {
-            const strikeVal = Number(current.toFixed(6));
-            const line = `${symbol};${date};${strikeVal}`;
-            if (!seen.has(line)) {
-                seen.add(line);
-                lines.push(line);
+        for (const date of dates) {
+            let current = start;
+            while (current <= end + 1e-9 && count < maxCount) {
+                const strikeVal = Number(current.toFixed(6));
+                const line = `${symbol};${date};${strikeVal}`;
+                if (!seen.has(line)) {
+                    seen.add(line);
+                    lines.push(line);
+                }
+                current += step;
+                count++;
             }
-            current += step;
-            count++;
         }
     }
 
     return lines.join('\r\n');
+}
+
+export function generateStrikeRequestEmailText(symbol, entries) {
+    const rows = [];
+    for (const entry of entries) {
+        const rawDate = entry.contractDates || entry.contractDate || entry.ContractDate;
+        const dates = Array.isArray(rawDate) ? rawDate : [rawDate];
+        const start = entry.startStrike ?? entry.StartStrike;
+        const end = entry.endStrike ?? entry.EndStrike;
+        const distance = entry.distance ?? entry.Distance;
+
+        for (const d of dates) {
+            rows.push({
+                symbol: String(symbol),
+                contractDate: String(d),
+                startStrike: String(start),
+                endStrike: String(end),
+                distance: String(distance)
+            });
+        }
+    }
+
+    const colHeaders = {
+        symbol: 'Symbol',
+        contractDate: 'Contract Date',
+        startStrike: 'Start Strike',
+        endStrike: 'End Strike',
+        distance: 'Distance'
+    };
+
+    const colWidths = {
+        symbol: Math.max(colHeaders.symbol.length, ...rows.map(r => r.symbol.length)),
+        contractDate: Math.max(colHeaders.contractDate.length, ...rows.map(r => r.contractDate.length)),
+        startStrike: Math.max(colHeaders.startStrike.length, ...rows.map(r => r.startStrike.length)),
+        endStrike: Math.max(colHeaders.endStrike.length, ...rows.map(r => r.endStrike.length)),
+        distance: Math.max(colHeaders.distance.length, ...rows.map(r => r.distance.length))
+    };
+
+    const sepLine = '+' +
+        '-'.repeat(colWidths.symbol + 2) + '+' +
+        '-'.repeat(colWidths.contractDate + 2) + '+' +
+        '-'.repeat(colWidths.startStrike + 2) + '+' +
+        '-'.repeat(colWidths.endStrike + 2) + '+' +
+        '-'.repeat(colWidths.distance + 2) + '+';
+
+    const headerLine = '| ' +
+        colHeaders.symbol.padEnd(colWidths.symbol) + ' | ' +
+        colHeaders.contractDate.padEnd(colWidths.contractDate) + ' | ' +
+        colHeaders.startStrike.padEnd(colWidths.startStrike) + ' | ' +
+        colHeaders.endStrike.padEnd(colWidths.endStrike) + ' | ' +
+        colHeaders.distance.padEnd(colWidths.distance) + ' |';
+
+    const tableLines = [sepLine, headerLine, sepLine];
+
+    for (const r of rows) {
+        tableLines.push('| ' +
+            r.symbol.padEnd(colWidths.symbol) + ' | ' +
+            r.contractDate.padEnd(colWidths.contractDate) + ' | ' +
+            r.startStrike.padEnd(colWidths.startStrike) + ' | ' +
+            r.endStrike.padEnd(colWidths.endStrike) + ' | ' +
+            r.distance.padEnd(colWidths.distance) + ' |'
+        );
+    }
+    tableLines.push(sepLine);
+
+    return `Dear Eurex Operations Team,\n\nPlease add the following strike prices for ${symbol} for the next trading day:\n\n${tableLines.join('\n')}\n\nNote: The requested strikes CSV file has been downloaded and is attached to this email.\n\nThank you,\nBest regards`;
 }
 
 export function downloadCsvFile(filename, csvContent) {
@@ -112,6 +181,7 @@ export class OverviewManager {
         const modal = document.getElementById('requestStrikesModal');
         const closeBtn = document.getElementById('closeRequestStrikesModal');
         const cancelBtn = document.getElementById('cancelRequestStrikesBtn');
+        const prepareMailBtn = document.getElementById('prepareMailBtn');
         const form = document.getElementById('requestStrikesForm');
         const addRowBtn = document.getElementById('addReqRowBtn');
 
@@ -129,28 +199,54 @@ export class OverviewManager {
                 });
             }
 
+            const extractEntries = () => {
+                const symbol = document.getElementById('reqSymbol')?.value || '';
+                const rowEls = document.querySelectorAll('.req-strike-row');
+                const entries = [];
+
+                rowEls.forEach(row => {
+                    const dateSelect = row.querySelector('.req-contract-date');
+                    const startInput = row.querySelector('.req-start-strike');
+                    const endInput = row.querySelector('.req-end-strike');
+                    const distanceInput = row.querySelector('.req-strike-distance');
+
+                    if (dateSelect && startInput && endInput && distanceInput) {
+                        const selectedDates = Array.from(dateSelect.selectedOptions).map(opt => opt.value);
+                        entries.push({
+                            contractDates: selectedDates,
+                            startStrike: startInput.value,
+                            endStrike: endInput.value,
+                            distance: distanceInput.value
+                        });
+                    }
+                });
+                return { symbol, entries };
+            };
+
+            if (prepareMailBtn) {
+                prepareMailBtn.addEventListener('click', () => {
+                    const { symbol, entries } = extractEntries();
+                    try {
+                        const csvContent = generateStrikesCsv(symbol, entries);
+                        const todayFormatted = formatDateToDDMMYYYY(new Date().toISOString().split('T')[0]);
+                        const filename = `additional_strikes_${symbol}_${todayFormatted}.csv`;
+                        downloadCsvFile(filename, csvContent);
+
+                        const emailBody = generateStrikeRequestEmailText(symbol, entries);
+                        const mailtoUrl = `mailto:eurextrading@eurex.com?subject=${encodeURIComponent(`Request for Additional Strikes - ${symbol} for Next Trading Day`)}&body=${encodeURIComponent(emailBody)}`;
+                        window.location.href = mailtoUrl;
+
+                        closeModal();
+                    } catch (err) {
+                        alert(err.message || 'Error preparing email');
+                    }
+                });
+            }
+
             if (form) {
                 form.addEventListener('submit', (e) => {
                     e.preventDefault();
-                    const symbol = document.getElementById('reqSymbol')?.value || '';
-                    const rowEls = document.querySelectorAll('.req-strike-row');
-                    const entries = [];
-
-                    rowEls.forEach(row => {
-                        const dateSelect = row.querySelector('.req-contract-date');
-                        const startInput = row.querySelector('.req-start-strike');
-                        const endInput = row.querySelector('.req-end-strike');
-                        const distanceInput = row.querySelector('.req-strike-distance');
-
-                        if (dateSelect && startInput && endInput && distanceInput) {
-                            entries.push({
-                                contractDate: dateSelect.value,
-                                startStrike: startInput.value,
-                                endStrike: endInput.value,
-                                distance: distanceInput.value
-                            });
-                        }
-                    });
+                    const { symbol, entries } = extractEntries();
 
                     try {
                         const csvContent = generateStrikesCsv(symbol, entries);
@@ -182,11 +278,11 @@ export class OverviewManager {
 
         row.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">Contract Date</label>
+                <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">Contract Dates (hold Ctrl/Cmd to multi-select)</label>
                 ${!isFirst ? `<button type="button" class="icon-btn remove-req-row-btn" aria-label="Remove range row" title="Remove range row" style="color: #ff1744; padding: 2px;"><i data-feather="trash-2" style="width: 14px; height: 14px;"></i></button>` : ''}
             </div>
             <div style="margin-bottom: 8px;">
-                <select class="req-contract-date" required style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
+                <select class="req-contract-date" multiple required style="width: 100%; height: 90px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
                     ${datesHtml}
                 </select>
             </div>
