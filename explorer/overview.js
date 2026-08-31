@@ -171,7 +171,7 @@ export function generateStrikeRequestEmailText(symbol, entries, existingStrikes 
     }
     tableLines.push(sepLine);
 
-    return `Dear Eurex Operations Team,\n\nPlease add the following strike prices for ${symbol} for the next trading day:\n\n${tableLines.join('\n')}\n\nTotal new strikes to add: ${totalNewStrikes}\n\nNote: The requested strikes CSV file has been downloaded and is attached to this email.\n\nThank you,\nBest regards`;
+    return `Dear Eurex Operations Team,\n\nPlease add the following strike prices for ${symbol} for the next trading day:\n\n${tableLines.join('\n')}\n\nTotal new strikes to add: ${totalNewStrikes}\n\nNote: The requested strikes CSV file has been prepared and is attached to this email.\n\nThank you,\nBest regards`;
 }
 
 export function downloadCsvFile(filename, csvContent) {

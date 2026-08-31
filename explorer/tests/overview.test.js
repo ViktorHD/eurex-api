@@ -95,7 +95,7 @@ describe('Overview Additional Strikes Helpers', () => {
             expect(text).toContain('| OEXP   | 29.09.2023    | 4500         | 4600       | 25       |');
             expect(text).toContain('| OEXP   | 20.10.2023    | 4500         | 4600       | 25       |');
             expect(text).toContain('Total new strikes to add: 10');
-            expect(text).toContain('Note: The requested strikes CSV file has been downloaded and is attached to this email.');
+            expect(text).toContain('Note: The requested strikes CSV file has been prepared and is attached to this email.');
         });
 
         test('drops range rows where all strikes already exist and adjusts total counter', () => {
