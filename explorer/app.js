@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Panes addition
     const overviewPane = document.getElementById('overviewPane');
+    const apiOverviewPane = document.getElementById('apiOverviewPane');
 
     // Toggles
     const toggleQueryBtn = document.getElementById('toggleQueryBtn');
@@ -111,9 +112,12 @@ document.addEventListener('DOMContentLoaded', () => {
         navTradingHours?.classList.remove('active');
         navApiExplorer?.classList.remove('active');
         navInfo?.classList.remove('active');
+        const navApiOverview = document.getElementById('nav-api-overview');
+        navApiOverview?.classList.remove('active');
 
         // Hide all major panes
         overviewPane.classList.add('hidden');
+        if (apiOverviewPane) apiOverviewPane.classList.add('hidden');
         timelinePane.classList.add('hidden');
         infoPane.classList.add('hidden');
         queryPane.classList.add('hidden');
@@ -130,6 +134,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 overviewProductsLoaded = true;
                 overviewManager.loadProducts().then(() => overviewManager.fetchAndRender());
             }
+        } else if (view === 'api-overview') {
+            navApiOverview?.classList.add('active');
+            if (apiOverviewPane) apiOverviewPane.classList.remove('hidden');
         } else if (view === 'trading-hours') {
             navTradingHours?.classList.add('active');
             timelinePane.classList.remove('hidden');
@@ -139,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
             infoPane.classList.remove('hidden');
             infoPanel.load();
         } else {
-            navApiExplorer.classList.add('active');
+            navApiExplorer?.classList.add('active');
             
             // Show API Explorer specifics
             actionBar.classList.remove('hidden');
@@ -158,6 +165,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (navEurexOverview) {
         navEurexOverview.addEventListener('click', () => switchAppView('eurex-overview'));
+    }
+    const navApiOverviewBtn = document.getElementById('nav-api-overview');
+    if (navApiOverviewBtn) {
+        navApiOverviewBtn.addEventListener('click', () => switchAppView('api-overview'));
     }
     if (navTradingHours) {
         navTradingHours.addEventListener('click', () => switchAppView('trading-hours'));
@@ -1087,5 +1098,77 @@ ${schemaSDL}
         } catch (e) {
             console.error('Failed to parse shared state', e);
         }
+    } else {
+        switchAppView('api-overview');
+    }
+
+    // API Overview Domain Buttons
+    document.querySelectorAll('.domain-query-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const domain = e.target.getAttribute('data-domain');
+            let q = '';
+            if (domain === 'products') {
+                q = `query {\n  ProductInfos\n  Contracts(filter: { Product: { eq: "FESX" } }) {\n    date\n    data {\n      Contract\n      ExpirationDate\n    }\n  }\n}`;
+            } else if (domain === 'calendar') {
+                q = `query {\n  TradingHours(filter: { Product: { eq: "FESX" } }) {\n    date\n    data {\n      StartContinuousTrading\n      EndOpeningAuction\n      EndContinuousTrading\n      EndClosingAuction\n      StartTES\n      EndTES\n      LTDBook\n      LTDTES\n    }\n  }\n  Holidays(filter: { Product: { eq: "FESX" } }, sort: { field: Holiday, order: ASC }) {\n    date\n    data {\n      Holiday\n      Description\n    }\n  }\n}`;
+            } else if (domain === 'parameters') {
+                q = `query {\n  TickRules(filter: { Product: { eq: "FESX" } })\n  TESProfiles(filter: { Product: { eq: "FESX" } }) {\n    date\n    data {\n      Profile\n      MinimumBlockSize\n    }\n  }\n}`;
+            } else if (domain === 'flexible') {
+                q = `query {\n  FlexibleContracts(filter: { Product: { eq: "OESX" } }, sort: { field: ContractID, order: ASC })\n  SettlementPrices(filter: { Product: { eq: "OESX" }, ContractType: { eq: "FLEXIBLE" } }, sort: { field: ContractID, order: ASC })\n}`;
+            }
+            if (q) {
+                queryInput.value = q;
+                switchAppView('api-explorer');
+                executeGraphQLQuery(q).catch(() => {});
+            }
+        });
+    });
+
+    // API Overview Strike Form
+    const apiOverviewStrikeForm = document.getElementById('apiOverviewStrikeForm');
+    if (apiOverviewStrikeForm) {
+        apiOverviewStrikeForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const input = document.getElementById('apiOverviewStrikeProduct');
+            const product = input.value.trim().toUpperCase();
+            if (/^[A-Z0-9_-]{1,32}$/.test(product)) {
+                switchAppView('eurex-overview');
+                const pInput = document.getElementById('overviewProductInput');
+                if (pInput) pInput.value = product;
+                const vSelect = document.getElementById('overviewViewSelect');
+                if (vSelect) vSelect.value = 'strike';
+                
+                setTimeout(() => {
+                    if (!overviewProductsLoaded) {
+                        overviewProductsLoaded = true;
+                        overviewManager.loadProducts().then(() => {
+                            if (overviewManager.state) {
+                                overviewManager.state.p = product;
+                                overviewManager.state.m = 'strike';
+                            }
+                            overviewManager.fetchAndRender();
+                        });
+                    } else {
+                        if (overviewManager.state) {
+                            overviewManager.state.p = product;
+                            overviewManager.state.m = 'strike';
+                        }
+                        overviewManager.fetchAndRender();
+                    }
+                }, 100);
+            }
+        });
+    }
+
+    // Live Schema Link
+    const overviewLiveSchemaLink = document.getElementById('overviewLiveSchemaLink');
+    if (overviewLiveSchemaLink) {
+        overviewLiveSchemaLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchAppView('api-explorer');
+            if (docsPane.classList.contains('hidden')) {
+                toggleDocsBtn.click();
+            }
+        });
     }
 });
