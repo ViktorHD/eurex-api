@@ -1103,21 +1103,138 @@ ${schemaSDL}
     }
 
     // API Overview Domain Buttons
+    const DOMAIN_QUERIES = {
+        products: `query {
+  ProductInfos(filter: { Product: { eq: "FESX" } }) {
+    date
+    data {
+      Product
+      Name
+      ProductISIN
+      ProductLine
+      ProductType
+      LiquidityClass
+      Currency
+      ContractSize
+      TickSize
+      TickValue
+      SettlementType
+      Underlying
+      UnderlyingISIN
+    }
+  }
+  Contracts(filter: { Product: { eq: "FESX" } }) {
+    date
+    data {
+      Contract
+      ISIN
+      ContractDate
+      ExpirationDate
+      FirstTradingDate
+      LastTradingDate
+      PreviousDaySettlementPrice
+    }
+  }
+}`,
+
+        calendar: `query {
+  TradingHours(filter: { Product: { eq: "FESX" } }) {
+    date
+    data {
+      Product
+      StartContinuousTrading
+      EndOpeningAuction
+      EndContinuousTrading
+      EndClosingAuction
+      StartTES
+      EndTES
+      LTDBook
+      LTDTES
+    }
+  }
+  Holidays(filter: { Product: { eq: "FESX" } }, sort: { field: Holiday, order: ASC }) {
+    date
+    data {
+      Product
+      Holiday
+      ExchangeHoliday
+    }
+  }
+}`,
+
+        parameters: `query {
+  TickRules(filter: { Product: { eq: "FESX" } }) {
+    date
+    data {
+      Product
+      TradeType
+      InstrumentType
+      StartPrice
+      EndPrice
+      PriceStep
+    }
+  }
+  TESProfiles(filter: { Product: { eq: "FESX" } }) {
+    date
+    data {
+      Product
+      TESType
+      InstrumentType
+      PriceValidationRule
+      AllowAutoApproval
+      AllowBroker
+      MinLotSize
+      MinLotSizeNonPrimary
+      MinExpiryRange
+      NonDisclosureLimit
+      TESminStep
+      MaxTrader
+      LegPriceEntry
+    }
+  }
+}`,
+
+        flexible: `query {
+  FlexibleContracts(filter: { Product: { eq: "OESX" } }, sort: { field: ContractID, order: ASC }) {
+    date
+    data {
+      ContractID
+      Contract
+      ISIN
+      CallPut
+      Strike
+      ExpirationDate
+      SettlementDate
+      SettlementPrice
+      OpenInterest
+      ExerciseStyle
+      SettlementType
+    }
+  }
+  SettlementPrices(
+    filter: { Product: { eq: "OESX" }, ContractType: { eq: "FLEXIBLE" } }
+    sort: { field: ContractID, order: ASC }
+  ) {
+    date
+    data {
+      ContractID
+      Product
+      ContractType
+      PriceType
+      SettlementPrice
+      SettlementDate
+    }
+  }
+}`
+    };
+
     document.querySelectorAll('.domain-query-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const domain = e.target.getAttribute('data-domain');
-            let q = '';
-            if (domain === 'products') {
-                q = `query {\n  ProductInfos\n  Contracts(filter: { Product: { eq: "FESX" } }) {\n    date\n    data {\n      Contract\n      ExpirationDate\n    }\n  }\n}`;
-            } else if (domain === 'calendar') {
-                q = `query {\n  TradingHours(filter: { Product: { eq: "FESX" } }) {\n    date\n    data {\n      StartContinuousTrading\n      EndOpeningAuction\n      EndContinuousTrading\n      EndClosingAuction\n      StartTES\n      EndTES\n      LTDBook\n      LTDTES\n    }\n  }\n  Holidays(filter: { Product: { eq: "FESX" } }, sort: { field: Holiday, order: ASC }) {\n    date\n    data {\n      Holiday\n      Description\n    }\n  }\n}`;
-            } else if (domain === 'parameters') {
-                q = `query {\n  TickRules(filter: { Product: { eq: "FESX" } })\n  TESProfiles(filter: { Product: { eq: "FESX" } }) {\n    date\n    data {\n      Profile\n      MinimumBlockSize\n    }\n  }\n}`;
-            } else if (domain === 'flexible') {
-                q = `query {\n  FlexibleContracts(filter: { Product: { eq: "OESX" } }, sort: { field: ContractID, order: ASC })\n  SettlementPrices(filter: { Product: { eq: "OESX" }, ContractType: { eq: "FLEXIBLE" } }, sort: { field: ContractID, order: ASC })\n}`;
-            }
+        btn.addEventListener('click', () => {
+            const domain = btn.getAttribute('data-domain');
+            const q = DOMAIN_QUERIES[domain];
             if (q) {
                 queryInput.value = q;
+                tabs.updateActiveState({ query: q });
                 switchAppView('api-explorer');
                 executeGraphQLQuery(q).catch(() => {});
             }
