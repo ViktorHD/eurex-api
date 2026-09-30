@@ -9,6 +9,13 @@ const CYCLE_COLORS = {
     FLEXIBLE: '#ff1744'
 };
 const DEFAULT_CYCLE_COLOR = '#757575';
+const PRODUCT_CODE_RE = /^[A-Z0-9_-]{1,32}$/;
+// Frequently used option products offered as quick picks in the empty state (only those that exist are shown).
+const QUICK_PICKS = ['OESX', 'ODAX', 'OSMI', 'OGBL', 'OGBM', 'OVS2', 'OKS2', 'OMSC'];
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
 export function formatDateToDDMMYYYY(dateStr) {
     if (!dateStr) return '';
@@ -197,6 +204,21 @@ export class OverviewManager {
         this._existingContractsSet = new Set(); // Stores "date|strike" for standard listed Contracts
 
         this.bindEvents();
+
+        // Re-render when the pane width changes so the chart always fits without distortion.
+        if (typeof ResizeObserver !== 'undefined' && this.els.container) {
+            let lastWidth = 0;
+            let timer = null;
+            new ResizeObserver(entries => {
+                const width = Math.round(entries[0].contentRect.width);
+                if (!width || width === lastWidth) return;
+                lastWidth = width;
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    if (this._lastChart) this._renderChart(this._lastChart.normalRows, this._lastChart.lepoRows, this._lastChart.product, this._lastChart.allRows);
+                }, 150);
+            }).observe(this.els.container);
+        }
     }
 
     bindEvents() {
@@ -311,7 +333,7 @@ export class OverviewManager {
         }
     }
 
-    _addRequestStrikeRow(defaultDate = '') {
+    _addRequestStrikeRow(defaultDate = '', prefill = {}) {
         const container = document.getElementById('reqRowsContainer');
         if (!container) return;
 
@@ -320,7 +342,7 @@ export class OverviewManager {
         row.style.cssText = 'padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-main); position: relative;';
 
         const datesHtml = (this._modalDates || [])
-            .map(d => `<option value="${d}" ${d === defaultDate ? 'selected' : ''}>${d}</option>`)
+            .map(d => `<option value="${escapeHtml(d)}" ${d === defaultDate ? 'selected' : ''}>${escapeHtml(d)}</option>`)
             .join('');
 
         const isFirst = container.children.length === 0;
@@ -338,15 +360,15 @@ export class OverviewManager {
             <div style="display: flex; gap: 8px;">
                 <div style="flex: 1;">
                     <label style="display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 2px; color: var(--text-secondary);">Start Strike</label>
-                    <input type="number" step="any" class="req-start-strike" required placeholder="e.g. 4500" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
+                    <input type="number" step="any" class="req-start-strike" required placeholder="e.g. 4500" value="${prefill.start ?? ''}" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
                 </div>
                 <div style="flex: 1;">
                     <label style="display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 2px; color: var(--text-secondary);">End Strike</label>
-                    <input type="number" step="any" class="req-end-strike" required placeholder="e.g. 4600" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
+                    <input type="number" step="any" class="req-end-strike" required placeholder="e.g. 4600" value="${prefill.end ?? ''}" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
                 </div>
                 <div style="flex: 1;">
                     <label style="display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 2px; color: var(--text-secondary);">Distance</label>
-                    <input type="number" step="any" class="req-strike-distance" required placeholder="e.g. 25" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
+                    <input type="number" step="any" class="req-strike-distance" required placeholder="e.g. 25" value="${prefill.distance ?? ''}" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel); color: var(--text-primary); font-size: 0.85rem;">
                 </div>
             </div>
         `;
@@ -362,7 +384,8 @@ export class OverviewManager {
         if (window.feather) window.feather.replace();
     }
 
-    openRequestStrikesModal(product, rawDates, sortedStrikes) {
+    // prefill (optional): { date, start, end, distance } e.g. from a clicked gap in the strike ladder
+    openRequestStrikesModal(product, rawDates, sortedStrikes, prefill = null) {
         const modal = document.getElementById('requestStrikesModal');
         if (!modal) return;
 
@@ -384,31 +407,45 @@ export class OverviewManager {
 
         if (container) {
             container.innerHTML = '';
-            this._addRequestStrikeRow(formattedDates[0] || '');
+            if (prefill) {
+                this._addRequestStrikeRow(formatDateToDDMMYYYY(prefill.date), {
+                    start: prefill.start, end: prefill.end, distance: prefill.distance
+                });
+            } else {
+                this._addRequestStrikeRow(formattedDates[0] || '', { distance: Number.isFinite(step) ? step : '' });
+            }
         }
 
         modal.classList.remove('hidden');
         if (window.feather) window.feather.replace();
     }
 
-    _createChartHeader(titleText, product, dates, strikes) {
+    _createChartHeader(titleText, product, dates, strikes, stats = null) {
         const header = document.createElement('div');
         header.className = 'overview-chart-header';
-        header.style.display = 'flex';
-        header.style.justifyContent = 'space-between';
-        header.style.alignItems = 'center';
 
+        const titleWrap = document.createElement('div');
+        titleWrap.className = 'overview-chart-title';
         const titleSpan = document.createElement('span');
         titleSpan.textContent = titleText;
-        header.appendChild(titleSpan);
+        titleWrap.appendChild(titleSpan);
+        if (stats && stats.length) {
+            const list = document.createElement('div');
+            list.className = 'overview-stats';
+            stats.forEach(item => {
+                const chip = document.createElement('span');
+                chip.className = 'overview-stat' + (item.warn ? ' overview-stat-warn' : '');
+                chip.textContent = typeof item === 'string' ? item : item.text;
+                list.appendChild(chip);
+            });
+            titleWrap.appendChild(list);
+        }
+        header.appendChild(titleWrap);
 
         if (product && strikes && strikes.length > 0) {
             const reqBtn = document.createElement('button');
             reqBtn.type = 'button';
-            reqBtn.className = 'primary-btn';
-            reqBtn.style.height = '32px';
-            reqBtn.style.padding = '0 12px';
-            reqBtn.style.fontSize = '0.75rem';
+            reqBtn.className = 'primary-btn overview-request-btn';
             reqBtn.innerHTML = `<i data-feather="plus-circle" style="width: 14px; height: 14px;"></i> Request additional strikes`;
             reqBtn.addEventListener('click', () => this.openRequestStrikesModal(product, dates, strikes));
             header.appendChild(reqBtn);
@@ -430,8 +467,11 @@ export class OverviewManager {
             this.tooltip.classList.remove('hidden');
         });
         el.addEventListener('mousemove', (e) => {
-            this.tooltip.style.top = `${e.clientY + 15}px`;
-            this.tooltip.style.left = `${e.clientX + 15}px`;
+            const rect = this.tooltip.getBoundingClientRect();
+            const left = Math.min(e.clientX + 15, window.innerWidth - rect.width - 12);
+            const top = e.clientY + 15 + rect.height > window.innerHeight - 12 ? e.clientY - rect.height - 10 : e.clientY + 15;
+            this.tooltip.style.left = `${Math.max(12, left)}px`;
+            this.tooltip.style.top = `${top}px`;
         });
         el.addEventListener('mouseleave', () => {
             this.tooltip.classList.add('hidden');
@@ -460,7 +500,7 @@ export class OverviewManager {
                 .sort((a, b) => a.Product.localeCompare(b.Product));
 
             this.els.productList.innerHTML = this.products
-                .map(p => `<option value="${p.Product}">${p.Product} - ${p.Name || ''}</option>`)
+                .map(p => `<option value="${escapeHtml(p.Product)}">${escapeHtml(p.Product)} - ${escapeHtml(p.Name || '')}</option>`)
                 .join('');
         } catch (err) {
             // Non-fatal: dropdown just stays empty, user can still type a product code.
@@ -472,17 +512,29 @@ export class OverviewManager {
         const product = (this.els.productInput.value || '').trim().toUpperCase();
         this.els.productInput.value = product;
         if (!product) {
-            this.els.content.innerHTML = this._emptyState('Select a product', 'Choose an option product to view its strike window.');
+            this._lastChart = null;
+            this.els.content.innerHTML = this._emptyState('Select an option product', 'Type a product code above or pick one below to see its listed strikes per contract date.');
+            this._appendQuickPicks();
+            if (window.feather) window.feather.replace();
+            return;
+        }
+
+        if (!PRODUCT_CODE_RE.test(product)) {
+            this._lastChart = null;
+            this.els.content.innerHTML = this._emptyState('Invalid product code', 'Product codes contain only letters, digits, "-" or "_" (e.g. OESX).');
+            this._appendQuickPicks();
             if (window.feather) window.feather.replace();
             return;
         }
 
         const isKnownOption = this.products.length === 0 || this.products.some(p => p.Product === product);
         if (!isKnownOption) {
+            this._lastChart = null;
             this.els.content.innerHTML = this._emptyState(
                 'Not an option product',
                 `"${product}" is not available in the options list. This view only supports option products (futures have no strike window).`
             );
+            this._appendQuickPicks();
             if (window.feather) window.feather.replace();
             return;
         }
@@ -587,7 +639,13 @@ export class OverviewManager {
             this._lastChart = { normalRows, lepoRows, allRows, product };
             this._renderChart(normalRows, lepoRows, product, allRows);
         } catch (err) {
-            this.els.content.innerHTML = `<div class="error-card"><p>${err.message}</p></div>`;
+            this.els.content.innerHTML = '';
+            const card = document.createElement('div');
+            card.className = 'error-card';
+            const msg = document.createElement('p');
+            msg.textContent = err.message;
+            card.appendChild(msg);
+            this.els.content.appendChild(card);
         } finally {
             this.els.loading.classList.add('hidden');
         }
@@ -595,13 +653,40 @@ export class OverviewManager {
 
     _emptyState(title, message) {
         return `
-        <div class="empty-state">
-            <i data-feather="grid"></i>
+        <div class="empty-state overview-empty">
+            <i data-feather="bar-chart-2"></i>
             <div>
-                <h3>${title}</h3>
-                <p>${message}</p>
+                <h3>${escapeHtml(title)}</h3>
+                <p>${escapeHtml(message)}</p>
             </div>
         </div>`;
+    }
+
+    // Clickable product chips under the empty state, so a first-time user gets a chart in one click.
+    _appendQuickPicks() {
+        const known = this.products.map(p => p.Product);
+        const picks = known.length ? QUICK_PICKS.filter(p => known.includes(p)) : QUICK_PICKS.slice(0, 2);
+        const list = picks.length ? picks : known.slice(0, 6);
+        if (!list.length) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'overview-quick-picks';
+        const label = document.createElement('span');
+        label.textContent = 'Try:';
+        wrap.appendChild(label);
+        list.forEach(code => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'overview-quick-pick';
+            btn.textContent = code;
+            const info = this.products.find(p => p.Product === code);
+            if (info?.Name) btn.title = info.Name;
+            btn.addEventListener('click', () => {
+                this.els.productInput.value = code;
+                this.fetchAndRender();
+            });
+            wrap.appendChild(btn);
+        });
+        this.els.content.querySelector('.overview-empty')?.appendChild(wrap);
     }
 
     // Smallest gap between distinct strikes, used so axis ticks align to real strike increments.
@@ -695,24 +780,30 @@ export class OverviewManager {
             .map(r => Number(r.RefPrice))
             .filter(v => Number.isFinite(v) && v > 0);
 
+        if (!this.hiddenCyclesStrike) this.hiddenCyclesStrike = new Set();
+        const hidden = this.hiddenCyclesStrike;
+        const visibleRows = normalRows.filter(r => !hidden.has((r.ContractCycle || '').toUpperCase()));
+
         const dates = [...new Set([...normalRows, ...lepoRows].map(r => r.ContractDate))].sort();
         const strikes = [...new Set(normalRows.map(r => Number(r.Strike)))].sort((a, b) => a - b);
+        // Flexible contracts can sit on arbitrary strikes, so the listed strike increment comes from standard series only.
+        const standardStrikes = [...new Set(normalRows.filter(r => r.ContractCycle !== 'FLEXIBLE').map(r => Number(r.Strike)))].sort((a, b) => a - b);
         const domainCandidates = [...strikes, ...refPrices];
         const minStrike = Math.min(...domainCandidates);
         const maxStrike = Math.max(...domainCandidates);
-        const strikePad = (maxStrike - minStrike) * 0.05 || 1;
+        const strikePad = (maxStrike - minStrike) * 0.04 || 1;
         // Strikes are never negative, so the axis never extends below 0.
         const domainMin = Math.max(0, minStrike - strikePad);
         const domainMax = maxStrike + strikePad;
 
-        const rowHeight = 26;
-        const labelWidth = 100;
-        const topAxisHeight = 36;
-        const containerWidth = Math.max(this.els.container.clientWidth, 300);
-        const chartWidth = Math.max(containerWidth - labelWidth - 40, 150);
+        const rowHeight = 28;
+        const labelWidth = 128;
+        const topAxisHeight = 48;
+        const available = Math.max((this.els.container.clientWidth || 0) - 48, 300);
+        const chartWidth = Math.max(available - labelWidth - 16, 150);
         const chartHeight = dates.length * rowHeight;
-        const svgWidth = labelWidth + chartWidth + 20;
-        const svgHeight = topAxisHeight + chartHeight + 10;
+        const svgWidth = labelWidth + chartWidth + 16;
+        const svgHeight = topAxisHeight + chartHeight + 8;
 
         const xScale = (strike) => labelWidth + ((strike - domainMin) / (domainMax - domainMin)) * chartWidth;
         const yScale = (date) => topAxisHeight + dates.indexOf(date) * rowHeight + rowHeight / 2;
@@ -720,90 +811,147 @@ export class OverviewManager {
         const svgNS = 'http://www.w3.org/2000/svg';
         const svg = document.createElementNS(svgNS, 'svg');
         svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
-        svg.setAttribute('width', '100%');
+        svg.setAttribute('width', svgWidth);
         svg.setAttribute('height', svgHeight);
-        svg.setAttribute('preserveAspectRatio', 'none');
-        svg.classList.add('overview-chart-svg');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', `Strike window for ${product}: listed strikes per contract date`);
+        svg.classList.add('overview-chart-svg', 'overview-strike-svg');
 
-        // Row backgrounds + date labels
+        const el = (tag, attrs, text) => {
+            const node = document.createElementNS(svgNS, tag);
+            Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
+            if (text !== undefined) node.textContent = text;
+            svg.appendChild(node);
+            return node;
+        };
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const rowsByDate = new Map(dates.map(d => [d, []]));
+        visibleRows.forEach(r => rowsByDate.get(r.ContractDate)?.push(r));
+
+        // Row backgrounds, date labels and days to expiry
         dates.forEach((date, i) => {
             const y = topAxisHeight + i * rowHeight;
-            const rect = document.createElementNS(svgNS, 'rect');
-            rect.setAttribute('x', 0);
-            rect.setAttribute('y', y);
-            rect.setAttribute('width', svgWidth);
-            rect.setAttribute('height', rowHeight);
-            rect.setAttribute('class', i % 2 === 0 ? 'overview-row-even' : 'overview-row-odd');
-            svg.appendChild(rect);
-
-            const label = document.createElementNS(svgNS, 'text');
-            label.setAttribute('x', 8);
-            label.setAttribute('y', y + rowHeight / 2 + 4);
-            label.setAttribute('class', 'overview-date-label');
-            label.textContent = date;
-            svg.appendChild(label);
+            el('rect', { x: 0, y, width: svgWidth, height: rowHeight, class: i % 2 === 0 ? 'overview-row-even' : 'overview-row-odd' });
+            el('text', { x: 8, y: y + rowHeight / 2 + 4, class: 'overview-date-label' }, formatDateToDDMMYYYY(date));
+            const dte = this._daysToMaturity(date);
+            if (Number.isFinite(dte)) {
+                el('text', { x: labelWidth - 10, y: y + rowHeight / 2 + 4, class: 'overview-dte-label', 'text-anchor': 'end' }, dte < 365 ? `${dte}d` : `${(dte / 365).toFixed(1)}y`);
+            }
         });
 
-        // Vertical strike gridlines + top axis ticks, spaced to match the real strike increment.
-        const baseStep = this._strikeStep(strikes);
-        const tickStep = this._niceTickStep(baseStep, domainMax - domainMin);
+        // Column headers
+        el('text', { x: 8, y: topAxisHeight - 10, class: 'overview-axis-title' }, 'Contract date');
+        el('text', { x: labelWidth, y: 14, class: 'overview-axis-title' }, 'Strike');
+
+        // Vertical strike gridlines + top axis ticks on round values that are multiples of the listed increment.
+        const baseStep = this._strikeStep(standardStrikes.length > 1 ? standardStrikes : strikes);
+        const maxTicks = Math.max(4, Math.floor(chartWidth / 90));
+        const tickStep = this._axisTickStep(baseStep, domainMax - domainMin, maxTicks);
         const firstTick = Math.ceil(domainMin / tickStep) * tickStep;
         for (let strike = firstTick; strike <= domainMax; strike += tickStep) {
             const x = xScale(strike);
-
-            const line = document.createElementNS(svgNS, 'line');
-            line.setAttribute('x1', x);
-            line.setAttribute('y1', topAxisHeight);
-            line.setAttribute('x2', x);
-            line.setAttribute('y2', svgHeight);
-            line.setAttribute('class', 'overview-gridline');
-            svg.appendChild(line);
-
-            const tickLabel = document.createElementNS(svgNS, 'text');
-            tickLabel.setAttribute('x', x);
-            tickLabel.setAttribute('y', topAxisHeight - 14);
-            tickLabel.setAttribute('class', 'overview-tick-label');
-            tickLabel.setAttribute('text-anchor', 'middle');
-            tickLabel.textContent = Math.round(strike).toLocaleString();
-            svg.appendChild(tickLabel);
+            el('line', { x1: x, y1: topAxisHeight, x2: x, y2: svgHeight, class: 'overview-gridline' });
+            el('text', { x, y: topAxisHeight - 10, class: 'overview-tick-label', 'text-anchor': 'middle' }, Math.round(strike).toLocaleString('en-US'));
         }
+        el('line', { x1: labelWidth, y1: topAxisHeight, x2: labelWidth, y2: svgHeight, class: 'overview-axis-line' });
 
-        const axisTitle = document.createElementNS(svgNS, 'text');
-        axisTitle.setAttribute('x', labelWidth + chartWidth / 2);
-        axisTitle.setAttribute('y', 14);
-        axisTitle.setAttribute('class', 'overview-axis-title');
-        axisTitle.setAttribute('text-anchor', 'middle');
-        axisTitle.textContent = 'Strike';
-        svg.appendChild(axisTitle);
+        // Point size adapts to strike density so neighbouring strikes stay distinguishable.
+        const minGapPx = (baseStep / (domainMax - domainMin)) * chartWidth;
+        const radius = Math.max(2.2, Math.min(5, minGapPx * 0.42));
+
+        const gaps = [];
+        dates.forEach(date => {
+            const rows = rowsByDate.get(date) || [];
+            const std = rows.filter(r => r.ContractCycle !== 'FLEXIBLE');
+            const cy = yScale(date);
+
+            // Coverage band from lowest to highest listed strike
+            if (std.length > 1) {
+                const rowStrikes = [...new Set(std.map(r => Number(r.Strike)))].sort((a, b) => a - b);
+                const cycle = (std[0].ContractCycle || '').toUpperCase();
+                const color = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
+                el('line', {
+                    x1: xScale(rowStrikes[0]), y1: cy, x2: xScale(rowStrikes[rowStrikes.length - 1]), y2: cy,
+                    stroke: color, class: 'overview-coverage-band'
+                });
+
+                // Missing strikes inside the ladder, relative to the row's usual increment
+                const rowStep = this._modeStep(rowStrikes);
+                for (let i = 1; i < rowStrikes.length; i++) {
+                    const lo = rowStrikes[i - 1];
+                    const hi = rowStrikes[i];
+                    if (rowStep && hi - lo > rowStep * 1.5) {
+                        gaps.push({ date, start: lo + rowStep, end: hi - rowStep, step: rowStep, count: Math.round((hi - lo) / rowStep) - 1, lo, hi });
+                    }
+                }
+            }
+        });
+
+        gaps.forEach(g => {
+            const x1 = xScale(g.lo);
+            const x2 = xScale(g.hi);
+            const cy = yScale(g.date);
+            const rect = el('rect', {
+                x: x1 + radius, y: cy - 7, width: Math.max(x2 - x1 - 2 * radius, 4), height: 14, rx: 3,
+                class: 'overview-gap', tabindex: 0, role: 'button'
+            });
+            const text = [
+                `Missing strikes: ${g.start.toLocaleString('en-US')} – ${g.end.toLocaleString('en-US')}`,
+                `${g.count} strike${g.count === 1 ? '' : 's'} at step ${g.step}`,
+                `Contract date: ${formatDateToDDMMYYYY(g.date)}`,
+                'Click to request these strikes'
+            ].join('\n');
+            rect.setAttribute('aria-label', text.replace(/\n/g, '. '));
+            this._addTooltip(rect, text);
+            const open = () => this.openRequestStrikesModal(product, dates, standardStrikes, {
+                date: g.date, start: g.start, end: g.end, distance: g.step
+            });
+            rect.addEventListener('click', open);
+            rect.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+        });
 
         // Contract points
-        normalRows.forEach(r => {
+        visibleRows.forEach(r => {
             const cx = xScale(Number(r.Strike));
             const cy = yScale(r.ContractDate);
             const cycle = (r.ContractCycle || '').toUpperCase();
             const color = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
             const delta = Number(r.Delta);
             const hasDelta = Number.isFinite(delta) && r.Delta !== null && r.Delta !== undefined;
+            const isFlex = cycle === 'FLEXIBLE';
 
-            const circle = document.createElementNS(svgNS, 'circle');
-            circle.setAttribute('cx', cx);
-            circle.setAttribute('cy', cy);
-            circle.setAttribute('r', 5);
-            circle.setAttribute('fill', color);
-            circle.setAttribute('class', 'overview-point');
-            svg.appendChild(circle);
+            const circle = el('circle', {
+                cx, cy, r: isFlex ? Math.max(radius, 4) : radius, fill: color,
+                class: isFlex ? 'overview-point overview-point-flex' : 'overview-point'
+            });
 
             this._addTooltip(circle, [
-                `Strike: ${r.Strike}`,
-                `Contract Date: ${r.ContractDate}`,
+                `Strike: ${Number(r.Strike).toLocaleString('en-US')}`,
+                `Contract Date: ${formatDateToDDMMYYYY(r.ContractDate)}`,
                 `Contract Cycle: ${r.ContractCycle || '-'}`,
-                `Expiration: ${r.ExpirationDate || '-'}`,
+                `Expiration: ${r.ExpirationDate ? formatDateToDDMMYYYY(r.ExpirationDate) : '-'}`,
                 ...(hasDelta ? [`Options Delta: ${r.Delta}`] : []),
                 // Contract name and Open Interest are only available for FlexibleContracts, not standard Contracts.
-                ...(cycle === 'FLEXIBLE' && r.ContractName ? [`Contract: ${r.ContractName}`] : []),
-                ...(cycle === 'FLEXIBLE' && r.OpenInterest !== null && r.OpenInterest !== undefined
+                ...(isFlex && r.ContractName ? [`Contract: ${r.ContractName}`] : []),
+                ...(isFlex && r.OpenInterest !== null && r.OpenInterest !== undefined
                     ? [`Open Interest: ${r.OpenInterest}`]
                     : [])
+            ].join('\n'));
+        });
+
+        // At-the-money estimate per contract date: strike where the call delta crosses 0.5
+        const atmByDate = this._atmByDate(allRows || []);
+        atmByDate.forEach((atm, date) => {
+            if (!dates.includes(date) || atm < domainMin || atm > domainMax) return;
+            const x = xScale(atm);
+            const cy = yScale(date);
+            const marker = el('rect', { x: x - 1.5, y: cy - 10, width: 3, height: 20, rx: 1.5, class: 'overview-atm-marker' });
+            this._addTooltip(marker, [
+                `At the money ≈ ${Math.round(atm).toLocaleString('en-US')}`,
+                'Estimated where call delta = 0.50',
+                `Contract Date: ${formatDateToDDMMYYYY(date)}`
             ].join('\n'));
         });
 
@@ -816,39 +964,64 @@ export class OverviewManager {
 
             const x = xScale(refPrice);
             const y = topAxisHeight + i * rowHeight;
-
-            const marker = document.createElementNS(svgNS, 'line');
-            marker.setAttribute('x1', x);
-            marker.setAttribute('y1', y + 2);
-            marker.setAttribute('x2', x);
-            marker.setAttribute('y2', y + rowHeight - 2);
-            marker.setAttribute('class', 'overview-ref-marker');
-            svg.appendChild(marker);
-
+            const marker = el('line', { x1: x, y1: y + 2, x2: x, y2: y + rowHeight - 2, class: 'overview-ref-marker' });
             this._addTooltip(marker, [
                 'Underlying Reference (LEPO settlement price)',
                 `Price: ${lepo.RefPrice}`,
-                `Contract Date: ${date}`
+                `Contract Date: ${formatDateToDDMMYYYY(date)}`
             ].join('\n'));
         });
 
-        // Legend
+        // Legend: cycles toggle visibility, with counts
         const legend = document.createElement('div');
         legend.className = 'overview-legend';
-        const cyclesPresent = [...new Set(normalRows.map(r => (r.ContractCycle || '').toUpperCase()).filter(Boolean))];
-        let legendHtml = cyclesPresent.map(cycle => {
-            const color = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
-            return `<span class="overview-legend-item"><span class="overview-legend-swatch" style="background:${color}"></span>${cycle}</span>`;
-        }).join('');
-        if (lepoByDate.size > 0) {
-            legendHtml += `<span class="overview-legend-item"><span class="overview-legend-swatch overview-legend-swatch-line"></span>Underlying Ref (LEPO)</span>`;
-        }
-        legend.innerHTML = legendHtml;
+        const cyclesPresent = [...new Set(normalRows.map(r => (r.ContractCycle || '').toUpperCase()).filter(Boolean))]
+            .sort((a, b) => Object.keys(CYCLE_COLORS).indexOf(a) - Object.keys(CYCLE_COLORS).indexOf(b));
+        cyclesPresent.forEach(cycle => {
+            const count = normalRows.filter(r => (r.ContractCycle || '').toUpperCase() === cycle).length;
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'overview-legend-item overview-legend-toggle' + (hidden.has(cycle) ? ' overview-legend-item-hidden' : '');
+            item.setAttribute('aria-pressed', String(!hidden.has(cycle)));
+            item.title = `Show/hide ${cycle.toLowerCase()} contracts`;
+            const swatch = document.createElement('span');
+            swatch.className = 'overview-legend-swatch';
+            swatch.style.background = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
+            item.append(swatch, `${cycle.charAt(0)}${cycle.slice(1).toLowerCase()}`);
+            const c = document.createElement('span');
+            c.className = 'overview-legend-count';
+            c.textContent = count.toLocaleString('en-US');
+            item.appendChild(c);
+            item.addEventListener('click', () => {
+                if (hidden.has(cycle)) hidden.delete(cycle); else hidden.add(cycle);
+                this._renderChart(normalRows, lepoRows, product, allRows);
+            });
+            legend.appendChild(item);
+        });
+        const staticItem = (swatchClass, label) => {
+            const span = document.createElement('span');
+            span.className = 'overview-legend-item';
+            const sw = document.createElement('span');
+            sw.className = `overview-legend-swatch ${swatchClass}`;
+            span.append(sw, label);
+            legend.appendChild(span);
+        };
+        if (atmByDate.size > 0) staticItem('overview-legend-swatch-atm', 'At the money (Δ 0.50)');
+        if (gaps.length > 0) staticItem('overview-legend-swatch-gap', 'Missing strikes (click to request)');
+        if (lepoByDate.size > 0) staticItem('overview-legend-swatch-line', 'Underlying Ref (LEPO)');
 
         const flexCount = normalRows.filter(r => r.ContractCycle === 'FLEXIBLE').length;
-        const titleText = `${product} — ${normalRows.length} contracts across ${dates.length} contract dates`
-            + (flexCount > 0 ? ` (includes ${flexCount} flexible)` : '');
-        const header = this._createChartHeader(titleText, product, dates, strikes);
+        const info = this.products.find(p => p.Product === product);
+        const titleText = info?.Name ? `${product} · ${info.Name}` : product;
+        const fmtNum = (n) => Math.round(n).toLocaleString('en-US');
+        const stats = [
+            `${dates.length} contract dates`,
+            `${(normalRows.length - flexCount).toLocaleString('en-US')} standard strikes`,
+            ...(flexCount > 0 ? [`${flexCount} flexible`] : []),
+            ...(standardStrikes.length ? [`Range ${fmtNum(standardStrikes[0])} – ${fmtNum(standardStrikes[standardStrikes.length - 1])}`] : []),
+            ...(gaps.length ? [{ text: `${gaps.length} gap${gaps.length === 1 ? '' : 's'} in ladder`, warn: true }] : [])
+        ];
+        const header = this._createChartHeader(titleText, product, dates, standardStrikes.length ? standardStrikes : strikes, stats);
 
         this.els.content.innerHTML = '';
         this.els.content.appendChild(header);
@@ -860,6 +1033,61 @@ export class OverviewManager {
         this.els.content.appendChild(scrollWrap);
 
         if (window.feather) window.feather.replace();
+    }
+
+    // Most common gap between consecutive strikes: the ladder's regular increment.
+    _modeStep(sortedStrikes) {
+        const counts = new Map();
+        for (let i = 1; i < sortedStrikes.length; i++) {
+            const d = Number((sortedStrikes[i] - sortedStrikes[i - 1]).toFixed(6));
+            if (d > 0) counts.set(d, (counts.get(d) || 0) + 1);
+        }
+        let best = null;
+        let bestCount = 0;
+        counts.forEach((c, d) => {
+            if (c > bestCount || (c === bestCount && d < best)) { best = d; bestCount = c; }
+        });
+        return best;
+    }
+
+    // Round axis step (1, 2, 2.5 or 5 × 10^n) that is a multiple of the listed strike increment.
+    _axisTickStep(baseStep, range, maxTicks = 10) {
+        const minStep = range / maxTicks;
+        const start = Math.pow(10, Math.floor(Math.log10(Math.max(minStep, 1e-9))));
+        for (let mag = start; mag <= start * 1000; mag *= 10) {
+            for (const f of [1, 2, 2.5, 5]) {
+                const step = f * mag;
+                const ratio = step / baseStep;
+                if (step >= minStep && Math.abs(ratio - Math.round(ratio)) < 1e-6) return step;
+            }
+        }
+        return this._niceTickStep(baseStep, range, maxTicks);
+    }
+
+    // Estimated at-the-money strike per contract date, interpolated where the call delta crosses 0.5.
+    _atmByDate(rows) {
+        const byDate = new Map();
+        rows.forEach(r => {
+            if ((r.CallPut || '') !== 'C' || r.ContractCycle === 'FLEXIBLE') return;
+            const delta = Number(r.Delta);
+            const strike = Number(r.Strike);
+            if (!Number.isFinite(delta) || !Number.isFinite(strike) || r.Delta === null || r.Delta === '') return;
+            if (!byDate.has(r.ContractDate)) byDate.set(r.ContractDate, []);
+            byDate.get(r.ContractDate).push({ strike, delta });
+        });
+        const result = new Map();
+        byDate.forEach((pts, date) => {
+            pts.sort((a, b) => a.strike - b.strike);
+            for (let i = 1; i < pts.length; i++) {
+                const a = pts[i - 1];
+                const b = pts[i];
+                if (a.delta >= 0.5 && b.delta <= 0.5 && a.delta !== b.delta) {
+                    result.set(date, a.strike + ((a.delta - 0.5) / (a.delta - b.delta)) * (b.strike - a.strike));
+                    break;
+                }
+            }
+        });
+        return result;
     }
 
     // Delta Coverage view: X-axis = Options Delta, Y-axis = days to maturity (ExpirationDate - ContractDate).
