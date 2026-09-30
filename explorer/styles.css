@@ -2371,7 +2371,51 @@ th.sticky-col { z-index: 30; }
 }
 
 .overview-legend-note {
-    font-style: italic;
+    font-size: 0.72rem;
+    color: #9aa3aa;
+    margin-left: auto;
+}
+
+/* Delta Coverage */
+.overview-delta-half-put { fill: rgba(32, 23, 81, 0.025); }
+.overview-delta-half-call { fill: rgba(0, 206, 125, 0.035); }
+.overview-atm-line { stroke: var(--navy-blue); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.5; }
+.overview-atm-label { font-size: 0.62rem; font-weight: 600; fill: var(--navy-blue); opacity: 0.6; font-family: 'Inter', sans-serif; }
+
+/* 3D camera presets */
+.overview-3d-presets {
+    position: absolute;
+    top: 12px;
+    left: 24px;
+    z-index: 20;
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--elevation-1);
+}
+
+.overview-3d-presets button {
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--navy-blue);
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.overview-3d-presets button:hover { background: var(--eurex-mint-light); }
+.overview-3d-scroll:focus-visible { outline: 2px solid var(--neon-green); outline-offset: -2px; }
+
+@media (max-width: 768px) {
+    .overview-legend-note { display: none; }
+    .overview-3d-presets { left: 12px; }
 }
 
 .overview-legend-toggle {

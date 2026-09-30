@@ -1,4 +1,4 @@
-import { formatDateToDDMMYYYY, generateStrikesCsv, generateStrikeRequestEmailText, OverviewManager, findLadderGaps, ladderSteps } from '../overview.js';
+import { formatDateToDDMMYYYY, generateStrikesCsv, generateStrikeRequestEmailText, OverviewManager, findLadderGaps, ladderSteps, findDeltaJumps, refineStep } from '../overview.js';
 
 describe('Overview Additional Strikes Helpers', () => {
     describe('formatDateToDDMMYYYY', () => {
@@ -189,5 +189,31 @@ describe('Per-expiry strike gap detection', () => {
     test('too few strikes to judge', () => {
         expect(findLadderGaps([5000, 5500])).toEqual([]);
         expect(findLadderGaps([5000, 5025, 5500])).toEqual([]);
+    });
+});
+
+describe('Delta coverage helpers', () => {
+    test('findDeltaJumps flags adjacent strikes whose call deltas differ by more than the threshold', () => {
+        const pts = [
+            { strike: 5500, delta: 0.52 }, { strike: 5550, delta: 0.45 },
+            { strike: 5600, delta: 0.38 }, { strike: 6000, delta: 0.08 }, { strike: 6050, delta: 0.06 }
+        ];
+        const jumps = findDeltaJumps(pts, 0.2);
+        expect(jumps).toHaveLength(1);
+        expect(jumps[0]).toMatchObject({ lo: 5600, hi: 6000 });
+        expect(jumps[0].size).toBeCloseTo(0.3);
+    });
+
+    test('findDeltaJumps ignores unsorted input order and small moves', () => {
+        const pts = [{ strike: 5100, delta: 0.4 }, { strike: 5000, delta: 0.5 }, { strike: 5200, delta: 0.3 }];
+        expect(findDeltaJumps(pts, 0.2)).toEqual([]);
+    });
+
+    test('refineStep picks the largest listed step that divides the interval', () => {
+        expect(refineStep(400, [25, 50, 100])).toBe(100);
+        expect(refineStep(150, [25, 50, 100])).toBe(50);
+        expect(refineStep(650, [50, 100, 200])).toBe(50);
+        expect(refineStep(25, [25, 50])).toBe(25);
+        expect(refineStep(100, [])).toBeNull();
     });
 });
