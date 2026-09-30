@@ -102,87 +102,113 @@
             <div class="workspace-grid">
 
                 <!-- API Overview Pane (Default Landing Page) -->
-                <section class="pane hidden" id="apiOverviewPane" style="flex: 1; display: flex; flex-direction: column; background: #ffffff; color: #14285f; overflow-y: auto;">
-                    <div style="max-width: 1211px; margin: 0 auto; width: 100%; padding: 40px 20px;">
-                        
-                        <!-- Header / Get Started -->
-                        <div style="margin-bottom: 48px;">
-                            <span style="font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: #00ce7d;">Eurex data</span>
-                            <h1 style="font-family: Replica, sans-serif; font-weight: 700; font-size: 48px; margin: 8px 0 16px; color: #14285f;">Eurex API</h1>
-                            <p style="font-size: 20px; max-width: 800px; margin-bottom: 24px;">Access Eurex product parameters, contracts and trading information through one central GraphQL endpoint.</p>
-                            <a href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; justify-content: center; background: #00ce7d; color: #14285f; font-weight: 600; text-decoration: none; padding: 12px 24px; border-radius: 4px; font-size: 16px;">Get started in the Developer Portal</a>
-                            <p style="margin-top: 16px; font-size: 14px; color: #5a6872; max-width: 800px;">The API can be accessed anonymously with a shared API key. Shared access is rate-limited. Create a dedicated API key in the Deutsche Boerse Developer Portal for higher throughput.</p>
+                <section class="pane hidden api-overview" id="apiOverviewPane">
+
+                    <!-- Hero -->
+                    <header class="ao-hero">
+                        <div class="ao-container ao-hero-inner">
+                            <div class="ao-hero-copy">
+                                <span class="ao-eyebrow">Eurex data</span>
+                                <h1 class="ao-title">Eurex API</h1>
+                                <p class="ao-lead">Access Eurex product parameters, contracts and trading information through one central GraphQL endpoint.</p>
+                                <div class="ao-hero-actions">
+                                    <a class="ao-btn ao-btn-primary" href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082" target="_blank" rel="noopener">Get started in the Developer Portal <i data-feather="external-link" aria-hidden="true"></i></a>
+                                    <button type="button" class="ao-btn ao-btn-ghost" id="overviewOpenExplorerBtn">Open API Explorer <i data-feather="arrow-right" aria-hidden="true"></i></button>
+                                </div>
+                                <p class="ao-note"><i data-feather="key" aria-hidden="true"></i> Anonymous access uses a shared, rate-limited API key. Create a dedicated key in the Deutsche Boerse Developer Portal for higher throughput.</p>
+                            </div>
+                            <pre class="ao-snippet" aria-label="Example query"><code><span class="ao-k">query</span> {
+  <span class="ao-f">ProductInfos</span>(filter: { Product: { eq: <span class="ao-s">"FESX"</span> } }) {
+    data { Product Name Currency TickSize }
+  }
+}</code></pre>
                         </div>
+                    </header>
+
+                    <div class="ao-container">
 
                         <!-- Data domains -->
-                        <div style="margin-bottom: 64px;">
-                            <h2 style="font-family: Replica, sans-serif; font-weight: 700; font-size: 32px; margin-bottom: 24px; color: #14285f;">Data domains</h2>
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
-                                <!-- 01 -->
-                                <div style="border: 1px solid #d3d7d9; border-radius: 8px; padding: 24px; display: flex; flex-direction: column;">
-                                    <div style="font-size: 14px; color: #5a6872; margin-bottom: 8px;">01</div>
-                                    <h3 style="font-weight: 600; font-size: 18px; margin-bottom: 12px; color: #201751;">Products and contracts</h3>
-                                    <p style="font-size: 14px; color: #5a6872; flex-grow: 1; margin-bottom: 24px;">Identify instruments, contract specifications and product relationships for a Eurex product.</p>
-                                    <button class="primary-btn domain-query-btn" data-domain="products" style="width: 100%;">Run Query</button>
-                                </div>
-                                <!-- 02 -->
-                                <div style="border: 1px solid #d3d7d9; border-radius: 8px; padding: 24px; display: flex; flex-direction: column;">
-                                    <div style="font-size: 14px; color: #5a6872; margin-bottom: 8px;">02</div>
-                                    <h3 style="font-weight: 600; font-size: 18px; margin-bottom: 12px; color: #201751;">Trading calendar</h3>
-                                    <p style="font-size: 14px; color: #5a6872; flex-grow: 1; margin-bottom: 24px;">Retrieve trading phases, trading hours and holidays for market operations and scheduling.</p>
-                                    <button class="primary-btn domain-query-btn" data-domain="calendar" style="width: 100%;">Run Query</button>
-                                </div>
-                                <!-- 03 -->
-                                <div style="border: 1px solid #d3d7d9; border-radius: 8px; padding: 24px; display: flex; flex-direction: column;">
-                                    <div style="font-size: 14px; color: #5a6872; margin-bottom: 8px;">03</div>
-                                    <h3 style="font-weight: 600; font-size: 18px; margin-bottom: 12px; color: #201751;">Trading parameters</h3>
-                                    <p style="font-size: 14px; color: #5a6872; flex-grow: 1; margin-bottom: 24px;">Review FESX tick-price bands and price steps alongside TES validation, approval, broker, lot-size, expiry-range and disclosure settings.</p>
-                                    <button class="primary-btn domain-query-btn" data-domain="parameters" style="width: 100%;">Run Query</button>
-                                </div>
-                                <!-- 04 -->
-                                <div style="border: 1px solid #d3d7d9; border-radius: 8px; padding: 24px; display: flex; flex-direction: column;">
-                                    <div style="font-size: 14px; color: #5a6872; margin-bottom: 8px;">04</div>
-                                    <h3 style="font-weight: 600; font-size: 18px; margin-bottom: 12px; color: #201751;">Flexible contracts</h3>
-                                    <p style="font-size: 14px; color: #5a6872; flex-grow: 1; margin-bottom: 24px;">Retrieve OESX flexible contracts with strike, maturity, settlement and open-interest data, alongside settlement prices for flexible contracts only, ordered by ContractID.</p>
-                                    <button class="primary-btn domain-query-btn" data-domain="flexible" style="width: 100%;">Run Query</button>
-                                </div>
+                        <section class="ao-section" aria-labelledby="aoDomainsTitle">
+                            <div class="ao-section-head">
+                                <h2 class="ao-h2" id="aoDomainsTitle">Data domains</h2>
+                                <p class="ao-section-sub">Pick a domain to load a ready-made example query into the API Explorer and run it.</p>
                             </div>
-                        </div>
+                            <div class="ao-domain-grid">
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="layers" aria-hidden="true"></i></span><span class="ao-card-num">01</span></div>
+                                    <h3 class="ao-card-title">Products and contracts</h3>
+                                    <p class="ao-card-text">Identify instruments, contract specifications and product relationships for a Eurex product.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>ProductInfos</li><li>Contracts</li><li class="ao-chip-product">FESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="products">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="calendar" aria-hidden="true"></i></span><span class="ao-card-num">02</span></div>
+                                    <h3 class="ao-card-title">Trading calendar</h3>
+                                    <p class="ao-card-text">Retrieve trading phases, trading hours and holidays for market operations and scheduling.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>TradingHours</li><li>Holidays</li><li class="ao-chip-product">FESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="calendar">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="sliders" aria-hidden="true"></i></span><span class="ao-card-num">03</span></div>
+                                    <h3 class="ao-card-title">Trading parameters</h3>
+                                    <p class="ao-card-text">Review tick-price bands and price steps alongside TES validation, approval, broker, lot-size, expiry-range and disclosure settings.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>TickRules</li><li>TESProfiles</li><li class="ao-chip-product">FESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="parameters">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="shuffle" aria-hidden="true"></i></span><span class="ao-card-num">04</span></div>
+                                    <h3 class="ao-card-title">Flexible contracts</h3>
+                                    <p class="ao-card-text">Retrieve flexible contracts with strike, maturity, settlement and open interest, alongside settlement prices for flexible contracts only.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>FlexibleContracts</li><li>SettlementPrices</li><li class="ao-chip-product">OESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="flexible">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="bar-chart-2" aria-hidden="true"></i></span><span class="ao-card-num">05</span></div>
+                                    <h3 class="ao-card-title">Option series and expirations</h3>
+                                    <p class="ao-card-text">List the expiration calendar of an options product and its listed series with strike, call/put, delta and previous-day settlement price.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>Expirations</li><li>Contracts</li><li class="ao-chip-product">OESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="options">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                            </div>
+                        </section>
 
                         <!-- Request additional strikes module -->
-                        <div style="width: min(1211px, calc(100% - 40px)); margin: 0 auto 64px auto; background: #a0dcc8; color: #201751; padding: 32px; border-radius: 4px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 32px;">
-                            <div style="flex: 1; min-width: 300px;">
-                                <h2 style="font-family: Replica, sans-serif; font-weight: 700; font-size: 40px; margin: 0 0 25px 0;">Request additional strikes</h2>
-                                <p style="font-family: Replica, sans-serif; font-weight: 400; font-size: 18px; margin: 0;">Open the existing strike-window workflow to select contract dates and missing strike ranges...</p>
+                        <section class="ao-strike" aria-labelledby="aoStrikeTitle">
+                            <div class="ao-strike-copy">
+                                <h2 class="ao-h2" id="aoStrikeTitle">Request additional strikes</h2>
+                                <p>Open the Strike Window for an options product to review listed strikes per contract date and select the missing strike ranges you want to request.</p>
                             </div>
-                            <div style="flex: 1; min-width: 300px;">
-                                <form id="apiOverviewStrikeForm" style="background: #f3f3f3; padding: 24px; border-radius: 4px;">
-                                    <label for="apiOverviewStrikeProduct" style="display: block; font-family: Replica, sans-serif; font-weight: 700; font-size: 16px; color: #201751; margin-bottom: 8px;">Option product symbol</label>
-                                    <input type="text" id="apiOverviewStrikeProduct" placeholder="e.g. OESX" style="width: 100%; box-sizing: border-box; border: 1px solid #201751; border-radius: 0; padding: 11px; font-family: Replica, sans-serif; font-weight: 400; font-size: 18px; text-transform: uppercase; background: #ffffff; color: #201751; margin-bottom: 16px;">
-                                    <button type="submit" style="border: 1px solid #201751; border-radius: 0; padding: 11px 24px; font-family: Replica, sans-serif; font-weight: 700; font-size: 14px; color: #201751; background: #a0dcc8; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#201751'; this.style.color='#f3f3f3'" onmouseout="this.style.background='#a0dcc8'; this.style.color='#201751'">Submit</button>
-                                </form>
-                            </div>
-                        </div>
+                            <form id="apiOverviewStrikeForm" class="ao-strike-form">
+                                <label for="apiOverviewStrikeProduct">Option product symbol</label>
+                                <div class="ao-strike-row">
+                                    <input type="text" id="apiOverviewStrikeProduct" placeholder="e.g. OESX" maxlength="32" autocomplete="off" pattern="[A-Za-z0-9_\-]{1,32}" required>
+                                    <button type="submit" class="ao-btn ao-btn-navy">Open Strike Window</button>
+                                </div>
+                            </form>
+                        </section>
 
                         <!-- Resources -->
-                        <div>
-                            <h2 style="font-family: Replica, sans-serif; font-weight: 700; font-size: 32px; margin-bottom: 24px; color: #14285f;">Resources</h2>
-                            <div style="display: flex; flex-wrap: wrap; gap: 48px;">
-                                <ul style="list-style: none; padding: 0; margin: 0;">
-                                    <li style="margin-bottom: 12px;"><a href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none; font-weight: 600;">Developer Portal →</a></li>
-                                    <li><a href="#" id="overviewLiveSchemaLink" style="color: #00ce7d; text-decoration: none; font-weight: 600;">Live schema →</a></li>
-                                </ul>
-                                <div>
-                                    <h3 style="font-weight: 600; font-size: 16px; margin-bottom: 8px; color: #201751;">API support</h3>
-                                    <p style="font-size: 14px; color: #5a6872; margin: 0; line-height: 1.6;">
-                                        Viktor Uvarov<br>
-                                        Eurex Frankfurt AG | Trading Design<br>
-                                        +49 69 211 1 42 82<br>
-                                        <a href="mailto:Viktor.Uvarov@eurex.com" style="color: #00ce7d; text-decoration: none;">Viktor.Uvarov@eurex.com</a>
-                                    </p>
+                        <section class="ao-section" aria-labelledby="aoResourcesTitle">
+                            <h2 class="ao-h2" id="aoResourcesTitle">Resources</h2>
+                            <div class="ao-resource-grid">
+                                <a class="ao-resource" href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082" target="_blank" rel="noopener">
+                                    <i data-feather="book-open" aria-hidden="true"></i>
+                                    <span><strong>Developer Portal</strong><small>API keys, documentation and terms of use</small></span>
+                                </a>
+                                <a class="ao-resource" href="#" id="overviewLiveSchemaLink">
+                                    <i data-feather="code" aria-hidden="true"></i>
+                                    <span><strong>Live schema</strong><small>Browse types and fields in the Explorer</small></span>
+                                </a>
+                                <div class="ao-resource ao-contact">
+                                    <i data-feather="user" aria-hidden="true"></i>
+                                    <span>
+                                        <strong>API support</strong>
+                                        <small>Viktor Uvarov &middot; Eurex Frankfurt AG | Trading Design</small>
+                                        <small><a href="tel:+496921114282">+49 69 211 1 42 82</a> &middot; <a href="mailto:Viktor.Uvarov@eurex.com">Viktor.Uvarov@eurex.com</a></small>
+                                    </span>
                                 </div>
                             </div>
-                        </div>
+                        </section>
 
                     </div>
                 </section>

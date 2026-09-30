@@ -1225,6 +1225,33 @@ ${schemaSDL}
       SettlementDate
     }
   }
+}`,
+
+        options: `query {
+  Expirations(filter: { Product: { eq: "OESX" } }) {
+    date
+    data {
+      ProductID
+      Product
+      MasterContract
+      ExpirationIndex
+      ExpirationDate
+    }
+  }
+  Contracts(filter: { Product: { eq: "OESX" } }) {
+    date
+    data {
+      Contract
+      ISIN
+      ContractDate
+      ContractCycle
+      ExpirationDate
+      CallPut
+      Strike
+      OptionsDelta
+      PreviousDaySettlementPrice
+    }
+  }
 }`
     };
 
@@ -1275,6 +1302,11 @@ ${schemaSDL}
                 }, 100);
             }
         });
+    }
+
+    const overviewOpenExplorerBtn = document.getElementById('overviewOpenExplorerBtn');
+    if (overviewOpenExplorerBtn) {
+        overviewOpenExplorerBtn.addEventListener('click', () => switchAppView('api-explorer'));
     }
 
     // Live Schema Link
