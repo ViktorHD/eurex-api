@@ -1,4 +1,4 @@
-import { formatDateToDDMMYYYY, generateStrikesCsv, generateStrikeRequestEmailText } from '../overview.js';
+import { formatDateToDDMMYYYY, generateStrikesCsv, generateStrikeRequestEmailText, OverviewManager } from '../overview.js';
 
 describe('Overview Additional Strikes Helpers', () => {
     describe('formatDateToDDMMYYYY', () => {
@@ -120,5 +120,34 @@ describe('Overview Additional Strikes Helpers', () => {
 
             expect(text).toBe('');
         });
+    });
+});
+
+describe('Strike Window helpers', () => {
+    // Bypass the constructor, which needs a DOM
+    const om = Object.create(OverviewManager.prototype);
+
+    test('_modeStep returns the regular ladder increment despite a gap', () => {
+        expect(om._modeStep([5000, 5025, 5050, 5075, 5300, 5325])).toBe(25);
+        expect(om._modeStep([5000])).toBeNull();
+    });
+
+    test('_axisTickStep picks round steps that are multiples of the strike increment', () => {
+        expect(om._axisTickStep(25, 9000, 10)).toBe(1000);
+        expect(om._axisTickStep(25, 9000, 4)).toBe(2500);
+        expect(om._axisTickStep(50, 1200, 12)).toBe(100);
+        expect(om._axisTickStep(0.5, 12, 10)).toBe(2);
+    });
+
+    test('_atmByDate interpolates the strike where call delta crosses 0.5', () => {
+        const rows = [
+            { ContractDate: '2026-12-18', CallPut: 'C', ContractCycle: 'MONTHLY', Strike: 5400, Delta: 0.6 },
+            { ContractDate: '2026-12-18', CallPut: 'C', ContractCycle: 'MONTHLY', Strike: 5500, Delta: 0.4 },
+            { ContractDate: '2026-12-18', CallPut: 'P', ContractCycle: 'MONTHLY', Strike: 5450, Delta: -0.5 },
+            { ContractDate: '2027-03-19', CallPut: 'C', ContractCycle: 'QUARTERLY', Strike: 5000, Delta: 0.9 }
+        ];
+        const atm = om._atmByDate(rows);
+        expect(atm.get('2026-12-18')).toBeCloseTo(5450);
+        expect(atm.has('2027-03-19')).toBe(false);
     });
 });

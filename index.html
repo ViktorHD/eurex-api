@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="explorer/styles.css?v=3">
+    <link rel="stylesheet" href="explorer/styles.css?v=4">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -218,12 +218,12 @@
                     <div class="pane-header">
                         <span>Strike Window</span>
                         <div style="display: flex; align-items: center; gap: 12px;">
-                            <select id="overviewViewSelect" title="View" style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
+                            <select id="overviewViewSelect" title="View" aria-label="View" style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
                                 <option value="strike" selected>Strike Window</option>
                                 <option value="delta">Delta Coverage</option>
                                 <option value="3d">3D View</option>
                             </select>
-                            <input type="text" id="overviewProductInput" list="overviewProductList" maxlength="32" placeholder="Product (e.g. OESX)" style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 10px; font-size: 0.8rem; width: 150px; text-transform: uppercase;">
+                            <input type="text" id="overviewProductInput" list="overviewProductList" maxlength="32" placeholder="Option product, e.g. OESX" aria-label="Option product" autocomplete="off" style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 10px; font-size: 0.8rem; width: 190px; text-transform: uppercase;">
                             <datalist id="overviewProductList"></datalist>
                             <button id="refreshOverviewBtn" class="icon-btn" title="Refresh" aria-label="Refresh Overview"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
                             <button id="shareOverviewBtn" class="icon-btn" title="Share View" aria-label="Share Eurex Overview"><i data-feather="share-2" style="width: 14px; height: 14px;"></i></button>
@@ -550,7 +550,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="explorer/app.js?v=3"></script>
+    <script type="module" src="explorer/app.js?v=4"></script>
     <script>
       feather.replace();
     </script>
