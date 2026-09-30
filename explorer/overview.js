@@ -181,6 +181,49 @@ export function generateStrikeRequestEmailText(symbol, entries, existingStrikes 
     return `Dear Eurex Operations Team,\n\nPlease add the following strike prices for ${symbol} for the next trading day:\n\n${tableLines.join('\n')}\n\nTotal new strikes to add: ${totalNewStrikes}\n\nNote: The requested strikes CSV file has been prepared and is attached to this email.\n\nThank you,\nBest regards`;
 }
 
+// Distinct strike increments used in one expiry's ladder, ascending (e.g. [25, 50, 100] when the wings are coarser).
+export function ladderSteps(sortedStrikes) {
+    const steps = new Set();
+    for (let i = 1; i < sortedStrikes.length; i++) {
+        const d = Number((sortedStrikes[i] - sortedStrikes[i - 1]).toFixed(6));
+        if (d > 0) steps.add(d);
+    }
+    return [...steps].sort((a, b) => a - b);
+}
+
+// Missing strikes inside one expiry's ladder. Strike schemes often widen away from the money (e.g. 25 near the
+// money, 50 or 100 in the wings), so each interval is judged against the local step on both sides instead of one
+// step for the whole expiry or product. The local step on a side is the nearest regular run (two equal consecutive
+// intervals), falling back to the adjacent interval. An interval is a gap when it exceeds 1.5x the coarser side step.
+// The first and last intervals are never gaps: a wider step at the end of the ladder is the wing, not a hole.
+// Missing strikes are proposed on that coarser step, continuing the grid of the listed strikes on that side.
+export function findLadderGaps(sortedStrikes) {
+    const s = sortedStrikes;
+    const d = [];
+    for (let i = 1; i < s.length; i++) d.push(Number((s[i] - s[i - 1]).toFixed(6)));
+    const sideStep = (i, dir) => {
+        for (let j = i + dir; j + dir >= 0 && j + dir < d.length; j += dir) {
+            if (d[j] === d[j + dir]) return d[j];
+        }
+        return d[i + dir];
+    };
+    const gaps = [];
+    for (let i = 1; i < d.length - 1; i++) {
+        const left = sideStep(i, -1);
+        const right = sideStep(i, 1);
+        const step = Math.max(left, right);
+        if (!(step > 0) || d[i] <= step * 1.5) continue;
+        const lo = s[i];
+        const hi = s[i + 1];
+        const count = Math.ceil(d[i] / step - 1e-9) - 1;
+        // Anchor on the side whose step is used, so proposed strikes line up with that side's listed strikes
+        const start = Number((right > left ? hi - count * step : lo + step).toFixed(6));
+        const end = Number((start + (count - 1) * step).toFixed(6));
+        gaps.push({ lo, hi, start, end, step, count });
+    }
+    return gaps;
+}
+
 export function downloadCsvFile(filename, csvContent) {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -254,7 +297,7 @@ export class OverviewManager {
 
             if (addRowBtn) {
                 addRowBtn.addEventListener('click', () => {
-                    this._addRequestStrikeRow();
+                    this._addRequestStrikeRow('', {});
                 });
             }
 
@@ -373,6 +416,17 @@ export class OverviewManager {
             </div>
         `;
 
+        // Follow the selected expiry's strike step until the user types a distance themselves
+        const dateSelect = row.querySelector('.req-contract-date');
+        const distanceInput = row.querySelector('.req-strike-distance');
+        distanceInput.addEventListener('input', () => { distanceInput.dataset.userSet = '1'; });
+        dateSelect.addEventListener('change', () => {
+            if (distanceInput.dataset.userSet) return;
+            const selected = Array.from(dateSelect.selectedOptions).map(o => o.value);
+            const d = this._defaultDistance(selected);
+            if (d !== null) distanceInput.value = d;
+        });
+
         const removeBtn = row.querySelector('.remove-req-row-btn');
         if (removeBtn) {
             removeBtn.addEventListener('click', () => {
@@ -395,10 +449,9 @@ export class OverviewManager {
 
         if (symbolInput) symbolInput.value = product || '';
 
-        const step = this._strikeStep(sortedStrikes || []);
         if (distanceHint) {
-            distanceHint.textContent = step && Number.isFinite(step)
-                ? `Default strike distance for ${product}: ${step}`
+            distanceHint.textContent = this._stepsByDate?.size
+                ? 'Strike steps differ per expiry: the distance defaults to the finest step of the selected contract date(s).'
                 : '';
         }
 
@@ -412,12 +465,20 @@ export class OverviewManager {
                     start: prefill.start, end: prefill.end, distance: prefill.distance
                 });
             } else {
-                this._addRequestStrikeRow(formattedDates[0] || '', { distance: Number.isFinite(step) ? step : '' });
+                const first = formattedDates[0] || '';
+                const fallback = this._strikeStep(sortedStrikes || []);
+                this._addRequestStrikeRow(first, { distance: this._defaultDistance([first]) ?? (Number.isFinite(fallback) ? fallback : '') });
             }
         }
 
         modal.classList.remove('hidden');
         if (window.feather) window.feather.replace();
+    }
+
+    // Finest strike step among the given contract dates ("DD.MM.YYYY"), or null when unknown.
+    _defaultDistance(formattedDates) {
+        const steps = formattedDates.flatMap(d => (this._stepsByDate?.get(d) || []).slice(0, 1));
+        return steps.length ? Math.min(...steps) : null;
     }
 
     _createChartHeader(titleText, product, dates, strikes, stats = null) {
@@ -834,7 +895,7 @@ export class OverviewManager {
         dates.forEach((date, i) => {
             const y = topAxisHeight + i * rowHeight;
             el('rect', { x: 0, y, width: svgWidth, height: rowHeight, class: i % 2 === 0 ? 'overview-row-even' : 'overview-row-odd' });
-            el('text', { x: 8, y: y + rowHeight / 2 + 4, class: 'overview-date-label' }, formatDateToDDMMYYYY(date));
+            el('text', { x: 8, y: y + rowHeight / 2 + 4, class: 'overview-date-label', 'data-date': date }, formatDateToDDMMYYYY(date));
             const dte = this._daysToMaturity(date);
             if (Number.isFinite(dte)) {
                 el('text', { x: labelWidth - 10, y: y + rowHeight / 2 + 4, class: 'overview-dte-label', 'text-anchor': 'end' }, dte < 365 ? `${dte}d` : `${(dte / 365).toFixed(1)}y`);
@@ -862,6 +923,7 @@ export class OverviewManager {
         const radius = Math.max(2.2, Math.min(5, minGapPx * 0.42));
 
         const gaps = [];
+        this._stepsByDate = new Map(); // "DD.MM.YYYY" -> strike steps of that expiry, used by the request modal
         dates.forEach(date => {
             const rows = rowsByDate.get(date) || [];
             const std = rows.filter(r => r.ContractCycle !== 'FLEXIBLE');
@@ -877,15 +939,18 @@ export class OverviewManager {
                     stroke: color, class: 'overview-coverage-band'
                 });
 
-                // Missing strikes inside the ladder, relative to the row's usual increment
-                const rowStep = this._modeStep(rowStrikes);
-                for (let i = 1; i < rowStrikes.length; i++) {
-                    const lo = rowStrikes[i - 1];
-                    const hi = rowStrikes[i];
-                    if (rowStep && hi - lo > rowStep * 1.5) {
-                        gaps.push({ date, start: lo + rowStep, end: hi - rowStep, step: rowStep, count: Math.round((hi - lo) / rowStep) - 1, lo, hi });
-                    }
-                }
+                // Strike steps and missing strikes are determined per expiry (see findLadderGaps)
+                const steps = ladderSteps(rowStrikes);
+                this._stepsByDate.set(formatDateToDDMMYYYY(date), steps);
+                findLadderGaps(rowStrikes).forEach(g => gaps.push({ ...g, date }));
+            }
+        });
+
+        // Hovering a contract date shows that expiry's strike steps
+        svg.querySelectorAll('.overview-date-label').forEach(label => {
+            const steps = this._stepsByDate.get(formatDateToDDMMYYYY(label.getAttribute('data-date')));
+            if (steps && steps.length) {
+                this._addTooltip(label, `Strike steps in this expiry: ${steps.map(v => v.toLocaleString('en-US')).join(' / ')}`);
             }
         });
 
@@ -1033,21 +1098,6 @@ export class OverviewManager {
         this.els.content.appendChild(scrollWrap);
 
         if (window.feather) window.feather.replace();
-    }
-
-    // Most common gap between consecutive strikes: the ladder's regular increment.
-    _modeStep(sortedStrikes) {
-        const counts = new Map();
-        for (let i = 1; i < sortedStrikes.length; i++) {
-            const d = Number((sortedStrikes[i] - sortedStrikes[i - 1]).toFixed(6));
-            if (d > 0) counts.set(d, (counts.get(d) || 0) + 1);
-        }
-        let best = null;
-        let bestCount = 0;
-        counts.forEach((c, d) => {
-            if (c > bestCount || (c === bestCount && d < best)) { best = d; bestCount = c; }
-        });
-        return best;
     }
 
     // Round axis step (1, 2, 2.5 or 5 × 10^n) that is a multiple of the listed strike increment.
