@@ -1,4 +1,4 @@
-import { formatDateToDDMMYYYY, generateStrikesCsv, generateStrikeRequestEmailText, OverviewManager } from '../overview.js';
+import { formatDateToDDMMYYYY, generateStrikesCsv, generateStrikeRequestEmailText, OverviewManager, findLadderGaps, ladderSteps } from '../overview.js';
 
 describe('Overview Additional Strikes Helpers', () => {
     describe('formatDateToDDMMYYYY', () => {
@@ -127,11 +127,6 @@ describe('Strike Window helpers', () => {
     // Bypass the constructor, which needs a DOM
     const om = Object.create(OverviewManager.prototype);
 
-    test('_modeStep returns the regular ladder increment despite a gap', () => {
-        expect(om._modeStep([5000, 5025, 5050, 5075, 5300, 5325])).toBe(25);
-        expect(om._modeStep([5000])).toBeNull();
-    });
-
     test('_axisTickStep picks round steps that are multiples of the strike increment', () => {
         expect(om._axisTickStep(25, 9000, 10)).toBe(1000);
         expect(om._axisTickStep(25, 9000, 4)).toBe(2500);
@@ -149,5 +144,50 @@ describe('Strike Window helpers', () => {
         const atm = om._atmByDate(rows);
         expect(atm.get('2026-12-18')).toBeCloseTo(5450);
         expect(atm.has('2027-03-19')).toBe(false);
+    });
+});
+
+describe('Per-expiry strike gap detection', () => {
+    const range = (from, to, step) => { const r = []; for (let k = from; k <= to; k += step) r.push(k); return r; };
+
+    test('regular ladder has no gaps', () => {
+        expect(findLadderGaps(range(5000, 6000, 25))).toEqual([]);
+    });
+
+    test('coarser wings are not gaps (25 near the money, 50 and 100 further out)', () => {
+        const ladder = [...range(3000, 3900, 100), ...range(4000, 4950, 50), ...range(5000, 6000, 25), ...range(6050, 7000, 50), ...range(7100, 8000, 100), 8200];
+        expect(findLadderGaps(ladder)).toEqual([]);
+        expect(ladderSteps(ladder)).toEqual([25, 50, 100, 200]);
+    });
+
+    test('single missing strike in the 25 region uses step 25', () => {
+        const ladder = range(5000, 6000, 25).filter(k => k !== 5500);
+        expect(findLadderGaps(ladder)).toEqual([{ lo: 5475, hi: 5525, start: 5500, end: 5500, step: 25, count: 1 }]);
+    });
+
+    test('hole in a 100-step wing uses step 100, not the 25 step near the money', () => {
+        const ladder = [...range(5000, 6000, 25), ...range(6100, 6500, 100), ...range(7000, 7500, 100)];
+        expect(findLadderGaps(ladder)).toEqual([{ lo: 6500, hi: 7000, start: 6600, end: 6900, step: 100, count: 4 }]);
+    });
+
+    test('two holes separated by one strike are both found', () => {
+        const ladder = [...range(5000, 5100, 25), 5250, ...range(5400, 5500, 25)];
+        const gaps = findLadderGaps(ladder);
+        expect(gaps.map(g => [g.start, g.end, g.step])).toEqual([[5125, 5225, 25], [5275, 5375, 25]]);
+    });
+
+    test('hole at a step transition proposes strikes on the coarser grid', () => {
+        const ladder = [...range(5000, 5100, 25), ...range(5250, 5500, 50)];
+        expect(findLadderGaps(ladder)).toEqual([{ lo: 5100, hi: 5250, start: 5150, end: 5200, step: 50, count: 2 }]);
+    });
+
+    test('proposed strikes continue the listed grid even when it is not a multiple of the step', () => {
+        const ladder = [6150, 6250, 6350, 6850, 7050, 7250];
+        expect(findLadderGaps(ladder)).toEqual([{ lo: 6350, hi: 6850, start: 6450, end: 6650, step: 200, count: 2 }]);
+    });
+
+    test('too few strikes to judge', () => {
+        expect(findLadderGaps([5000, 5500])).toEqual([]);
+        expect(findLadderGaps([5000, 5025, 5500])).toEqual([]);
     });
 });
