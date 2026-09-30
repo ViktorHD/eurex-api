@@ -10,6 +10,15 @@ const CYCLE_COLORS = {
 };
 const DEFAULT_CYCLE_COLOR = '#757575';
 const PRODUCT_CODE_RE = /^[A-Z0-9_-]{1,32}$/;
+// Delta Coverage view flags adjacent strikes whose deltas differ by more than this.
+const DELTA_JUMP_THRESHOLD = 0.2;
+// 3D camera presets. Front: delta vs contract date; Side: strike vs contract date; Top: delta vs strike.
+const VIEW_PRESETS_3D = {
+    iso: { label: '3D', title: 'Isometric view', azimuth: Math.PI / 4, pitch: Math.PI / 6 },
+    front: { label: 'Δ × Date', title: 'Front: delta against contract date', azimuth: 0, pitch: 0.05 },
+    side: { label: 'Strike × Date', title: 'Side: strike against contract date', azimuth: Math.PI / 2, pitch: 0.05 },
+    top: { label: 'Δ × Strike', title: 'Top: delta against strike', azimuth: 0, pitch: Math.PI / 2 - 0.05 }
+};
 // Frequently used option products offered as quick picks in the empty state (only those that exist are shown).
 const QUICK_PICKS = ['OESX', 'ODAX', 'OSMI', 'OGBL', 'OGBM', 'OVS2', 'OKS2', 'OMSC'];
 
@@ -222,6 +231,32 @@ export function findLadderGaps(sortedStrikes) {
         gaps.push({ lo, hi, start, end, step, count });
     }
     return gaps;
+}
+
+// Adjacent listed strikes of one expiry whose call deltas differ by more than `threshold`: the delta coverage
+// between them is thin. points: [{ strike, delta }] (call deltas, 0..1), any order.
+export function findDeltaJumps(points, threshold = 0.2) {
+    const sorted = points
+        .filter(p => Number.isFinite(p.strike) && Number.isFinite(p.delta))
+        .sort((a, b) => a.strike - b.strike);
+    const jumps = [];
+    for (let i = 1; i < sorted.length; i++) {
+        const a = sorted[i - 1];
+        const b = sorted[i];
+        const size = Math.abs(a.delta - b.delta);
+        if (b.strike > a.strike && size > threshold + 1e-9) {
+            jumps.push({ lo: a.strike, hi: b.strike, deltaLo: a.delta, deltaHi: b.delta, size });
+        }
+    }
+    return jumps;
+}
+
+// Strike step to propose inside an interval: the largest listed step of the expiry that is smaller than the interval
+// and divides it evenly, otherwise the finest listed step.
+export function refineStep(interval, steps) {
+    const candidates = (steps || []).filter(st => st < interval - 1e-9 && Math.abs(interval / st - Math.round(interval / st)) < 1e-6);
+    if (candidates.length) return Math.max(...candidates);
+    return steps && steps.length ? Math.min(...steps) : null;
 }
 
 export function downloadCsvFile(filename, csvContent) {
@@ -822,8 +857,86 @@ export class OverviewManager {
         return (callPut || '').toUpperCase() === 'P' ? -magnitude : magnitude;
     }
 
+    // "DD.MM.YYYY" -> ascending strike steps of that expiry's standard (non-flexible) ladder.
+    _computeStepsByDate(rows) {
+        const byDate = new Map();
+        rows.forEach(r => {
+            if (r.ContractCycle === 'FLEXIBLE') return;
+            const key = formatDateToDDMMYYYY(r.ContractDate);
+            if (!byDate.has(key)) byDate.set(key, new Set());
+            byDate.get(key).add(Number(r.Strike));
+        });
+        const result = new Map();
+        byDate.forEach((set, key) => {
+            const steps = ladderSteps([...set].filter(Number.isFinite).sort((a, b) => a - b));
+            if (steps.length) result.set(key, steps);
+        });
+        return result;
+    }
+
+    _productTitle(product) {
+        const info = this.products.find(p => p.Product === product);
+        return info?.Name ? `${product} · ${info.Name}` : product;
+    }
+
+    _rerender() {
+        const c = this._lastChart;
+        if (c) this._renderChart(c.normalRows, c.lepoRows, c.product, c.allRows);
+    }
+
+    // Legend shared by all views: one toggle button per contract cycle (with counts) plus static marker explanations.
+    // extraItems: [[swatchClass, label], ...]
+    _buildLegend(rows, extraItems = [], note = '') {
+        const hidden = this.hiddenCycles;
+        const legend = document.createElement('div');
+        legend.className = 'overview-legend';
+        const order = Object.keys(CYCLE_COLORS);
+        const counts = new Map();
+        rows.forEach(r => {
+            const c = (r.ContractCycle || '').toUpperCase();
+            if (c) counts.set(c, (counts.get(c) || 0) + 1);
+        });
+        [...counts.keys()].sort((a, b) => order.indexOf(a) - order.indexOf(b)).forEach(cycle => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'overview-legend-item overview-legend-toggle' + (hidden.has(cycle) ? ' overview-legend-item-hidden' : '');
+            item.setAttribute('aria-pressed', String(!hidden.has(cycle)));
+            item.title = `Show/hide ${cycle.toLowerCase()} contracts`;
+            const swatch = document.createElement('span');
+            swatch.className = 'overview-legend-swatch';
+            swatch.style.background = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
+            item.append(swatch, `${cycle.charAt(0)}${cycle.slice(1).toLowerCase()}`);
+            const c = document.createElement('span');
+            c.className = 'overview-legend-count';
+            c.textContent = counts.get(cycle).toLocaleString('en-US');
+            item.appendChild(c);
+            item.addEventListener('click', () => {
+                if (hidden.has(cycle)) hidden.delete(cycle); else hidden.add(cycle);
+                this._rerender();
+            });
+            legend.appendChild(item);
+        });
+        extraItems.forEach(([swatchClass, label]) => {
+            const span = document.createElement('span');
+            span.className = 'overview-legend-item';
+            const sw = document.createElement('span');
+            sw.className = `overview-legend-swatch ${swatchClass}`;
+            span.append(sw, label);
+            legend.appendChild(span);
+        });
+        if (note) {
+            const n = document.createElement('span');
+            n.className = 'overview-legend-item overview-legend-note';
+            n.textContent = note;
+            legend.appendChild(n);
+        }
+        return legend;
+    }
+
     _renderChart(normalRows, lepoRows, product, allRows) {
         const viewMode = this.els.viewSelect?.value || 'strike';
+        if (!this.hiddenCycles) this.hiddenCycles = new Set(); // shared by all views, so a toggle survives a view switch
+        this._stepsByDate = this._computeStepsByDate(normalRows);
         if (viewMode === 'delta') {
             this._renderDeltaChart(allRows || [...normalRows, ...lepoRows], product);
             return;
@@ -841,8 +954,7 @@ export class OverviewManager {
             .map(r => Number(r.RefPrice))
             .filter(v => Number.isFinite(v) && v > 0);
 
-        if (!this.hiddenCyclesStrike) this.hiddenCyclesStrike = new Set();
-        const hidden = this.hiddenCyclesStrike;
+        const hidden = this.hiddenCycles;
         const visibleRows = normalRows.filter(r => !hidden.has((r.ContractCycle || '').toUpperCase()));
 
         const dates = [...new Set([...normalRows, ...lepoRows].map(r => r.ContractDate))].sort();
@@ -923,7 +1035,6 @@ export class OverviewManager {
         const radius = Math.max(2.2, Math.min(5, minGapPx * 0.42));
 
         const gaps = [];
-        this._stepsByDate = new Map(); // "DD.MM.YYYY" -> strike steps of that expiry, used by the request modal
         dates.forEach(date => {
             const rows = rowsByDate.get(date) || [];
             const std = rows.filter(r => r.ContractCycle !== 'FLEXIBLE');
@@ -939,9 +1050,7 @@ export class OverviewManager {
                     stroke: color, class: 'overview-coverage-band'
                 });
 
-                // Strike steps and missing strikes are determined per expiry (see findLadderGaps)
-                const steps = ladderSteps(rowStrikes);
-                this._stepsByDate.set(formatDateToDDMMYYYY(date), steps);
+                // Missing strikes are determined per expiry (see findLadderGaps)
                 findLadderGaps(rowStrikes).forEach(g => gaps.push({ ...g, date }));
             }
         });
@@ -1037,47 +1146,14 @@ export class OverviewManager {
             ].join('\n'));
         });
 
-        // Legend: cycles toggle visibility, with counts
-        const legend = document.createElement('div');
-        legend.className = 'overview-legend';
-        const cyclesPresent = [...new Set(normalRows.map(r => (r.ContractCycle || '').toUpperCase()).filter(Boolean))]
-            .sort((a, b) => Object.keys(CYCLE_COLORS).indexOf(a) - Object.keys(CYCLE_COLORS).indexOf(b));
-        cyclesPresent.forEach(cycle => {
-            const count = normalRows.filter(r => (r.ContractCycle || '').toUpperCase() === cycle).length;
-            const item = document.createElement('button');
-            item.type = 'button';
-            item.className = 'overview-legend-item overview-legend-toggle' + (hidden.has(cycle) ? ' overview-legend-item-hidden' : '');
-            item.setAttribute('aria-pressed', String(!hidden.has(cycle)));
-            item.title = `Show/hide ${cycle.toLowerCase()} contracts`;
-            const swatch = document.createElement('span');
-            swatch.className = 'overview-legend-swatch';
-            swatch.style.background = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
-            item.append(swatch, `${cycle.charAt(0)}${cycle.slice(1).toLowerCase()}`);
-            const c = document.createElement('span');
-            c.className = 'overview-legend-count';
-            c.textContent = count.toLocaleString('en-US');
-            item.appendChild(c);
-            item.addEventListener('click', () => {
-                if (hidden.has(cycle)) hidden.delete(cycle); else hidden.add(cycle);
-                this._renderChart(normalRows, lepoRows, product, allRows);
-            });
-            legend.appendChild(item);
-        });
-        const staticItem = (swatchClass, label) => {
-            const span = document.createElement('span');
-            span.className = 'overview-legend-item';
-            const sw = document.createElement('span');
-            sw.className = `overview-legend-swatch ${swatchClass}`;
-            span.append(sw, label);
-            legend.appendChild(span);
-        };
-        if (atmByDate.size > 0) staticItem('overview-legend-swatch-atm', 'At the money (Δ 0.50)');
-        if (gaps.length > 0) staticItem('overview-legend-swatch-gap', 'Missing strikes (click to request)');
-        if (lepoByDate.size > 0) staticItem('overview-legend-swatch-line', 'Underlying Ref (LEPO)');
+        const legend = this._buildLegend(normalRows, [
+            ...(atmByDate.size > 0 ? [['overview-legend-swatch-atm', 'At the money (Δ 0.50)']] : []),
+            ...(gaps.length > 0 ? [['overview-legend-swatch-gap', 'Missing strikes (click to request)']] : []),
+            ...(lepoByDate.size > 0 ? [['overview-legend-swatch-line', 'Underlying Ref (LEPO)']] : [])
+        ]);
 
         const flexCount = normalRows.filter(r => r.ContractCycle === 'FLEXIBLE').length;
-        const info = this.products.find(p => p.Product === product);
-        const titleText = info?.Name ? `${product} · ${info.Name}` : product;
+        const titleText = this._productTitle(product);
         const fmtNum = (n) => Math.round(n).toLocaleString('en-US');
         const stats = [
             `${dates.length} contract dates`,
@@ -1140,17 +1216,22 @@ export class OverviewManager {
         return result;
     }
 
-    // Delta Coverage view: X-axis = Options Delta, Y-axis = days to maturity (ExpirationDate - ContractDate).
+    // Delta Coverage view: X = Options Delta (puts left, calls right), Y = days to maturity (log scale).
+    // Each expiry is one row of points with a coverage band per side; large delta jumps between adjacent
+    // listed strikes are flagged and can be requested directly.
     _renderDeltaChart(rows, product) {
-        const points = rows
+        const hidden = this.hiddenCycles;
+        const allPoints = rows
             .map(r => ({
                 ...r,
+                strike: Number(r.Strike),
                 delta: Number(r.Delta),
                 dtm: this._daysToMaturity(r.ExpirationDate)
             }))
-            .filter(p => Number.isFinite(p.delta) && Number.isFinite(p.dtm) && p.dtm >= 0);
+            .filter(p => p.Delta !== null && p.Delta !== undefined && p.Delta !== ''
+                && Number.isFinite(p.delta) && Number.isFinite(p.dtm) && p.dtm >= 0);
 
-        if (points.length === 0) {
+        if (allPoints.length === 0) {
             this.els.content.innerHTML = this._emptyState(
                 'No delta data',
                 `No contracts with both an Options Delta and a computable days-to-maturity were found for ${product}.`
@@ -1158,153 +1239,172 @@ export class OverviewManager {
             if (window.feather) window.feather.replace();
             return;
         }
+        const points = allPoints.filter(p => !hidden.has((p.ContractCycle || '').toUpperCase()));
 
-        const deltas = points.map(p => p.delta);
-        const dtms = points.map(p => p.dtm);
-        const minDelta = Math.min(...deltas);
-        const maxDelta = Math.max(...deltas);
-        const deltaPad = (maxDelta - minDelta) * 0.08 || 0.1;
-        const domainMinX = minDelta - deltaPad;
-        const domainMaxX = maxDelta + deltaPad;
+        const domainMinX = -1.05;
+        const domainMaxX = 1.05;
+        const dtms = allPoints.map(p => p.dtm);
+        const domainMinY = Math.max(0, Math.min(...dtms));
+        const domainMaxY = Math.max(...dtms) * 1.08 + 1;
 
-        const minDtm = Math.min(...dtms);
-        const maxDtm = Math.max(...dtms);
-        const dtmPad = (maxDtm - minDtm) * 0.08 || 1;
-        // Days to maturity is never negative.
-        const domainMinY = Math.max(0, minDtm - dtmPad);
-        const domainMaxY = maxDtm + dtmPad;
-
-        const labelWidth = 70;
-        const topMargin = 30;
-        const bottomAxisHeight = 36;
-        const containerWidth = Math.max(this.els.container.clientWidth, 300);
-        const chartWidth = Math.max(containerWidth - labelWidth - 40, 150);
-        // Use the full available pane height instead of a fixed size, minus room for the header/legend above the chart.
-        const reservedHeight = 110;
-        const containerHeight = Math.max(this.els.container.clientHeight, 300);
-        const chartHeight = Math.max(containerHeight - reservedHeight - topMargin - bottomAxisHeight, 300);
-        const svgWidth = labelWidth + chartWidth + 20;
+        const labelWidth = 64;
+        const topMargin = 40;
+        const bottomAxisHeight = 44;
+        const available = Math.max((this.els.container.clientWidth || 0) - 48, 300);
+        const chartWidth = Math.max(available - labelWidth - 16, 200);
+        const reservedHeight = 150;
+        const containerHeight = Math.max(this.els.container.clientHeight || 0, 420);
+        const chartHeight = Math.max(containerHeight - reservedHeight - topMargin - bottomAxisHeight, 320);
+        const svgWidth = labelWidth + chartWidth + 16;
         const svgHeight = topMargin + chartHeight + bottomAxisHeight;
 
         const xScale = (delta) => labelWidth + ((delta - domainMinX) / (domainMaxX - domainMinX)) * chartWidth;
         // Log scale: short maturities get proportionally more vertical space, long ones compress together.
         const logMinY = Math.log1p(domainMinY);
         const logMaxY = Math.log1p(domainMaxY);
-        const yScale = (dtm) => topMargin + ((Math.log1p(dtm) - logMinY) / (logMaxY - logMinY)) * chartHeight;
+        const innerPad = 14; // keeps the first and last expiry rows off the chart edges
+        const yScale = (dtm) => topMargin + innerPad + ((Math.log1p(dtm) - logMinY) / (logMaxY - logMinY || 1)) * (chartHeight - 2 * innerPad);
 
         const svgNS = 'http://www.w3.org/2000/svg';
         const svg = document.createElementNS(svgNS, 'svg');
         svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
-        svg.setAttribute('width', '100%');
+        svg.setAttribute('width', svgWidth);
         svg.setAttribute('height', svgHeight);
-        svg.setAttribute('preserveAspectRatio', 'none');
-        svg.classList.add('overview-chart-svg');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', `Delta coverage for ${product}: option deltas per days to maturity`);
+        svg.classList.add('overview-chart-svg', 'overview-strike-svg');
+        const el = (tag, attrs, text) => {
+            const node = document.createElementNS(svgNS, tag);
+            Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
+            if (text !== undefined) node.textContent = text;
+            svg.appendChild(node);
+            return node;
+        };
 
-        // Horizontal gridlines + Y-axis (days to maturity) ticks, using natural day/week/month/year buckets on the log scale.
-        const dtmTicks = this._dtmTicks(domainMinY, domainMaxY);
-        dtmTicks.forEach(dtm => {
+        // Put / call halves
+        el('rect', { x: xScale(domainMinX), y: topMargin, width: xScale(0) - xScale(domainMinX), height: chartHeight, class: 'overview-delta-half-put' });
+        el('rect', { x: xScale(0), y: topMargin, width: xScale(domainMaxX) - xScale(0), height: chartHeight, class: 'overview-delta-half-call' });
+        el('text', { x: xScale(-0.5), y: topMargin - 14, class: 'overview-axis-title', 'text-anchor': 'middle' }, '◀ Puts');
+        el('text', { x: xScale(0.5), y: topMargin - 14, class: 'overview-axis-title', 'text-anchor': 'middle' }, 'Calls ▶');
+
+        // Days-to-maturity gridlines (log scale)
+        this._dtmTicks(domainMinY, domainMaxY).forEach(dtm => {
             const y = yScale(dtm);
-
-            const line = document.createElementNS(svgNS, 'line');
-            line.setAttribute('x1', labelWidth);
-            line.setAttribute('y1', y);
-            line.setAttribute('x2', svgWidth);
-            line.setAttribute('y2', y);
-            line.setAttribute('class', 'overview-gridline');
-            svg.appendChild(line);
-
-            const tickLabel = document.createElementNS(svgNS, 'text');
-            tickLabel.setAttribute('x', labelWidth - 8);
-            tickLabel.setAttribute('y', y + 4);
-            tickLabel.setAttribute('class', 'overview-date-label');
-            tickLabel.setAttribute('text-anchor', 'end');
-            tickLabel.textContent = Math.round(dtm).toLocaleString();
-            svg.appendChild(tickLabel);
+            el('line', { x1: labelWidth, y1: y, x2: svgWidth - 16, y2: y, class: 'overview-gridline' });
+            el('text', { x: labelWidth - 8, y: y + 4, class: 'overview-date-label', 'text-anchor': 'end' }, dtm < 365 ? `${Math.round(dtm)}d` : `${(dtm / 365).toFixed(dtm % 365 ? 1 : 0)}y`);
         });
 
-        // Vertical gridlines + X-axis (delta) ticks
-        const deltaStep = this._niceTickStep(0.1, domainMaxX - domainMinX, 10);
-        const firstDeltaTick = Math.ceil(domainMinX / deltaStep) * deltaStep;
-        for (let delta = firstDeltaTick; delta <= domainMaxX; delta += deltaStep) {
-            const x = xScale(delta);
-
-            const line = document.createElementNS(svgNS, 'line');
-            line.setAttribute('x1', x);
-            line.setAttribute('y1', topMargin);
-            line.setAttribute('x2', x);
-            line.setAttribute('y2', topMargin + chartHeight);
-            line.setAttribute('class', 'overview-gridline');
-            svg.appendChild(line);
-
-            const tickLabel = document.createElementNS(svgNS, 'text');
-            tickLabel.setAttribute('x', x);
-            tickLabel.setAttribute('y', topMargin + chartHeight + 20);
-            tickLabel.setAttribute('class', 'overview-tick-label');
-            tickLabel.setAttribute('text-anchor', 'middle');
-            tickLabel.textContent = delta.toFixed(2);
-            svg.appendChild(tickLabel);
+        // Delta gridlines, with ATM (±0.50) and zero emphasised
+        for (let i = -10; i <= 10; i += 2) {
+            const v = i / 10;
+            const x = xScale(v);
+            const cls = v === 0 ? 'overview-axis-line' : Math.abs(v) === 0.5 ? 'overview-atm-line' : 'overview-gridline';
+            el('line', { x1: x, y1: topMargin, x2: x, y2: topMargin + chartHeight, class: cls });
+            el('text', { x, y: topMargin + chartHeight + 18, class: 'overview-tick-label', 'text-anchor': 'middle' }, v.toFixed(1));
         }
+        el('text', { x: xScale(0.5), y: topMargin + chartHeight + 18, class: 'overview-atm-label', 'text-anchor': 'middle' }, 'ATM');
+        el('text', { x: xScale(-0.5), y: topMargin + chartHeight + 18, class: 'overview-atm-label', 'text-anchor': 'middle' }, 'ATM');
+        el('text', { x: 8, y: topMargin - 14, class: 'overview-axis-title' }, 'Expiry');
+        el('text', { x: labelWidth + chartWidth / 2, y: svgHeight - 6, class: 'overview-axis-title', 'text-anchor': 'middle' }, 'Options delta');
 
-        const yAxisTitle = document.createElementNS(svgNS, 'text');
-        yAxisTitle.setAttribute('x', 8);
-        yAxisTitle.setAttribute('y', 16);
-        yAxisTitle.setAttribute('class', 'overview-axis-title');
-        yAxisTitle.setAttribute('text-anchor', 'start');
-        yAxisTitle.textContent = 'Days to Maturity';
-        svg.appendChild(yAxisTitle);
-
-        const xAxisTitle = document.createElementNS(svgNS, 'text');
-        xAxisTitle.setAttribute('x', labelWidth + chartWidth / 2);
-        xAxisTitle.setAttribute('y', svgHeight - 4);
-        xAxisTitle.setAttribute('class', 'overview-axis-title');
-        xAxisTitle.setAttribute('text-anchor', 'middle');
-        xAxisTitle.textContent = 'Options Delta';
-        svg.appendChild(xAxisTitle);
-
-        // Contract points
+        // Per expiry: coverage bands, delta jumps, points
+        const byDate = new Map();
         points.forEach(p => {
-            const cx = xScale(p.delta);
-            const cy = yScale(p.dtm);
+            if (!byDate.has(p.ContractDate)) byDate.set(p.ContractDate, []);
+            byDate.get(p.ContractDate).push(p);
+        });
+        const radius = Math.max(2, Math.min(4, chartWidth / 400));
+        const jumps = [];
+        const dates = [...byDate.keys()].sort();
+        dates.forEach(date => {
+            const pts = byDate.get(date);
+            const y = yScale(pts[0].dtm);
+            const color = CYCLE_COLORS[(pts.find(p => p.ContractCycle !== 'FLEXIBLE')?.ContractCycle || '').toUpperCase()] || DEFAULT_CYCLE_COLOR;
+            ['P', 'C'].forEach(side => {
+                const ds = pts.filter(p => p.CallPut === side && p.ContractCycle !== 'FLEXIBLE').map(p => p.delta);
+                if (ds.length > 1) {
+                    el('line', { x1: xScale(Math.min(...ds)), y1: y, x2: xScale(Math.max(...ds)), y2: y, stroke: color, class: 'overview-coverage-band' });
+                }
+            });
+
+            const calls = pts.filter(p => p.CallPut === 'C' && p.ContractCycle !== 'FLEXIBLE').map(p => ({ strike: p.strike, delta: p.delta }));
+            const steps = this._stepsByDate.get(formatDateToDDMMYYYY(date)) || [];
+            // A jump that is also a hole in the strike ladder gets the same proposal as in the Strike Window
+            const ladderGaps = findLadderGaps([...new Set(calls.map(c => c.strike))].sort((a, b) => a - b));
+            findDeltaJumps(calls, DELTA_JUMP_THRESHOLD).forEach(j => {
+                const gap = ladderGaps.find(g => g.lo === j.lo && g.hi === j.hi);
+                if (gap) {
+                    jumps.push({ ...j, date, y, step: gap.step, start: gap.start, end: gap.end });
+                    return;
+                }
+                const step = refineStep(j.hi - j.lo, steps);
+                if (!step || j.hi - j.lo <= step) return; // nothing listable in between
+                jumps.push({ ...j, date, y, step, start: j.lo + step, end: j.hi - step });
+            });
+        });
+
+        jumps.forEach(j => {
+            // Draw on the out-of-the-money side: calls when the call delta is below 0.5, otherwise the mirrored puts
+            const otmCalls = (j.deltaLo + j.deltaHi) / 2 < 0.5;
+            const x1 = xScale(otmCalls ? j.deltaHi : j.deltaLo - 1);
+            const x2 = xScale(otmCalls ? j.deltaLo : j.deltaHi - 1);
+            const rect = el('rect', {
+                x: Math.min(x1, x2), y: j.y - 6, width: Math.max(Math.abs(x2 - x1), 4), height: 12, rx: 3,
+                class: 'overview-gap', tabindex: 0, role: 'button'
+            });
+            const count = Math.round((j.end - j.start) / j.step) + 1;
+            const text = [
+                `Delta jump ${j.size.toFixed(2)} between strikes ${j.lo.toLocaleString('en-US')} and ${j.hi.toLocaleString('en-US')}`,
+                `Contract date: ${formatDateToDDMMYYYY(j.date)}`,
+                `Suggested: ${j.start.toLocaleString('en-US')} – ${j.end.toLocaleString('en-US')} (${count} strike${count === 1 ? '' : 's'} at step ${j.step})`,
+                'Click to request these strikes'
+            ].join('\n');
+            rect.setAttribute('aria-label', text.replace(/\n/g, '. '));
+            this._addTooltip(rect, text);
+            const standardStrikes = [...new Set(rows.filter(r => r.ContractCycle !== 'FLEXIBLE').map(r => Number(r.Strike)))].sort((a, b) => a - b);
+            const open = () => this.openRequestStrikesModal(product, dates, standardStrikes, { date: j.date, start: j.start, end: j.end, distance: j.step });
+            rect.addEventListener('click', open);
+            rect.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+        });
+
+        points.forEach(p => {
             const cycle = (p.ContractCycle || '').toUpperCase();
-            const color = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
-
-            const circle = document.createElementNS(svgNS, 'circle');
-            circle.setAttribute('cx', cx);
-            circle.setAttribute('cy', cy);
-            circle.setAttribute('r', 5);
-            circle.setAttribute('fill', color);
-            circle.setAttribute('class', 'overview-point');
-            svg.appendChild(circle);
-
+            const isFlex = cycle === 'FLEXIBLE';
+            const circle = el('circle', {
+                cx: xScale(p.delta), cy: yScale(p.dtm), r: isFlex ? Math.max(radius, 4) : radius,
+                fill: CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR,
+                class: isFlex ? 'overview-point overview-point-flex' : 'overview-point'
+            });
             this._addTooltip(circle, [
-                `Strike: ${p.Strike}`,
-                `Call/Put: ${p.CallPut || '-'}`,
+                `Strike: ${p.strike.toLocaleString('en-US')} ${p.CallPut === 'P' ? 'Put' : p.CallPut === 'C' ? 'Call' : ''}`.trim(),
                 `Options Delta: ${p.Delta}`,
-                `Days to Maturity: ${p.dtm}`,
-                `Contract Date: ${p.ContractDate}`,
-                `Contract Cycle: ${p.ContractCycle || '-'}`,
-                `Expiration: ${p.ExpirationDate || '-'}`
+                `Contract Date: ${formatDateToDDMMYYYY(p.ContractDate)} (${p.dtm}d)`,
+                `Contract Cycle: ${p.ContractCycle || '-'}`
             ].join('\n'));
         });
 
-        // Legend
-        const legend = document.createElement('div');
-        legend.className = 'overview-legend';
-        const cyclesPresent = [...new Set(points.map(p => (p.ContractCycle || '').toUpperCase()).filter(Boolean))];
-        legend.innerHTML = cyclesPresent.map(cycle => {
-            const color = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
-            return `<span class="overview-legend-item"><span class="overview-legend-swatch" style="background:${color}"></span>${cycle}</span>`;
-        }).join('');
+        const legend = this._buildLegend(allPoints, [
+            ['overview-legend-swatch-atm', 'ATM (Δ ±0.50)'],
+            ...(jumps.length ? [['overview-legend-swatch-gap', `Delta jump > ${DELTA_JUMP_THRESHOLD.toFixed(2)} (click to request)`]] : [])
+        ]);
 
-        const deltaDates = [...new Set(points.map(p => p.ContractDate))].sort();
-        const deltaStrikes = [...new Set(points.map(p => Number(p.Strike)))].sort((a, b) => a - b);
-        const titleText = `${product} — ${points.length} contracts with delta coverage`;
-        const header = this._createChartHeader(titleText, product, deltaDates, deltaStrikes);
+        const fmtRange = (arr) => arr.length ? `${Math.min(...arr).toFixed(2)} to ${Math.max(...arr).toFixed(2)}` : '–';
+        const std = points.filter(p => p.ContractCycle !== 'FLEXIBLE');
+        const callDeltas = std.filter(p => p.CallPut === 'C').map(p => p.delta);
+        const putDeltas = std.filter(p => p.CallPut === 'P').map(p => p.delta);
+        const stats = [
+            `${dates.length} contract dates`,
+            `${callDeltas.length.toLocaleString('en-US')} calls · ${putDeltas.length.toLocaleString('en-US')} puts`,
+            ...(callDeltas.length ? [`Calls Δ ${fmtRange(callDeltas)}`] : []),
+            ...(putDeltas.length ? [`Puts Δ ${fmtRange(putDeltas)}`] : []),
+            ...(jumps.length ? [{ text: `${jumps.length} delta jump${jumps.length === 1 ? '' : 's'}`, warn: true }] : [])
+        ];
+        const reqStrikes = [...new Set(allPoints.filter(p => p.ContractCycle !== 'FLEXIBLE').map(p => p.strike))].sort((a, b) => a - b);
+        const header = this._createChartHeader(this._productTitle(product), product, dates, reqStrikes, stats);
 
         this.els.content.innerHTML = '';
         this.els.content.appendChild(header);
         this.els.content.appendChild(legend);
-
         const scrollWrap = document.createElement('div');
         scrollWrap.className = 'overview-chart-scroll';
         scrollWrap.appendChild(svg);
@@ -1361,31 +1461,18 @@ export class OverviewManager {
         if (!this.rotation3D) this.rotation3D = { azimuth: Math.PI / 4, pitch: Math.PI / 6 };
         if (!this.zoom3D) this.zoom3D = 1;
         if (!this.pan3D) this.pan3D = { x: 0, y: 0 };
-        if (!this.hiddenCycles3D) this.hiddenCycles3D = new Set();
+        const legend = this._buildLegend(points, [], 'Drag to rotate · Shift+drag to pan · Scroll or +/− to zoom · Arrow keys rotate');
 
-        // Legend + header only need to be built once per fetch; rotation only touches the SVG.
-        const legend = document.createElement('div');
-        legend.className = 'overview-legend';
-        const cyclesPresent = [...new Set(points.map(p => (p.ContractCycle || '').toUpperCase()).filter(Boolean))];
-        let legendHtml = cyclesPresent.map(cycle => {
-            const color = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
-            const hidden = this.hiddenCycles3D.has(cycle) ? ' overview-legend-item-hidden' : '';
-            return `<span class="overview-legend-item overview-legend-toggle${hidden}" data-cycle="${cycle}" title="Click to show/hide ${cycle}"><span class="overview-legend-swatch" style="background:${color}"></span>${cycle}</span>`;
-        }).join('');
-        legendHtml += `<span class="overview-legend-item overview-legend-note">X: Delta (puts left, calls right) &mdash; Depth: Strike &mdash; Height: Contract Date (short-dated low, rising) &mdash; drag to rotate, shift+drag to pan, scroll to zoom &mdash; click a cycle to toggle it</span>`;
-        legend.innerHTML = legendHtml;
-        legend.addEventListener('click', (e) => {
-            const item = e.target.closest('.overview-legend-toggle');
-            if (!item) return;
-            const cycle = item.dataset.cycle;
-            if (this.hiddenCycles3D.has(cycle)) this.hiddenCycles3D.delete(cycle);
-            else this.hiddenCycles3D.add(cycle);
-            item.classList.toggle('overview-legend-item-hidden');
-            this._redraw3DScene();
-        });
-
-        const titleText = `${product} — ${points.length} contracts (3D: Delta \u00d7 Strike \u00d7 Contract Date)`;
-        const header = this._createChartHeader(titleText, product, dates, strikes);
+        const deltas3 = points.filter(p => !this.hiddenCycles.has((p.ContractCycle || '').toUpperCase())).map(p => p.delta);
+        const fmtNum = (n) => Math.round(n).toLocaleString('en-US');
+        const stats = [
+            `${dates.length} contract dates`,
+            `${points.length.toLocaleString('en-US')} contracts`,
+            `Strike ${fmtNum(minStrike)} – ${fmtNum(maxStrike)}`,
+            ...(deltas3.length ? [`Δ ${Math.min(...deltas3).toFixed(2)} to ${Math.max(...deltas3).toFixed(2)}`] : [])
+        ];
+        const reqStrikes = [...new Set(points.filter(p => p.ContractCycle !== 'FLEXIBLE').map(p => p.strike))].sort((a, b) => a - b);
+        const header = this._createChartHeader(this._productTitle(product), product, dates, reqStrikes, stats);
 
         this.els.content.innerHTML = '';
         this.els.content.appendChild(header);
@@ -1411,10 +1498,32 @@ export class OverviewManager {
         });
         chartWrap.appendChild(controls);
 
+        // Camera presets: each flattens one axis so a 2D relationship can be read exactly
+        const presets = document.createElement('div');
+        presets.className = 'overview-3d-presets';
+        presets.setAttribute('role', 'group');
+        presets.setAttribute('aria-label', 'Camera presets');
+        Object.entries(VIEW_PRESETS_3D).forEach(([key, preset]) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = preset.label;
+            btn.title = preset.title;
+            btn.dataset.preset = key;
+            btn.addEventListener('click', () => {
+                this.rotation3D = { azimuth: preset.azimuth, pitch: preset.pitch };
+                this.pan3D = { x: 0, y: 0 };
+                this._redraw3DScene();
+            });
+            presets.appendChild(btn);
+        });
+        chartWrap.appendChild(presets);
+
         const scrollWrap = document.createElement('div');
         scrollWrap.className = 'overview-chart-scroll overview-3d-scroll';
         chartWrap.appendChild(scrollWrap);
         this._chart3DScrollWrap = scrollWrap;
+        scrollWrap.tabIndex = 0;
+        scrollWrap.setAttribute('aria-label', '3D chart: arrow keys rotate, plus and minus zoom, 0 resets');
         this._bind3DDrag(scrollWrap);
         this._redraw3DScene();
 
@@ -1494,6 +1603,20 @@ export class OverviewManager {
         scrollWrap.addEventListener('pointerup', endDrag);
         scrollWrap.addEventListener('pointercancel', endDrag);
         scrollWrap.addEventListener('contextmenu', (e) => e.preventDefault());
+        scrollWrap.addEventListener('keydown', (e) => {
+            const step = 0.1;
+            const r = this.rotation3D;
+            if (e.key === 'ArrowLeft') r.azimuth -= step;
+            else if (e.key === 'ArrowRight') r.azimuth += step;
+            else if (e.key === 'ArrowUp') r.pitch = Math.min(maxPitch, r.pitch + step);
+            else if (e.key === 'ArrowDown') r.pitch = Math.max(minPitch, r.pitch - step);
+            else if (e.key === '+' || e.key === '=') this.zoom3D = Math.min(4, this.zoom3D * 1.2);
+            else if (e.key === '-') this.zoom3D = Math.max(0.3, this.zoom3D / 1.2);
+            else if (e.key === '0') { this._reset3DView(); e.preventDefault(); return; }
+            else return;
+            e.preventDefault();
+            scheduleRedraw();
+        });
         scrollWrap.addEventListener('wheel', (e) => {
             e.preventDefault();
             this.zoom3D = Math.min(4, Math.max(0.3, this.zoom3D * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
@@ -1503,7 +1626,7 @@ export class OverviewManager {
 
     _build3DSvg() {
         const d = this._chart3D;
-        const hidden = this.hiddenCycles3D || new Set();
+        const hidden = this.hiddenCycles || new Set();
         const points = hidden.size > 0
             ? d.points.filter(p => !hidden.has((p.ContractCycle || '').toUpperCase()))
             : d.points;
@@ -1529,7 +1652,8 @@ export class OverviewManager {
         const project = (x, y, z) => {
             const xr = x * Math.cos(azimuth) + z * Math.sin(azimuth);
             const zr = -x * Math.sin(azimuth) + z * Math.cos(azimuth);
-            return { sx: xr, sy: y * Math.cos(pitch) - zr * Math.sin(pitch) };
+            // depth: larger = closer to the camera
+            return { sx: xr, sy: y * Math.cos(pitch) - zr * Math.sin(pitch), depth: y * Math.sin(pitch) + zr * Math.cos(pitch) };
         };
 
         // Floor corners (earliest Contract Date, i.e. world Y = 0) span Delta x Strike.
@@ -1595,7 +1719,8 @@ export class OverviewManager {
         const bboxH = Math.max(maxSy - minSy, 1);
 
         const padding = 60;
-        const availW = Math.max(containerWidth - padding * 2, 100);
+        const labelRoom = 80; // contract date labels are drawn left of the vertical axis
+        const availW = Math.max(containerWidth - padding * 2 - labelRoom, 100);
         const availH = Math.max(containerHeight - padding * 2, 100);
         const fitScale = Math.min(availW / bboxW, availH / bboxH, 1.4);
         const scale = fitScale * (this.zoom3D || 1);
@@ -1606,7 +1731,7 @@ export class OverviewManager {
         const panX = this.pan3D?.x || 0;
         const panY = this.pan3D?.y || 0;
         const toSvg = (proj) => ({
-            x: svgWidth / 2 + panX + (proj.sx - centerSx) * scale,
+            x: svgWidth / 2 + labelRoom / 2 + panX + (proj.sx - centerSx) * scale,
             y: svgHeight / 2 + panY - (proj.sy - centerSy) * scale
         });
 
@@ -1623,6 +1748,12 @@ export class OverviewManager {
         floor.setAttribute('class', 'overview-3d-floor');
         svg.appendChild(floor);
 
+        // An axis seen edge-on (e.g. strike in the front preset) collapses: hide its labels instead of stacking them
+        const spacing = (grid) => grid.length > 1 ? Math.hypot(toSvg(grid[1].p1).x - toSvg(grid[0].p1).x, toSvg(grid[1].p1).y - toSvg(grid[0].p1).y) : Infinity;
+        const showDeltaLabels = spacing(deltaGrid) >= 28;
+        const showStrikeLabels = spacing(strikeGrid) >= 18;
+        const showDateLabels = dateTicks.length < 2 || Math.abs(toSvg(dateTicks[1].p).y - toSvg(dateTicks[0].p).y) >= 12;
+
         deltaGrid.forEach(g => {
             const p1 = toSvg(g.p1), p2 = toSvg(g.p2);
             const line = document.createElementNS(svgNS, 'line');
@@ -1637,7 +1768,7 @@ export class OverviewManager {
             label.setAttribute('class', 'overview-tick-label');
             label.setAttribute('text-anchor', 'middle');
             label.textContent = g.value.toFixed(2);
-            svg.appendChild(label);
+            if (showDeltaLabels) svg.appendChild(label);
         });
 
         strikeGrid.forEach(g => {
@@ -1653,8 +1784,8 @@ export class OverviewManager {
             label.setAttribute('y', p1.y + 4);
             label.setAttribute('class', 'overview-date-label');
             label.setAttribute('text-anchor', 'end');
-            label.textContent = Math.round(g.value).toLocaleString();
-            svg.appendChild(label);
+            label.textContent = Math.round(g.value).toLocaleString('en-US');
+            if (showStrikeLabels) svg.appendChild(label);
         });
 
         const deltaTitleSvg = toSvg(deltaTitlePos);
@@ -1664,7 +1795,7 @@ export class OverviewManager {
         deltaTitle.setAttribute('class', 'overview-axis-title');
         deltaTitle.setAttribute('text-anchor', 'middle');
         deltaTitle.textContent = 'Delta';
-        svg.appendChild(deltaTitle);
+        if (showDeltaLabels) svg.appendChild(deltaTitle);
 
         const strikeTitleSvg = toSvg(strikeTitlePos);
         const strikeTitle = document.createElementNS(svgNS, 'text');
@@ -1672,7 +1803,7 @@ export class OverviewManager {
         strikeTitle.setAttribute('y', strikeTitleSvg.y);
         strikeTitle.setAttribute('class', 'overview-axis-title');
         strikeTitle.textContent = 'Strike';
-        svg.appendChild(strikeTitle);
+        if (showStrikeLabels) svg.appendChild(strikeTitle);
 
         dateTicks.forEach(tick => {
             const p = toSvg(tick.p);
@@ -1687,8 +1818,8 @@ export class OverviewManager {
             label.setAttribute('y', p.y + 4);
             label.setAttribute('class', 'overview-date-label');
             label.setAttribute('text-anchor', 'end');
-            label.textContent = tick.value;
-            svg.appendChild(label);
+            label.textContent = formatDateToDDMMYYYY(tick.value);
+            if (showDateLabels) svg.appendChild(label);
         });
 
         const axisBaseSvg = toSvg(dateAxisBase);
@@ -1703,34 +1834,37 @@ export class OverviewManager {
         dateTitle.setAttribute('y', axisTopSvg.y - 10);
         dateTitle.setAttribute('class', 'overview-axis-title');
         dateTitle.setAttribute('text-anchor', 'end');
-        dateTitle.textContent = 'Contract Date (height)';
-        svg.appendChild(dateTitle);
+        dateTitle.textContent = 'Contract date';
+        if (showDateLabels) svg.appendChild(dateTitle);
 
-        // Points, sorted so ones further from the camera draw first (simple painter's algorithm).
+        // Points, sorted so ones further from the camera draw first (painter's algorithm) and fade with distance.
+        const depths = projectedPoints.map(pp => pp.proj.depth);
+        const minDepth = Math.min(...depths);
+        const depthRange = Math.max(...depths) - minDepth || 1;
+        const radius = Math.max(2.2, Math.min(5, 6.5 - Math.log10(Math.max(points.length, 1)))) * Math.sqrt(this.zoom3D || 1);
         projectedPoints
             .slice()
-            .sort((a, b) => a.proj.sy - b.proj.sy)
+            .sort((a, b) => a.proj.depth - b.proj.depth)
             .forEach(({ p, proj }) => {
                 const top = toSvg(proj);
                 const cycle = (p.ContractCycle || '').toUpperCase();
                 const color = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
+                const isFlex = cycle === 'FLEXIBLE';
 
                 const circle = document.createElementNS(svgNS, 'circle');
                 circle.setAttribute('cx', top.x);
                 circle.setAttribute('cy', top.y);
-                circle.setAttribute('r', 5);
+                circle.setAttribute('r', isFlex ? Math.max(radius, 4) : radius);
                 circle.setAttribute('fill', color);
-                circle.setAttribute('class', 'overview-point');
+                circle.setAttribute('class', isFlex ? 'overview-point overview-point-flex' : 'overview-point');
+                circle.style.opacity = (0.35 + 0.65 * (proj.depth - minDepth) / depthRange).toFixed(2);
                 svg.appendChild(circle);
 
                 this._addTooltip(circle, [
-                    `Strike: ${p.Strike}`,
-                    `Call/Put: ${p.CallPut || '-'}`,
+                    `Strike: ${p.strike.toLocaleString('en-US')} ${p.CallPut === 'P' ? 'Put' : p.CallPut === 'C' ? 'Call' : ''}`.trim(),
                     `Options Delta: ${p.Delta}`,
-                    `Contract Date: ${p.ContractDate}`,
-                    `Days to Maturity: ${Number.isFinite(p.dtm) ? p.dtm : '-'}`,
-                    `Contract Cycle: ${p.ContractCycle || '-'}`,
-                    `Expiration: ${p.ExpirationDate || '-'}`
+                    `Contract Date: ${formatDateToDDMMYYYY(p.ContractDate)}${Number.isFinite(p.dtm) ? ` (${p.dtm}d)` : ''}`,
+                    `Contract Cycle: ${p.ContractCycle || '-'}`
                 ].join('\n'));
             });
 
