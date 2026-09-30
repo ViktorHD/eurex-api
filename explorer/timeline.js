@@ -6,9 +6,12 @@ export class TimelineManager {
         this.timezone = 'CET'; // Default
         this.filterText = '';
         this.tooltip = this._createTooltip();
+        this.tooltipTimer = null;
         this.expandedGroups = new Set();
 
         this.bindEvents();
+        // Keep the "now" line and open/closed status current while the view is open
+        this.nowTimer = setInterval(() => this._updateNow(), 60 * 1000);
     }
 
     bindEvents() {
@@ -19,7 +22,16 @@ export class TimelineManager {
         this.els.refreshBtn.addEventListener('click', () => this.fetchAndRender());
         if (this.els.filterInput) {
             this.els.filterInput.addEventListener('input', (e) => {
-                this.filterText = e.target.value.toLowerCase();
+                this.filterText = e.target.value.trim().toLowerCase();
+                this.render();
+            });
+        }
+        if (this.els.expandAllBtn) {
+            this.els.expandAllBtn.addEventListener('click', () => {
+                if (!this.data) return;
+                const names = Object.keys(this.data);
+                const allOpen = names.every(n => this.expandedGroups.has(n));
+                this.expandedGroups = allOpen ? new Set() : new Set(names);
                 this.render();
             });
         }
@@ -85,8 +97,15 @@ export class TimelineManager {
             }, {});
 
             this.render();
+            this._scrollToNow();
         } catch (err) {
-            this.els.content.innerHTML = `<div class="error-card"><p>${err.message}</p></div>`;
+            this.els.content.innerHTML = '';
+            const card = document.createElement('div');
+            card.className = 'error-card';
+            const msg = document.createElement('p');
+            msg.textContent = err.message;
+            card.appendChild(msg);
+            this.els.content.appendChild(card);
         } finally {
             this.els.loading.classList.add('hidden');
         }
@@ -186,8 +205,97 @@ export class TimelineManager {
         return (tzDate - localDate) / 60000;
     }
 
+    _resolveTz(tz) {
+        if (tz === 'LOCAL') return Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (tz === 'CET') return 'Europe/Berlin';
+        if (tz === 'SGT') return 'Asia/Singapore';
+        if (tz === 'CST') return 'America/Chicago';
+        return 'UTC';
+    }
+
+    // Current wall-clock time in a timezone: { minutes, weekday (0 = Sunday) }
+    _nowIn(tz, now = new Date()) {
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: this._resolveTz(tz), hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false
+        }).formatToParts(now);
+        const get = (t) => parts.find(p => p.type === t)?.value;
+        const hour = Number(get('hour')) % 24;
+        const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'));
+        return { minutes: hour * 60 + Number(get('minute')), weekday };
+    }
+
+    _inRange(mins, start, end) {
+        const s = this._timeToMinutes(start);
+        const e = this._timeToMinutes(end);
+        if (s === null || e === null) return false;
+        return s <= e ? (mins >= s && mins < e) : (mins >= s || mins < e);
+    }
+
+    // Trading status of a product right now, based on Eurex (CET) hours. Holidays are not considered.
+    getStatus(hours, now = new Date()) {
+        if (!hours) return 'closed';
+        const { minutes, weekday } = this._nowIn('CET', now);
+        if (weekday === 0 || weekday === 6) return 'closed';
+        if (this._inRange(minutes, hours.StartContinuousTrading, hours.EndContinuousTrading)) return 'open';
+        if (this._inRange(minutes, hours.StartTES, hours.EndTES)) return 'tes';
+        return 'closed';
+    }
+
+    _formatDuration(startMin, endMin) {
+        const d = (endMin - startMin + 1440) % 1440;
+        const h = Math.floor(d / 60);
+        const m = d % 60;
+        return m ? `${h}h ${m}m` : `${h}h`;
+    }
+
+    _updateNow() {
+        if (!this.data || !this.els.content.isConnected) return;
+        const { minutes } = this._nowIn(this.timezone);
+        const left = `${(minutes / 1440) * 100}%`;
+        this.els.content.querySelectorAll('.timeline-now').forEach(el => { el.style.left = left; });
+        const pill = this.els.content.querySelector('.timeline-now-pill');
+        if (pill) {
+            pill.style.left = left;
+            pill.textContent = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+        }
+        this.els.content.querySelectorAll('[data-status-for]').forEach(dot => {
+            const product = dot.getAttribute('data-status-for');
+            const hours = this._hoursByProduct?.get(product);
+            this._applyStatus(dot, this.getStatus(hours));
+        });
+    }
+
+    _applyStatus(dot, status) {
+        const labels = { open: 'Continuous trading now', tes: 'TES only now', closed: 'Closed now' };
+        dot.className = `timeline-status status-${status}`;
+        dot.title = labels[status];
+        dot.setAttribute('aria-label', labels[status]);
+    }
+
+    // On narrow screens the 24h axis overflows: bring the current time into view
+    _scrollToNow() {
+        const c = this.els.container;
+        if (!c || c.scrollWidth <= c.clientWidth) return;
+        const line = this.els.content.querySelector('.timeline-bar-container .timeline-now');
+        const label = this.els.content.querySelector('.timeline-corner-label');
+        if (!line || !label) return;
+        const labelW = label.getBoundingClientRect().width;
+        const x = line.offsetLeft + line.parentElement.offsetLeft - labelW;
+        c.scrollLeft = Math.max(0, x - (c.clientWidth - labelW) / 2);
+    }
+
+    _addNowLine(container) {
+        const line = document.createElement('div');
+        line.className = 'timeline-now';
+        line.setAttribute('aria-hidden', 'true');
+        container.appendChild(line);
+    }
+
     render() {
         if (!this.data) return;
+
+        this._hoursByProduct = new Map();
+        Object.values(this.data).flat().forEach(p => this._hoursByProduct.set(p.Product, p.hours));
 
         this.els.content.innerHTML = '';
 
@@ -197,16 +305,12 @@ export class TimelineManager {
 
         const corner = document.createElement('div');
         corner.className = 'timeline-corner-label';
-        corner.textContent = 'Product Type / Name';
+        const tzLabel = this.els.timezoneSelect.selectedOptions?.[0]?.textContent || this.timezone;
+        corner.textContent = `Product · ${tzLabel}`;
         headerRow.appendChild(corner);
 
         const grid = document.createElement('div');
         grid.className = 'timeline-grid';
-
-        // Background for labels area to ensure they are visible on sticky
-        const labelsBg = document.createElement('div');
-        labelsBg.className = 'timeline-labels-bg';
-        grid.appendChild(labelsBg);
 
         // Add markers and labels
         for (let i = 0; i <= 24; i += 2) {
@@ -225,19 +329,27 @@ export class TimelineManager {
             label.textContent = `${String(i).padStart(2, '0')}:00`;
             grid.appendChild(label);
         }
+        const nowPill = document.createElement('div');
+        nowPill.className = 'timeline-now-pill';
+        nowPill.title = 'Current time';
+        grid.appendChild(nowPill);
         headerRow.appendChild(grid);
         this.els.content.appendChild(headerRow);
 
         const groupNames = Object.keys(this.data).sort();
+        let shown = 0;
         groupNames.forEach(name => {
             let group = this.data[name];
 
-            // Apply filtering
+            // Apply filtering (product code, name or product type)
             if (this.filterText) {
-                group = group.filter(p => p.Product.toLowerCase().includes(this.filterText) || p.Name.toLowerCase().includes(this.filterText));
+                const f = this.filterText;
+                const typeMatch = name.toLowerCase().includes(f);
+                group = group.filter(p => typeMatch || p.Product.toLowerCase().includes(f) || (p.Name || '').toLowerCase().includes(f));
             }
 
             if (group.length === 0) return;
+            shown += group.length;
 
             const isExpanded = this.expandedGroups.has(name) || this.filterText !== '';
 
@@ -256,26 +368,59 @@ export class TimelineManager {
             }
         });
 
+        if (shown === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'timeline-empty';
+            empty.textContent = this.filterText ? `No products match "${this.filterText}".` : 'No trading hours available.';
+            this.els.content.appendChild(empty);
+        }
+
+        if (this.els.expandAllBtn) {
+            const allOpen = groupNames.every(n => this.expandedGroups.has(n));
+            this.els.expandAllBtn.textContent = allOpen ? 'Collapse all' : 'Expand all';
+            this.els.expandAllBtn.disabled = this.filterText !== '';
+        }
+
+        this._updateNow();
         if (window.feather) window.feather.replace();
     }
 
     _renderGroupRow(parent, name, group, isExpanded) {
         const row = document.createElement('div');
         row.className = 'timeline-row timeline-group-row';
-        row.addEventListener('click', () => {
+        const toggle = () => {
             if (this.expandedGroups.has(name)) this.expandedGroups.delete(name);
             else this.expandedGroups.add(name);
             this.render();
-        });
+            this.els.content.querySelector(`[data-group="${CSS.escape(name)}"]`)?.focus();
+        };
+        row.addEventListener('click', toggle);
 
         const label = document.createElement('div');
         label.className = 'timeline-product-label group-label';
+        label.setAttribute('role', 'button');
+        label.setAttribute('tabindex', '0');
+        label.setAttribute('aria-expanded', String(isExpanded));
+        label.setAttribute('data-group', name);
+        label.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+        });
+
+        const chevron = document.createElement('i');
+        chevron.setAttribute('data-feather', isExpanded ? 'chevron-down' : 'chevron-right');
+        chevron.className = 'timeline-chevron';
+        label.appendChild(chevron);
 
         const labelSpan = document.createElement('span');
-        labelSpan.textContent = `${name} (${group.length})`;
+        labelSpan.textContent = name;
         label.appendChild(labelSpan);
 
-        label.title = `${name} (${group.length} Products)`;
+        const count = document.createElement('span');
+        count.className = 'timeline-count';
+        count.textContent = group.length;
+        label.appendChild(count);
+
+        label.title = `${name} (${group.length} products): click to ${isExpanded ? 'collapse' : 'expand'}`;
         row.appendChild(label);
 
         const barContainer = document.createElement('div');
@@ -311,10 +456,11 @@ export class TimelineManager {
             this._addPhaseToContainer(barContainer, {
                 start: minStartStr,
                 end: maxEndStr,
-                type: 'continuous',
-                label: 'Trading Range'
+                type: 'range',
+                label: 'Earliest start to latest end'
             });
         }
+        this._addNowLine(barContainer);
 
         row.appendChild(barContainer);
         parent.appendChild(row);
@@ -326,9 +472,23 @@ export class TimelineManager {
         clobRow.className = 'timeline-row';
 
         const label = document.createElement('div');
-        label.className = 'timeline-product-label';
-        label.textContent = product.Product;
-        label.title = product.Name;
+        label.className = 'timeline-product-label product-label';
+        label.title = `${product.Product}: ${product.Name}`;
+
+        const dot = document.createElement('span');
+        dot.setAttribute('data-status-for', product.Product);
+        dot.setAttribute('role', 'img');
+        this._applyStatus(dot, this.getStatus(product.hours));
+        label.appendChild(dot);
+
+        const code = document.createElement('strong');
+        code.textContent = product.Product;
+        label.appendChild(code);
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'timeline-product-name';
+        nameEl.textContent = product.Name || '';
+        label.appendChild(nameEl);
         clobRow.appendChild(label);
 
         const clobContainer = document.createElement('div');
@@ -357,9 +517,10 @@ export class TimelineManager {
 
             // LTD Book Marker
             if (product.hours.LTDBook) {
-                this._addMarkerToContainer(clobContainer, product.hours.LTDBook, 'ltd-book', 'LTD Book');
+                this._addMarkerToContainer(clobContainer, product.hours.LTDBook, 'ltd-book', 'Last trading day: book closes');
             }
         }
+        this._addNowLine(clobContainer);
 
         clobRow.appendChild(clobContainer);
         parent.appendChild(clobRow);
@@ -371,6 +532,7 @@ export class TimelineManager {
         const tesLabel = document.createElement('div');
         tesLabel.className = 'timeline-product-label';
         tesLabel.textContent = 'TES';
+        tesLabel.title = 'T7 Entry Service (off-book trades)';
         tesRow.appendChild(tesLabel);
 
         const tesContainer = document.createElement('div');
@@ -382,9 +544,10 @@ export class TimelineManager {
             }
             // LTD TES Marker
             if (product.hours.LTDTES) {
-                this._addMarkerToContainer(tesContainer, product.hours.LTDTES, 'ltd-tes', 'LTD TES');
+                this._addMarkerToContainer(tesContainer, product.hours.LTDTES, 'ltd-tes', 'Last trading day: TES closes');
             }
         }
+        this._addNowLine(tesContainer);
 
         tesRow.appendChild(tesContainer);
         parent.appendChild(tesRow);
@@ -416,13 +579,13 @@ export class TimelineManager {
                     bar2.className = `timeline-bar bar-${phase.type}`;
                     bar2.style.left = '0%';
                     bar2.style.width = `${(endMin / 1440) * 100}%`;
-                    this._addTooltip(bar2, `${phase.label}: 00:00 - ${endConverted}`);
+                    this._addTooltip(bar2, `${phase.label}: ${startConverted} – ${endConverted} (${this._formatDuration(startMin, endMin)})`);
                     container.appendChild(bar2);
                 }
 
                 bar.style.left = `${left}%`;
                 bar.style.width = `${width}%`;
-                this._addTooltip(bar, `${phase.label}: ${startConverted} - ${endConverted}`);
+                this._addTooltip(bar, `${phase.label}: ${startConverted} – ${endConverted} (${this._formatDuration(startMin, endMin)})`);
                 container.appendChild(bar);
             }
         }
@@ -440,17 +603,35 @@ export class TimelineManager {
         }
     }
 
+    _positionTooltip(x, y) {
+        const pad = 12;
+        const rect = this.tooltip.getBoundingClientRect();
+        const left = Math.min(x + 15, window.innerWidth - rect.width - pad);
+        const top = y + 15 + rect.height > window.innerHeight - pad ? y - rect.height - 10 : y + 15;
+        this.tooltip.style.left = `${Math.max(pad, left)}px`;
+        this.tooltip.style.top = `${top}px`;
+    }
+
     _addTooltip(el, text) {
-        el.addEventListener('mouseenter', (e) => {
+        el.setAttribute('aria-label', text);
+        el.addEventListener('mouseenter', () => {
+            clearTimeout(this.tooltipTimer);
             this.tooltip.textContent = text;
             this.tooltip.classList.remove('hidden');
         });
-        el.addEventListener('mousemove', (e) => {
-            this.tooltip.style.top = `${e.clientY + 15}px`;
-            this.tooltip.style.left = `${e.clientX + 15}px`;
-        });
+        el.addEventListener('mousemove', (e) => this._positionTooltip(e.clientX, e.clientY));
         el.addEventListener('mouseleave', () => {
             this.tooltip.classList.add('hidden');
+        });
+        // Touch devices have no hover: show the tooltip on tap for a few seconds
+        el.addEventListener('click', (e) => {
+            if (el.closest('.timeline-group-row')) return; // group bars toggle the group instead
+            e.stopPropagation();
+            clearTimeout(this.tooltipTimer);
+            this.tooltip.textContent = text;
+            this.tooltip.classList.remove('hidden');
+            this._positionTooltip(e.clientX, e.clientY);
+            this.tooltipTimer = setTimeout(() => this.tooltip.classList.add('hidden'), 3000);
         });
     }
 }

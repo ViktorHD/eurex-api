@@ -411,7 +411,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loading: document.getElementById('timelineLoading'),
         timezoneSelect: document.getElementById('timezoneSelect'),
         refreshBtn: document.getElementById('refreshTimelineBtn'),
-        filterInput: document.getElementById('timelineFilter')
+        filterInput: document.getElementById('timelineFilter'),
+        expandAllBtn: document.getElementById('timelineExpandAllBtn')
     });
 
     const infoPanel = new InfoPanel(client, {
