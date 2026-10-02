@@ -1,12 +1,12 @@
 import { GraphQLClient } from './client.js';
-import { UIManager } from './ui.js?v=2';
+import { UIManager, downloadText } from './ui.js?v=3';
 import { TabManager } from './tabs.js';
 import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
-import { TimelineManager } from './timeline.js';
+import { TimelineManager } from './timeline.js?v=2';
 import { InfoPanel } from './info.js';
-import { OverviewManager } from './overview.js';
+import { OverviewManager } from './overview.js?v=6';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
 
@@ -851,6 +851,14 @@ ${schemaSDL}
         });
     });
 
+    // Ctrl/Cmd+Enter runs the query from the editor or the variables box
+    [queryInput, variablesInput].forEach(el => el?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            runQueryBtn.click();
+        }
+    }));
+
     // Run execution
     runQueryBtn.addEventListener('click', async () => {
         deactivateTimeline();
@@ -862,48 +870,15 @@ ${schemaSDL}
     });
 
     // Export Logic
+    // Exports follow what is on screen: every result table, with its search, filters and sorting applied.
     const downloadCsvAction = () => {
-        const data = ui.currentData;
-        if (!data || data.length === 0) return;
-        
-        const headers = Object.keys(data[0]);
-        const csvRows = [headers.join(',')];
-        
-        data.forEach(row => {
-            const values = headers.map(header => {
-                let val = row[header];
-                if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
-                val = val !== undefined && val !== null ? String(val) : '';
-                if (val.includes(',') || val.includes('"')) val = `"${val.replace(/"/g, '""')}"`;
-                return val;
-            });
-            csvRows.push(values.join(','));
-        });
-
-        downloadFile(csvRows.join('\n'), 'export.csv', 'text/csv');
+        if (!ui.tables.length) return;
+        downloadText(ui.exportCsv(), `${ui.exportFileBase()}.csv`, 'text/csv');
     };
 
     const downloadMdAction = () => {
-        const data = ui.currentData;
-        if (!data || data.length === 0) return;
-
-        const headers = Object.keys(data[0]);
-        const mdRows = [];
-
-        mdRows.push(`| ${headers.join(' | ')} |`);
-        mdRows.push(`| ${headers.map(() => '---').join(' | ')} |`);
-
-        data.forEach(row => {
-            const values = headers.map(header => {
-                let val = row[header];
-                if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
-                val = val !== undefined && val !== null ? String(val) : '';
-                return val.replace(/\|/g, '\\|');
-            });
-            mdRows.push(`| ${values.join(' | ')} |`);
-        });
-
-        downloadFile(mdRows.join('\n'), 'export.md', 'text/markdown');
+        if (!ui.tables.length) return;
+        downloadText(ui.exportMarkdown(), `${ui.exportFileBase()}.md`, 'text/markdown');
     };
 
     document.getElementById('downloadCsvBtn').addEventListener('click', downloadCsvAction);
@@ -911,18 +886,6 @@ ${schemaSDL}
 
     document.getElementById('downloadMdBtn').addEventListener('click', downloadMdAction);
     document.getElementById('mobileMdBtn').addEventListener('click', downloadMdAction);
-
-    function downloadFile(content, fileName, mimeType) {
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
 
     // Share Logic
     const shareBtn = document.getElementById('actionShareBtn');

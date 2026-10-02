@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="explorer/styles.css?v=5">
+    <link rel="stylesheet" href="explorer/styles.css?v=6">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -390,12 +390,18 @@ query {
                             <div class="skeleton skeleton-row" style="width: 80%;"></div>
                             <div class="skeleton skeleton-row" style="width: 90%;"></div>
                         </div>
-                        <div id="emptyState" class="empty-state">
+                        <div id="emptyState" class="empty-state results-empty">
                             <i data-feather="database"></i>
                             <div>
-                                <h3>No Data to Display</h3>
-                                <p>Run a query to see results here.</p>
-                                <p style="margin-top: 8px; font-size: 0.85rem;"><a href="https://www.eurex.com/ex-en/data/free-reference-data-api" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none;">Learn more about the Eurex API →</a></p>
+                                <h3>No results yet</h3>
+                                <p>Run the query on the left with <strong>Run</strong> or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>, or start from an example:</p>
+                                <div class="results-examples">
+                                    <button type="button" class="domain-query-btn results-example" data-domain="products">Products &amp; contracts</button>
+                                    <button type="button" class="domain-query-btn results-example" data-domain="calendar">Trading calendar</button>
+                                    <button type="button" class="domain-query-btn results-example" data-domain="parameters">Trading parameters</button>
+                                    <button type="button" class="domain-query-btn results-example" data-domain="options">Option series</button>
+                                </div>
+                                <p class="results-empty-link"><a href="https://www.eurex.com/ex-en/data/free-reference-data-api" target="_blank" rel="noopener">Learn more about the Eurex API →</a></p>
                             </div>
                         </div>
                         <div id="resultsContainer" class="hidden"></div>
@@ -550,7 +556,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="explorer/app.js?v=5"></script>
+    <script type="module" src="explorer/app.js?v=6"></script>
     <script>
       feather.replace();
     </script>
