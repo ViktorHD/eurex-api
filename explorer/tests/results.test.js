@@ -1,4 +1,4 @@
-import { DataTable, toCsv, toTsv, toMarkdown } from '../ui.js';
+import { DataTable, UIManager, toCsv, toTsv, toMarkdown } from '../ui.js';
 
 describe('Result export helpers', () => {
     const headers = ['Contract', 'Price', 'Note'];
@@ -57,5 +57,58 @@ describe('DataTable visible rows', () => {
     test('sorting applies to exported rows', () => {
         expect(make(data, { sortCol: 'Price', sortAsc: false }).getVisibleRows().map(r => r.Price)).toEqual([23950, 5512, 5481]);
         expect(make(data, { sortCol: 'Expiry', sortAsc: true }).getVisibleRows()[0].Contract).toBe('FESX 202612');
+    });
+});
+
+describe('Record panel navigation', () => {
+    const makeTable = (data, state = {}) => {
+        const dt = Object.create(DataTable.prototype);
+        Object.assign(dt, { data, columnFilters: {}, searchText: '', sortCol: null, sortAsc: true, selectedIndex: null, tableBody: null }, state);
+        dt._prepareData();
+        return dt;
+    };
+    const makeUi = () => {
+        const ui = new UIManager({});
+        ui._renderDetail = () => {}; // panel DOM is covered by the browser checks
+        ui.detailEl = { classList: { add() {}, remove() {} }, querySelector: () => null };
+        return ui;
+    };
+    const data = [
+        { Contract: 'C', Price: 3 },
+        { Contract: 'A', Price: 1 },
+        { Contract: 'B', Price: 2 }
+    ];
+
+    test('opening selects the row and steps follow the visible (sorted) order', () => {
+        const table = makeTable(data, { sortCol: 'Price', sortAsc: true });
+        const ui = makeUi();
+        ui.openRecord(table, 1); // A
+        expect(table.selectedIndex).toBe(1);
+        ui.stepRecord(1);
+        expect(ui.detail.index).toBe(2); // B
+        ui.stepRecord(1);
+        expect(ui.detail.index).toBe(0); // C
+        ui.stepRecord(1); // already last: stays
+        expect(ui.detail.index).toBe(0);
+        ui.stepRecord(-2);
+        expect(ui.detail.index).toBe(1);
+    });
+
+    test('steps skip rows hidden by search', () => {
+        const table = makeTable(data, { searchText: 'a' }); // matches only A... and none else by name
+        const ui = makeUi();
+        expect(table.visibleIndices()).toEqual([1]);
+        ui.openRecord(table, 1);
+        ui.stepRecord(1);
+        expect(ui.detail.index).toBe(1);
+    });
+
+    test('closing clears the selection', () => {
+        const table = makeTable(data);
+        const ui = makeUi();
+        ui.openRecord(table, 2);
+        ui.closeRecord();
+        expect(ui.detail).toBeNull();
+        expect(table.selectedIndex).toBeNull();
     });
 });

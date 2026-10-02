@@ -50,6 +50,9 @@ export class DataTable {
         this.name = options.name || '';
         this.date = options.date || null;
         this.onStateChange = options.onStateChange || null;
+        this.onOpenRecord = options.onOpenRecord || null; // (table, originalIndex) => void
+        this.onRowsChanged = options.onRowsChanged || null; // (table) => void, after search/filter/sort redraws
+        this.selectedIndex = null; // originalIndex of the row shown in the record panel
         
         this.sortCol = options.sortCol || null;
         this.sortAsc = options.sortAsc !== undefined ? options.sortAsc : true;
@@ -320,6 +323,33 @@ export class DataTable {
         this._updateCount(1);
     }
 
+    // Highlights the row shown in the record panel (null clears) and scrolls it into view.
+    setSelected(originalIndex, scroll = false) {
+        this.selectedIndex = originalIndex;
+        if (!this.tableBody) return;
+        this.tableBody.querySelectorAll('tr.dt-row-selected').forEach(tr => {
+            tr.classList.remove('dt-row-selected');
+            tr.removeAttribute('aria-selected');
+        });
+        if (originalIndex === null) return;
+        const tr = this.tableBody.querySelector(`tr[data-index="${originalIndex}"]`);
+        if (tr) {
+            tr.classList.add('dt-row-selected');
+            tr.setAttribute('aria-selected', 'true');
+            if (scroll) tr.scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    // Search text of one cell (as used by the table search)
+    _s(originalIndex, h) {
+        return this.processedData[originalIndex]?._s[h] ?? '';
+    }
+
+    // originalIndex values of the visible rows, in display order
+    visibleIndices() {
+        return this._visibleItems().map(i => i.originalIndex);
+    }
+
     // Rows after search, column filters and sorting, in display order
     getVisibleRows() {
         return this._visibleItems().map(i => i.row);
@@ -477,6 +507,28 @@ export class DataTable {
         filtered.forEach(item => {
             const tr = document.createElement('tr');
             tr.dataset.index = item.originalIndex;
+            if (this.onOpenRecord) {
+                tr.classList.add('dt-row-clickable');
+                tr.tabIndex = 0;
+                tr.title = 'Open record';
+                if (this.selectedIndex === item.originalIndex) {
+                    tr.classList.add('dt-row-selected');
+                    tr.setAttribute('aria-selected', 'true');
+                }
+                tr.addEventListener('click', (e) => {
+                    // Buttons, inputs and text selections keep their own behaviour
+                    if (e.target.closest('button, a, input')) return;
+                    if (String(window.getSelection?.() || '').length > 0) return;
+                    this.onOpenRecord(this, item.originalIndex);
+                });
+                tr.addEventListener('keydown', (e) => {
+                    if (e.target !== tr) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        this.onOpenRecord(this, item.originalIndex);
+                    }
+                });
+            }
 
             this.headers.forEach(h => {
                 const td = document.createElement('td');
@@ -494,6 +546,7 @@ export class DataTable {
         });
 
         if (window.feather) window.feather.replace();
+        if (this.onRowsChanged) this.onRowsChanged(this);
     }
 
     _fillCell(td, cellVal, h, item) {
@@ -622,9 +675,197 @@ export class UIManager {
         this.currentData = [];
         this.currentDate = null;
         this.tables = [];
+        this.detail = null; // { table, index } shown in the record panel
+        this.detailEl = null;
+        this.detailFilter = '';
+    }
+
+    // ---- Record panel: one row of a result table as a field / value list ----
+
+    openRecord(table, originalIndex) {
+        if (this.detail && this.detail.table !== table) this.detail.table.setSelected(null);
+        this.detail = { table, index: originalIndex };
+        table.setSelected(originalIndex, true);
+        this._renderDetail();
+        this.detailEl.classList.remove('hidden');
+        // The table area makes room for the panel instead of being covered by it
+        this.detailEl.parentElement?.classList.add('record-open');
+        this.detailEl.querySelector('.rp-panel')?.focus({ preventScroll: true });
+    }
+
+    closeRecord() {
+        if (!this.detail) return;
+        const { table, index } = this.detail;
+        this.detail = null;
+        table.setSelected(null);
+        if (this.detailEl) {
+            this.detailEl.classList.add('hidden');
+            this.detailEl.parentElement?.classList.remove('record-open');
+        }
+        // Return focus to the row the panel was opened from
+        table.tableBody?.querySelector(`tr[data-index="${index}"]`)?.focus({ preventScroll: true });
+    }
+
+    // Moves through the table's visible rows (search, filters and sort applied)
+    stepRecord(delta) {
+        if (!this.detail) return;
+        const order = this.detail.table.visibleIndices();
+        const pos = order.indexOf(this.detail.index);
+        const next = order[pos + delta];
+        if (next === undefined) return;
+        this.openRecord(this.detail.table, next);
+    }
+
+    _ensureDetailEl() {
+        if (this.detailEl) return this.detailEl;
+        const host = this.els.resultsContainer?.closest?.('.results-pane') || this.els.resultsContainer?.parentElement;
+        if (!host) return null;
+        const el = document.createElement('aside');
+        el.className = 'record-panel hidden';
+        el.setAttribute('aria-label', 'Record details');
+        el.addEventListener('keydown', (e) => {
+            if (e.target.matches('input')) {
+                if (e.key === 'Escape') { e.preventDefault(); this.closeRecord(); }
+                return;
+            }
+            if (e.key === 'Escape') { e.preventDefault(); this.closeRecord(); }
+            else if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'j') { e.preventDefault(); this.stepRecord(1); }
+            else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'k') { e.preventDefault(); this.stepRecord(-1); }
+        });
+        host.appendChild(el);
+        this.detailEl = el;
+        return el;
+    }
+
+    _renderDetail() {
+        const el = this._ensureDetailEl();
+        if (!el || !this.detail) return;
+        const { table, index } = this.detail;
+        const row = table.data[index];
+        const order = table.visibleIndices();
+        const pos = order.indexOf(index);
+
+        el.innerHTML = '';
+        const panel = document.createElement('div');
+        panel.className = 'rp-panel';
+        panel.tabIndex = -1;
+
+        // Header: table, position, navigation, actions
+        const head = document.createElement('div');
+        head.className = 'rp-head';
+        const titleWrap = document.createElement('div');
+        titleWrap.className = 'rp-title';
+        const title = document.createElement('h3');
+        title.textContent = `${table.name || 'Result'} record`;
+        const sub = document.createElement('span');
+        sub.className = 'rp-sub';
+        sub.textContent = pos >= 0
+            ? `${(pos + 1).toLocaleString('en-US')} of ${order.length.toLocaleString('en-US')}${order.length !== table.data.length ? ' (filtered)' : ''}`
+            : 'Hidden by current search or filters';
+        titleWrap.append(title, sub);
+
+        const nav = document.createElement('div');
+        nav.className = 'rp-actions';
+        const mkBtn = (icon, label, onClick, disabled = false) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'rp-btn';
+            b.title = label;
+            b.setAttribute('aria-label', label);
+            b.disabled = disabled;
+            b.appendChild(svgIcon(icon));
+            b.addEventListener('click', onClick);
+            return b;
+        };
+        const copyBtn = mkBtn('copy', 'Copy record (field and value per line)', async () => {
+            try {
+                await navigator.clipboard.writeText(toTsv(['Field', 'Value'], table.headers.map(h => ({ Field: h, Value: row[h] }))));
+                copyBtn.classList.add('done');
+                setTimeout(() => copyBtn.classList.remove('done'), 1200);
+            } catch (e) { /* clipboard unavailable */ }
+        });
+        nav.append(
+            mkBtn('chevron-up', 'Previous record (↑)', () => this.stepRecord(-1), pos <= 0),
+            mkBtn('chevron-down', 'Next record (↓)', () => this.stepRecord(1), pos < 0 || pos >= order.length - 1),
+            copyBtn,
+            mkBtn('x', 'Close (Esc)', () => this.closeRecord())
+        );
+        head.append(titleWrap, nav);
+        panel.appendChild(head);
+
+        // Field filter, useful for wide records
+        const filterWrap = document.createElement('label');
+        filterWrap.className = 'rp-filter';
+        filterWrap.appendChild(svgIcon('search'));
+        const filter = document.createElement('input');
+        filter.type = 'search';
+        filter.placeholder = 'Filter fields or values';
+        filter.setAttribute('aria-label', 'Filter fields or values');
+        filter.value = this.detailFilter;
+        filterWrap.appendChild(filter);
+        panel.appendChild(filterWrap);
+
+        const body = document.createElement('div');
+        body.className = 'rp-body';
+        const list = document.createElement('dl');
+        list.className = 'rp-list';
+        const items = table.headers.map(h => {
+            const dt = document.createElement('dt');
+            dt.textContent = h.replace(/([a-z0-9])([A-Z])/g, '$1\u200b$2'); // long camelCase names wrap between words
+            dt.title = h;
+            const dd = document.createElement('dd');
+            const val = row[h];
+            const nested = table._getNestedData(val);
+            if (nested) {
+                const holder = document.createElement('div');
+                holder.className = 'nested-table-container';
+                new DataTable(holder, nested, { name: h });
+                dd.appendChild(holder);
+            } else {
+                const text = table.formatValue(val, h);
+                if (text === '') {
+                    dd.textContent = '—';
+                    dd.classList.add('dt-null');
+                } else {
+                    dd.textContent = text;
+                }
+                if (table.numericCols.has(h)) dd.classList.add('num');
+            }
+            list.append(dt, dd);
+            return { h, dt, dd, text: `${h} ${table._s(index, h)}`.toLowerCase() };
+        });
+        body.appendChild(list);
+        const empty = document.createElement('p');
+        empty.className = 'rp-empty hidden';
+        empty.textContent = 'No fields match.';
+        body.appendChild(empty);
+        panel.appendChild(body);
+
+        const applyFilter = () => {
+            const f = this.detailFilter.trim().toLowerCase();
+            let shown = 0;
+            items.forEach(it => {
+                const hit = !f || it.text.includes(f);
+                it.dt.classList.toggle('hidden', !hit);
+                it.dd.classList.toggle('hidden', !hit);
+                if (hit) shown++;
+            });
+            empty.classList.toggle('hidden', shown > 0);
+        };
+        filter.addEventListener('input', () => { this.detailFilter = filter.value; applyFilter(); });
+        applyFilter();
+
+        const hint = document.createElement('div');
+        hint.className = 'rp-hint';
+        hint.textContent = '↑ ↓ previous / next · Esc close';
+        panel.appendChild(hint);
+
+        el.appendChild(panel);
+        if (window.feather) window.feather.replace();
     }
 
     showLoading() {
+        this.closeRecord();
         this.els.loadingIndicator.classList.remove('hidden');
         this.els.emptyState.classList.add('hidden');
         if (this.els.resultsTable) this.els.resultsTable.classList.add('hidden');
@@ -645,6 +886,7 @@ export class UIManager {
     }
 
     showError(msg) {
+        this.closeRecord();
         this.els.errorBox.innerHTML = `
             <div class="error-card-header"><i data-feather="alert-circle"></i> Error</div>
             <p class="error-message"></p>
@@ -677,6 +919,7 @@ export class UIManager {
     }
 
     renderTable(data, stateOptions = {}) {
+        this.closeRecord();
         this.currentData = data || [];
         this.currentDate = stateOptions.date || null;
         this.tables = [];
@@ -730,6 +973,9 @@ export class UIManager {
             const tableOptions = {
                 name: t.name,
                 date: t.date,
+                onOpenRecord: (table, index) => this.openRecord(table, index),
+                // Keep the open record's position and prev/next order in step with search, filters and sort
+                onRowsChanged: (table) => { if (this.detail?.table === table) this._renderDetail(); },
                 onStateChange: (tableState) => {
                     if (this.els.onStateChange) {
                         this.els.onStateChange(this.exportState());
