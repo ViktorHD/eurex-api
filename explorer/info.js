@@ -43,7 +43,7 @@ const STATUS_NAMES = [
 ];
 
 
-import { buildChangelogQuery } from './changelog-query.js';
+import { buildChangelogQuery } from './changelog-query.js?v=2';
 
 const DAY = 86400000;
 const toUtcDay = (iso) => {
@@ -260,6 +260,12 @@ export class InfoPanel {
             }
 
             this.changelogData = response.Changelog.data;
+            // The schema tells which query each entry affects and which fields it has
+            this.schema = null;
+            this._queryCache = new Map();
+            if (this.options.getSchema) {
+                try { this.schema = await this.options.getSchema(); } catch (e) { this.schema = null; }
+            }
             this.renderChangelog();
         } catch (err) {
             if (this.els.changelogFilters) this.els.changelogFilters.innerHTML = '';
@@ -383,12 +389,23 @@ export class InfoPanel {
             body.appendChild(diff);
         }
 
+        const built = this._resolveQuery(entry);
         if (entry.Query) {
+            const roots = built?.roots?.length ? built.roots.join(', ') : String(entry.Query).trim();
+            const affects = el('span', 'cl-affects');
+            affects.appendChild(el('span', 'cl-affects-label', 'Affects'));
+            affects.appendChild(el('code', '', roots));
+            head.appendChild(affects);
+        }
+        // Offer to run only when the affected query is known
+        if (built) {
             const actions = el('div', 'cl-actions');
             const run = el('button', 'cl-btn primary');
             run.type = 'button';
+            run.title = `Run ${built.roots?.join(', ') || 'query'} in the API Explorer`;
             run.appendChild(icon('play'));
             run.append(' Run in Explorer');
+            run.addEventListener('click', () => { if (this.options.onRunQuery) this.options.onRunQuery(built.query); });
 
             const toggle = el('button', 'cl-btn');
             toggle.type = 'button';
@@ -396,47 +413,25 @@ export class InfoPanel {
             toggle.appendChild(icon('code'));
             toggle.append(' Show query');
             const pre = el('pre', 'cl-query hidden');
-            const code = el('code', '', entry.Query);
-            pre.appendChild(code);
-            const msg = el('p', 'cl-query-msg hidden');
-
-            run.addEventListener('click', async () => {
-                const built = await this._resolveQuery(entry);
-                if (!built) {
-                    msg.textContent = `Could not find which query returns “${entry.Query}”. Open the Docs pane to look it up.`;
-                    msg.classList.remove('hidden');
-                    return;
-                }
-                if (this.options.onRunQuery) this.options.onRunQuery(built.query);
-            });
-            toggle.addEventListener('click', async () => {
+            pre.appendChild(el('code', '', built.query));
+            toggle.addEventListener('click', () => {
                 const open = pre.classList.toggle('hidden') === false;
                 toggle.setAttribute('aria-expanded', String(open));
                 toggle.lastChild.textContent = open ? ' Hide query' : ' Show query';
-                if (open) {
-                    const built = await this._resolveQuery(entry);
-                    code.textContent = built ? built.query : entry.Query;
-                }
             });
             actions.append(run, toggle);
-            body.append(actions, pre, msg);
+            body.append(actions, pre);
         }
 
         item.appendChild(body);
         return item;
     }
 
-    // Full runnable query for a changelog entry (the API may return just the attribute); cached per entry.
-    async _resolveQuery(entry) {
+    // Runnable query for a changelog entry, or null when the affected query can't be determined; cached per entry.
+    _resolveQuery(entry) {
         if (!this._queryCache) this._queryCache = new Map();
-        if (this._queryCache.has(entry)) return this._queryCache.get(entry);
-        let schema = null;
-        try {
-            schema = this.options.getSchema ? await this.options.getSchema() : null;
-        } catch (e) { /* fall back to what the entry itself names */ }
-        const built = buildChangelogQuery(entry, schema);
-        if (built || schema) this._queryCache.set(entry, built);
-        return built;
+        if (!this._queryCache.has(entry)) this._queryCache.set(entry, buildChangelogQuery(entry, this.schema || null));
+        return this._queryCache.get(entry);
     }
 
     _setContent(el, type, text) {

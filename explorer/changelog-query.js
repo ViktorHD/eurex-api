@@ -1,8 +1,8 @@
 // Turns the `Query` value of a Changelog entry into a runnable GraphQL query.
-// The API often returns only the affected attribute (e.g. "SettlementMethod" or "Contracts.SettlementMethod")
-// rather than a full query, so the root query is resolved from the schema and the entry's text.
+// The changelog names the affected query in its Query field (e.g. "Contracts"); it may also be a full query,
+// "Root.Field", "Root { Field }" or just an attribute. Root queries and their fields come from the schema.
 
-// Fields that identify a row; the first ones present are selected next to the attribute for context.
+// Fields that identify a row; the first ones present are selected next to the changed fields for context.
 const IDENTIFIER_FIELDS = ['Product', 'Contract', 'ContractID', 'ISIN', 'Member', 'Name'];
 // Root queries that return very large result sets without a product filter.
 const NEEDS_PRODUCT_FILTER = new Set(['Contracts', 'SettlementPrices', 'FlexibleContracts']);
@@ -13,7 +13,7 @@ const unwrap = (t) => {
     return t;
 };
 
-// Root query name -> { itemFields: Set, wrapped: bool, hasFilter: bool }
+// Root query name -> { itemFields: Set, scalarFields: string[], wrapped: bool, hasFilter: bool }
 export function rootShapes(schema) {
     const shapes = new Map();
     if (!schema || !schema.types) return shapes;
@@ -25,8 +25,13 @@ export function rootShapes(schema) {
         const dataField = outer.fields.find(x => x.name === 'data');
         const item = dataField ? byName.get(unwrap(dataField.type)?.name) : outer;
         if (!item || !item.fields) return;
+        const isLeaf = (x) => {
+            const k = unwrap(x.type)?.kind;
+            return !k || k === 'SCALAR' || k === 'ENUM';
+        };
         shapes.set(f.name, {
             itemFields: new Set(item.fields.map(x => x.name)),
+            scalarFields: item.fields.filter(isLeaf).map(x => x.name),
             wrapped: !!dataField && outer.fields.some(x => x.name === 'date'),
             hasFilter: (f.args || []).some(a => a.name === 'filter')
         });
@@ -47,56 +52,80 @@ function productMentioned(entry, knownNames) {
     return m.find(code => !knownNames.has(code)) || null;
 }
 
+function block(root, fields, shape, entry, knownNames) {
+    let args = '';
+    let note = '';
+    if (NEEDS_PRODUCT_FILTER.has(root) && (!shape || (shape.hasFilter && shape.itemFields.has('Product')))) {
+        const mentioned = productMentioned(entry, knownNames);
+        args = `(filter: { Product: { eq: "${mentioned || DEFAULT_PRODUCT}" } })`;
+        if (!mentioned) note = `Example for ${DEFAULT_PRODUCT}: change the product as needed`;
+    }
+    const wrapped = shape ? shape.wrapped : true;
+    const text = wrapped
+        ? `  ${root}${args} {\n    date\n    data {\n      ${fields.join('\n      ')}\n    }\n  }`
+        : `  ${root}${args} {\n    ${fields.join('\n    ')}\n  }`;
+    return { text, note };
+}
+
 /**
  * entry: Changelog row { Query, Description, OldValue, NewValue, ... }
- * schema: introspection __schema (optional; without it only explicit "Root.Field" / "Root { Field }" forms resolve)
- * Returns { query, root, fields, note } or null when no root query can be determined.
+ * schema: introspection __schema; without it only full queries and "Root.Field" / "Root { Field }" resolve.
+ * Returns { query, roots, fields, note } or null when no query can be determined.
  */
 export function buildChangelogQuery(entry, schema = null) {
     const raw = String(entry?.Query || '').trim();
     if (!raw) return null;
-    if (isFullQuery(raw)) return { query: raw, root: null, fields: [], note: '' };
+    if (isFullQuery(raw)) return { query: raw, roots: [], fields: [], note: '' };
 
     const shapes = rootShapes(schema);
     const tokens = identifiers(raw);
-    const context = identifiers([entry.Description, entry.NewValue, entry.OldValue].filter(Boolean).join(' '));
+    const contextTokens = new Set(identifiers([entry.Description, entry.NewValue, entry.OldValue].filter(Boolean).join(' ')));
 
-    // Root named explicitly in the Query value ("Contracts.SettlementMethod", "Contracts { ... }")
-    let root = tokens.find(t => shapes.has(t)) || null;
-    if (!root && !shapes.size) {
-        const dotted = raw.match(/^([A-Z][A-Za-z0-9_]*)\s*(\.|\{)/);
-        if (dotted) root = dotted[1];
+    // 1. Roots named in the Query field (the usual case: "Contracts", "Contracts, Expirations", "Contracts.Field")
+    let roots = shapes.size ? [...new Set(tokens.filter(t => shapes.has(t)))] : [];
+    if (!roots.length && !shapes.size) {
+        const explicit = raw.match(/^([A-Z][A-Za-z0-9_]*)\s*(\.|\{)/);
+        if (explicit) roots = [explicit[1]];
     }
-    let attrs = tokens.filter(t => t !== root && t !== 'data' && t !== 'date' && t !== 'query');
+    let explicitAttrs = tokens.filter(t => !roots.includes(t) && !['data', 'date', 'query'].includes(t));
 
-    if (!root && shapes.size) {
-        // Roots whose rows have every attribute; prefer one mentioned in the entry's text
-        const candidates = [...shapes.entries()].filter(([, s]) => attrs.length && attrs.every(a => s.itemFields.has(a))).map(([n]) => n);
-        root = candidates.find(n => context.includes(n)) || candidates[0] || null;
+    // 2. Only an attribute was given: find the root whose rows have it, preferring one named in the text
+    if (!roots.length && shapes.size && explicitAttrs.length) {
+        const candidates = [...shapes.entries()].filter(([, s]) => explicitAttrs.every(a => s.itemFields.has(a))).map(([n]) => n);
+        const pick = candidates.find(n => contextTokens.has(n)) || candidates[0];
+        if (pick) roots = [pick];
     }
-    if (!root) return null;
+    if (!roots.length) return null;
 
-    const shape = shapes.get(root);
-    if (shape) attrs = attrs.filter(a => shape.itemFields.has(a));
-    if (!attrs.length) return null;
-
-    const ids = shape ? IDENTIFIER_FIELDS.filter(f => shape.itemFields.has(f) && !attrs.includes(f)).slice(0, 2) : [];
-    const fields = [...ids, ...attrs];
-
-    let args = '';
-    let note = '';
-    if (NEEDS_PRODUCT_FILTER.has(root) && (!shape || (shape.hasFilter && shape.itemFields.has('Product')))) {
-        const knownNames = new Set([...shapes.keys(), ...fields]);
-        const product = productMentioned(entry, knownNames) || DEFAULT_PRODUCT;
-        args = `(filter: { Product: { eq: "${product}" } })`;
-        if (product === DEFAULT_PRODUCT && !productMentioned(entry, knownNames)) note = `Example for ${DEFAULT_PRODUCT}: change the product as needed`;
+    const knownNames = new Set([...shapes.keys(), ...roots]);
+    const parts = [];
+    const notes = new Set();
+    let allFields = [];
+    for (const root of roots) {
+        const shape = shapes.get(root);
+        let fields;
+        if (!shape) {
+            // No schema: only the explicitly named attributes can be selected
+            fields = explicitAttrs;
+        } else {
+            const leaf = new Set(shape.scalarFields);
+            const named = explicitAttrs.filter(a => leaf.has(a));
+            // Fields the entry talks about (description / old / new value), e.g. "SettlementMethod"
+            const mentioned = shape.scalarFields.filter(f => contextTokens.has(f) && !IDENTIFIER_FIELDS.includes(f));
+            const focus = named.length ? named : mentioned;
+            const ids = IDENTIFIER_FIELDS.filter(f => leaf.has(f) && !focus.includes(f)).slice(0, 2);
+            fields = focus.length ? [...ids, ...focus] : shape.scalarFields;
+        }
+        if (!fields.length) continue;
+        fields.forEach(f => knownNames.add(f));
+        const b = block(root, fields, shape, entry, knownNames);
+        parts.push(b.text);
+        if (b.note) notes.add(b.note);
+        allFields = allFields.concat(fields);
     }
+    if (!parts.length) return null;
 
-    const body = fields.join('\n      ');
-    const wrapped = shape ? shape.wrapped : true;
-    const selection = wrapped
-        ? `{\n    date\n    data {\n      ${body}\n    }\n  }`
-        : `{\n    ${fields.join('\n    ')}\n  }`;
-    const query = `${note ? `# ${note}\n` : ''}query {\n  ${root}${args} ${selection}\n}`;
-    return { query, root, fields, note };
+    const note = [...notes].join('; ');
+    const query = `${note ? `# ${note}\n` : ''}query {\n${parts.join('\n')}\n}`;
+    return { query, roots, fields: allFields, note };
 }
