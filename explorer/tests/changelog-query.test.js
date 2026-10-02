@@ -27,50 +27,62 @@ describe('buildChangelogQuery', () => {
         expect(buildChangelogQuery({ Query: q }, schema).query).toBe(q);
     });
 
-    test('a bare attribute is wrapped in the root query that has it, with identifier fields', () => {
-        const r = buildChangelogQuery({ Query: 'LiquidityClass', Description: 'LiquidityClass is deprecated' }, schema);
-        expect(r.root).toBe('ProductInfos');
+    test('Query naming the affected query selects the fields the entry mentions', () => {
+        const r = buildChangelogQuery({ Query: 'ProductInfos', Description: 'LiquidityClass is deprecated' }, schema);
+        expect(r.roots).toEqual(['ProductInfos']);
         expect(compact(r.query)).toBe('query { ProductInfos { date data { Product Name LiquidityClass } } }');
     });
 
-    test('Root.Field form; large tables get a product filter from the description', () => {
-        const r = buildChangelogQuery({ Query: 'Contracts.SettlementMethod', Description: 'New field for FGBL contracts' }, schema);
+    test('Query naming the affected query without a mentioned field selects all its fields', () => {
+        const r = buildChangelogQuery({ Query: 'TESProfiles', Description: 'Parameters updated' }, schema);
+        expect(compact(r.query)).toBe('query { TESProfiles { date data { Product TESType MinLotSize } } }');
+    });
+
+    test('field mentioned via old/new value; large table filtered by product from the text', () => {
+        const r = buildChangelogQuery({ Query: 'Contracts', NewValue: 'SettlementMethod', Description: 'New field for FGBL contracts' }, schema);
         expect(compact(r.query)).toBe('query { Contracts(filter: { Product: { eq: "FGBL" } }) { date data { Product Contract SettlementMethod } } }');
         expect(r.note).toBe('');
     });
 
     test('large tables without a product in the text default to FESX with a note', () => {
-        const r = buildChangelogQuery({ Query: 'SettlementMethod', Description: 'New field' }, schema);
-        expect(r.root).toBe('Contracts');
+        const r = buildChangelogQuery({ Query: 'Contracts', Description: 'New field SettlementMethod' }, schema);
         expect(r.query).toContain('eq: "FESX"');
         expect(r.query.startsWith('# Example for FESX')).toBe(true);
     });
 
-    test('several attributes and the "Root { fields }" form', () => {
-        const r = buildChangelogQuery({ Query: 'TESProfiles { TESType MinLotSize }' }, schema);
-        expect(compact(r.query)).toBe('query { TESProfiles { date data { Product TESType MinLotSize } } }');
+    test('several affected queries in one entry', () => {
+        const r = buildChangelogQuery({ Query: 'ProductInfos, TESProfiles', Description: 'Currency and MinLotSize changes' }, schema);
+        expect(r.roots).toEqual(['ProductInfos', 'TESProfiles']);
+        expect(compact(r.query)).toBe('query { ProductInfos { date data { Product Name Currency } } TESProfiles { date data { Product MinLotSize } } }');
     });
 
-    test('ambiguous attribute prefers the root mentioned in the text', () => {
-        const r = buildChangelogQuery({ Query: 'Name', Description: 'EnlightResponders now include the Name' }, schema);
-        expect(r.root).toBe('EnlightResponders');
-        expect(compact(r.query)).toBe('query { EnlightResponders { date data { Member Name } } }');
+    test('Root.Field and "Root { fields }" forms', () => {
+        expect(compact(buildChangelogQuery({ Query: 'Contracts.SettlementMethod', Description: 'for FGBL' }, schema).query))
+            .toBe('query { Contracts(filter: { Product: { eq: "FGBL" } }) { date data { Product Contract SettlementMethod } } }');
+        expect(compact(buildChangelogQuery({ Query: 'TESProfiles { TESType MinLotSize }' }, schema).query))
+            .toBe('query { TESProfiles { date data { Product TESType MinLotSize } } }');
     });
 
-    test('a bare root name with no attribute or unknown attribute gives null', () => {
+    test('a bare attribute resolves to the query that has it, preferring one named in the text', () => {
+        expect(buildChangelogQuery({ Query: 'LiquidityClass' }, schema).roots).toEqual(['ProductInfos']);
+        expect(buildChangelogQuery({ Query: 'Name', Description: 'EnlightResponders now include the Name' }, schema).roots).toEqual(['EnlightResponders']);
+    });
+
+    test('unknown or empty Query gives null (no run button)', () => {
         expect(buildChangelogQuery({ Query: 'DoesNotExist' }, schema)).toBeNull();
         expect(buildChangelogQuery({ Query: '' }, schema)).toBeNull();
+        expect(buildChangelogQuery({}, schema)).toBeNull();
     });
 
-    test('without a schema only an explicit Root.Field resolves', () => {
+    test('without a schema only full queries and explicit Root.Field resolve', () => {
         expect(compact(buildChangelogQuery({ Query: 'TESProfiles.MinLotSize' }, null).query))
             .toBe('query { TESProfiles { date data { MinLotSize } } }');
-        expect(buildChangelogQuery({ Query: 'MinLotSize' }, null)).toBeNull();
+        expect(buildChangelogQuery({ Query: 'Contracts' }, null)).toBeNull();
     });
 
     test('rootShapes reads data item fields and filter support', () => {
         const shapes = rootShapes(schema);
-        expect(shapes.get('Contracts').itemFields.has('SettlementMethod')).toBe(true);
+        expect(shapes.get('Contracts').scalarFields).toContain('SettlementMethod');
         expect(shapes.get('Contracts').wrapped).toBe(true);
         expect(shapes.get('Contracts').hasFilter).toBe(true);
     });

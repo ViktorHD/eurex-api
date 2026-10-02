@@ -3598,4 +3598,8 @@ th.num .th-sort { flex-direction: row-reverse; }
     .cl-date { flex-direction: row; gap: 8px; align-items: baseline; }
 }
 
-.cl-query-msg { margin: 8px 0 0; font-size: 0.76rem; color: #8a5a00; background: #fff6e5; padding: 6px 10px; border-radius: 6px; }
+
+.cl-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cl-affects { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; }
+.cl-affects-label { color: var(--eurex-grey); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.64rem; }
+.cl-affects code { background: #f0f2f4; color: var(--navy-blue); padding: 1px 6px; border-radius: 4px; font-size: 0.74rem; }
