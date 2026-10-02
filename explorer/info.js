@@ -43,6 +43,8 @@ const STATUS_NAMES = [
 ];
 
 
+import { buildChangelogQuery } from './changelog-query.js';
+
 const DAY = 86400000;
 const toUtcDay = (iso) => {
     const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
@@ -130,7 +132,7 @@ export class InfoPanel {
     constructor(client, elements, options = {}) {
         this.client = client;
         this.els = elements; // { panel, statusGrid, statusSummary, changelogContent, changelogFilters, changelogLoading, closeBtn, refreshBtn }
-        this.options = options; // { onRunQuery, onClose }
+        this.options = options; // { onRunQuery, onClose, getSchema }
         this.changelogData = null;
         this.typeFilter = 'all';
         this.searchText = '';
@@ -387,7 +389,6 @@ export class InfoPanel {
             run.type = 'button';
             run.appendChild(icon('play'));
             run.append(' Run in Explorer');
-            run.addEventListener('click', () => { if (this.options.onRunQuery) this.options.onRunQuery(entry.Query); });
 
             const toggle = el('button', 'cl-btn');
             toggle.type = 'button';
@@ -395,18 +396,47 @@ export class InfoPanel {
             toggle.appendChild(icon('code'));
             toggle.append(' Show query');
             const pre = el('pre', 'cl-query hidden');
-            pre.appendChild(el('code', '', entry.Query));
-            toggle.addEventListener('click', () => {
+            const code = el('code', '', entry.Query);
+            pre.appendChild(code);
+            const msg = el('p', 'cl-query-msg hidden');
+
+            run.addEventListener('click', async () => {
+                const built = await this._resolveQuery(entry);
+                if (!built) {
+                    msg.textContent = `Could not find which query returns “${entry.Query}”. Open the Docs pane to look it up.`;
+                    msg.classList.remove('hidden');
+                    return;
+                }
+                if (this.options.onRunQuery) this.options.onRunQuery(built.query);
+            });
+            toggle.addEventListener('click', async () => {
                 const open = pre.classList.toggle('hidden') === false;
                 toggle.setAttribute('aria-expanded', String(open));
                 toggle.lastChild.textContent = open ? ' Hide query' : ' Show query';
+                if (open) {
+                    const built = await this._resolveQuery(entry);
+                    code.textContent = built ? built.query : entry.Query;
+                }
             });
             actions.append(run, toggle);
-            body.append(actions, pre);
+            body.append(actions, pre, msg);
         }
 
         item.appendChild(body);
         return item;
+    }
+
+    // Full runnable query for a changelog entry (the API may return just the attribute); cached per entry.
+    async _resolveQuery(entry) {
+        if (!this._queryCache) this._queryCache = new Map();
+        if (this._queryCache.has(entry)) return this._queryCache.get(entry);
+        let schema = null;
+        try {
+            schema = this.options.getSchema ? await this.options.getSchema() : null;
+        } catch (e) { /* fall back to what the entry itself names */ }
+        const built = buildChangelogQuery(entry, schema);
+        if (built || schema) this._queryCache.set(entry, built);
+        return built;
     }
 
     _setContent(el, type, text) {
