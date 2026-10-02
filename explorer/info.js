@@ -15,6 +15,26 @@ const STATUS_QUERY = `query {
     TESProfiles { date }
 }`;
 
+// Datasets that change only occasionally: their date is shown but never counted as stale.
+const STATIC_DATASETS = new Set(['Changelog', 'DeliverableBonds']);
+
+const DATASET_INFO = {
+    Holidays: 'Exchange holidays per product',
+    DeliverableBonds: 'Bonds deliverable into fixed income futures',
+    TradingHours: 'Trading phases and times per product',
+    VendorCodes: 'Data vendor symbols per product',
+    SettlementPrices: 'Daily settlement prices (checked for FESX)',
+    Enlight: 'Eurex EnLight RFQ configuration',
+    ProductInfos: 'Product master data',
+    Contracts: 'Listed contracts (checked for FESX)',
+    TickRules: 'Tick sizes and price steps',
+    EnlightResponders: 'Eurex EnLight responders',
+    FlexibleContracts: 'Flexible contracts (checked for FESX)',
+    Changelog: 'Announced and past API changes',
+    Expirations: 'Expiration calendar',
+    TESProfiles: 'T7 Entry Service (TES) parameters'
+};
+
 const STATUS_NAMES = [
     'Holidays', 'DeliverableBonds', 'TradingHours', 'VendorCodes',
     'SettlementPrices', 'Enlight', 'ProductInfos', 'Contracts',
@@ -22,12 +42,99 @@ const STATUS_NAMES = [
     'Expirations', 'TESProfiles'
 ];
 
+
+const DAY = 86400000;
+const toUtcDay = (iso) => {
+    const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+};
+const isoOf = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+// Business days (Mon–Fri) after `fromIso` up to and including `toIso`; 0 when from >= to.
+export function businessDaysBetween(fromIso, toIso) {
+    let from = toUtcDay(fromIso);
+    const to = toUtcDay(toIso);
+    let n = 0;
+    while (from < to) {
+        from += DAY;
+        const wd = new Date(from).getUTCDay();
+        if (wd !== 0 && wd !== 6) n++;
+    }
+    return n;
+}
+
+// 'ok' (current), 'stale' (older than the last business day), 'static' (reference data) or 'error' (no data).
+// On weekends Friday's data counts as current.
+export function datasetState(name, dateIso, todayIso) {
+    if (!dateIso) return 'error';
+    if (STATIC_DATASETS.has(name)) return 'static';
+    return businessDaysBetween(dateIso, todayIso) === 0 ? 'ok' : 'stale';
+}
+
+export function summarizeStatus(states) {
+    const count = (s) => states.filter(x => x === s).length;
+    const stale = count('stale');
+    const error = count('error');
+    const current = states.length - stale - error;
+    let level = 'ok';
+    if (error) level = 'error';
+    else if (stale) level = 'stale';
+    const parts = [];
+    if (stale) parts.push(`${stale} stale`);
+    if (error) parts.push(`${error} unavailable`);
+    return {
+        level,
+        current,
+        total: states.length,
+        title: level === 'ok' ? 'All datasets are up to date' : `${current} of ${states.length} datasets up to date`,
+        detail: parts.join(' · ')
+    };
+}
+
+// "today", "tomorrow", "in 17 days", "3 days ago", ...
+export function relativeDay(dateIso, todayIso) {
+    const diff = Math.round((toUtcDay(dateIso) - toUtcDay(todayIso)) / DAY);
+    if (diff === 0) return 'today';
+    if (diff === 1) return 'tomorrow';
+    if (diff === -1) return 'yesterday';
+    return diff > 0 ? `in ${diff} days` : `${-diff} days ago`;
+}
+
+export function formatDate(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso || '');
+}
+
+// Badge colour family for a changelog type
+export function changeKind(type) {
+    const t = String(type || '').toLowerCase();
+    if (/deprecat|remov|delet|discontinu/.test(t)) return 'removal';
+    if (/new|add/.test(t)) return 'addition';
+    return 'change';
+}
+
+const icon = (name) => {
+    const i = document.createElement('i');
+    i.setAttribute('data-feather', name);
+    i.setAttribute('aria-hidden', 'true');
+    return i;
+};
+const el = (tag, className, text) => {
+    const e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text !== undefined) e.textContent = text;
+    return e;
+};
+
 export class InfoPanel {
     constructor(client, elements, options = {}) {
         this.client = client;
-        this.els = elements; // { panel, statusGrid, changelogContent, changelogLoading, closeBtn, refreshBtn }
-        this.options = options; // { onRunQuery }
+        this.els = elements; // { panel, statusGrid, statusSummary, changelogContent, changelogFilters, changelogLoading, closeBtn, refreshBtn }
+        this.options = options; // { onRunQuery, onClose }
         this.changelogData = null;
+        this.typeFilter = 'all';
+        this.searchText = '';
+        this.showPast = true;
 
         this.bindEvents();
     }
@@ -41,66 +148,91 @@ export class InfoPanel {
         }
 
         if (this.els.refreshBtn) {
-            this.els.refreshBtn.addEventListener('click', () => this.load());
+            this.els.refreshBtn.addEventListener('click', () => this.load({ fresh: true }));
         }
     }
 
-    async load() {
+    _today() {
+        return isoOf(new Date());
+    }
+
+    async load(options = {}) {
         await Promise.all([
-            this.loadStatus(),
-            this.loadChangelog()
+            this.loadStatus(options),
+            this.loadChangelog(options)
         ]);
     }
 
-    async loadStatus() {
+    async loadStatus(options = {}) {
         this._setContent(this.els.statusGrid, 'loading', 'Checking API status…');
+        if (this.els.statusSummary) {
+            this.els.statusSummary.className = 'status-summary checking';
+            this.els.statusSummary.textContent = 'Checking datasets…';
+        }
 
         try {
-            const data = await this.client.request(STATUS_QUERY, null, false);
-            const today = new Date().toISOString().split('T')[0];
+            const data = await this.client.request(STATUS_QUERY, null, false, { fresh: !!options.fresh });
+            const today = this._today();
 
             this.els.statusGrid.innerHTML = '';
-            STATUS_NAMES.forEach(name => {
+            // Datasets needing attention first: unavailable, then stale (oldest first), then current, then reference
+            const rank = { error: 0, stale: 1, ok: 2, static: 3 };
+            const rows = STATUS_NAMES.map(name => {
                 const date = data?.[name]?.date ?? null;
+                return { name, date, state: datasetState(name, date, today) };
+            }).sort((a, b) => rank[a.state] - rank[b.state] || String(a.date || '').localeCompare(String(b.date || '')) || a.name.localeCompare(b.name));
+            const states = rows.map(r => r.state);
+            rows.forEach(({ name, date, state }) => {
 
-                let state = 'error';
-                if (date) {
-                    if (name === 'Changelog' || name === 'DeliverableBonds') {
-                        state = 'ok';
-                    } else {
-                        state = (date === today) ? 'ok' : 'stale';
-                    }
-                }
+                const card = el('div', `status-card ${state}`);
+                card.title = DATASET_INFO[name] || name;
+                card.appendChild(el('span', 'status-dot'));
 
-                const card = document.createElement('div');
-                card.className = `status-card ${state}`;
-
-                const dot = document.createElement('div');
-                dot.className = 'status-dot';
-
-                const info = document.createElement('div');
-                info.className = 'status-info';
-
-                const nameEl = document.createElement('span');
-                nameEl.className = 'status-name';
-                nameEl.textContent = name;
-
-                const dateEl = document.createElement('span');
-                dateEl.className = 'status-date';
-                dateEl.textContent = date || '–';
-
-                info.appendChild(nameEl);
-                info.appendChild(dateEl);
-                card.appendChild(dot);
+                const info = el('div', 'status-info');
+                info.appendChild(el('span', 'status-name', name));
+                info.appendChild(el('span', 'status-desc', DATASET_INFO[name] || ''));
                 card.appendChild(info);
+
+                const meta = el('div', 'status-meta');
+                let label;
+                if (state === 'error') label = 'No data';
+                else if (state === 'static') label = 'Reference';
+                else if (state === 'ok') label = 'Current';
+                else {
+                    const age = businessDaysBetween(date, today);
+                    label = `${age} business day${age === 1 ? '' : 's'} old`;
+                }
+                meta.appendChild(el('span', `status-chip ${state}`, label));
+                meta.appendChild(el('span', 'status-date', date ? formatDate(date) : '–'));
+                card.appendChild(meta);
                 this.els.statusGrid.appendChild(card);
             });
+
+            this._renderSummary(summarizeStatus(states));
         } catch (err) {
             this._setContent(this.els.statusGrid, 'error', err.message);
+            if (this.els.statusSummary) {
+                this.els.statusSummary.className = 'status-summary error';
+                this.els.statusSummary.textContent = 'Status could not be loaded';
+            }
         }
+        if (window.feather) window.feather.replace();
     }
 
-    async loadChangelog() {
+    _renderSummary(summary) {
+        const box = this.els.statusSummary;
+        if (!box) return;
+        box.className = `status-summary ${summary.level}`;
+        box.innerHTML = '';
+        box.appendChild(icon(summary.level === 'ok' ? 'check-circle' : summary.level === 'stale' ? 'clock' : 'alert-triangle'));
+        const text = el('div', 'status-summary-text');
+        text.appendChild(el('strong', '', summary.title));
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        text.appendChild(el('span', '', [summary.detail, `checked ${time}`].filter(Boolean).join(' · ')));
+        box.appendChild(text);
+    }
+
+    async loadChangelog(options = {}) {
         if (this.els.changelogLoading) this.els.changelogLoading.classList.remove('hidden');
         if (this.els.changelogContent) this.els.changelogContent.innerHTML = '';
 
@@ -120,7 +252,7 @@ export class InfoPanel {
         `;
 
         try {
-            const response = await this.client.request(query, null, false);
+            const response = await this.client.request(query, null, false, { fresh: !!options.fresh });
             if (!response || !response.Changelog || !response.Changelog.data) {
                 throw new Error("No changelog data found.");
             }
@@ -128,150 +260,153 @@ export class InfoPanel {
             this.changelogData = response.Changelog.data;
             this.renderChangelog();
         } catch (err) {
-            if (this.els.changelogContent) {
-                this.els.changelogContent.innerHTML = `<div class="error-card"><p>${err.message}</p></div>`;
-            }
+            if (this.els.changelogFilters) this.els.changelogFilters.innerHTML = '';
+            if (this.els.changelogContent) this._setContent(this.els.changelogContent, 'error', err.message);
         } finally {
             if (this.els.changelogLoading) this.els.changelogLoading.classList.add('hidden');
         }
     }
 
-    renderChangelog() {
-        if (!this.changelogData || !this.els.changelogContent) return;
+    _renderFilters(entries) {
+        const box = this.els.changelogFilters;
+        if (!box) return;
+        box.innerHTML = '';
 
-        const container = this.els.changelogContent;
-        container.innerHTML = '';
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const sortedData = [...this.changelogData].sort((a, b) => new Date(b.Date) - new Date(a.Date));
-
-        const timelineWrapper = document.createElement('div');
-        timelineWrapper.className = 'changelog-timeline-container';
-
-        const axis = document.createElement('div');
-        axis.className = 'changelog-axis';
-        timelineWrapper.appendChild(axis);
-
-        let todayMarkerAdded = false;
-
-        sortedData.forEach((entry) => {
-            const entryDate = new Date(entry.Date);
-            entryDate.setHours(0, 0, 0, 0);
-
-            if (!todayMarkerAdded && entryDate <= today) {
-                this._addTodayMarker(timelineWrapper);
-                todayMarkerAdded = true;
-            }
-
-            const item = document.createElement('div');
-            const isFuture = entryDate > today;
-            const isToday = entryDate.getTime() === today.getTime();
-
-            item.className = `changelog-item ${isFuture ? 'future' : (isToday ? 'today' : 'past')}`;
-
-            const dot = document.createElement('div');
-            dot.className = 'changelog-dot';
-            item.appendChild(dot);
-
-            const content = document.createElement('div');
-            content.className = 'changelog-item-content';
-
-            const header = document.createElement('div');
-            header.className = 'changelog-item-header';
-
-            const dateSpan = document.createElement('span');
-            dateSpan.className = 'changelog-date';
-            dateSpan.textContent = entry.Date;
-            header.appendChild(dateSpan);
-
-            const typeSpan = document.createElement('span');
-            typeSpan.className = 'changelog-type-badge';
-            typeSpan.textContent = entry.Type;
-            header.appendChild(typeSpan);
-
-            content.appendChild(header);
-
-            if (entry.Description) {
-                const desc = document.createElement('p');
-                desc.className = 'changelog-description';
-                desc.textContent = entry.Description;
-                content.appendChild(desc);
-            }
-
-            if (entry.OldValue || entry.NewValue) {
-                const changes = document.createElement('div');
-                changes.className = 'changelog-changes';
-
-                if (entry.OldValue) {
-                    const oldVal = document.createElement('div');
-                    oldVal.className = 'changelog-change-val old';
-                    oldVal.innerHTML = `<span class="label">Old:</span> <code>${this._escapeHtml(entry.OldValue)}</code>`;
-                    changes.appendChild(oldVal);
-                }
-
-                if (entry.NewValue) {
-                    const newVal = document.createElement('div');
-                    newVal.className = 'changelog-change-val new';
-                    newVal.innerHTML = `<span class="label">New:</span> <code>${this._escapeHtml(entry.NewValue)}</code>`;
-                    changes.appendChild(newVal);
-                }
-                content.appendChild(changes);
-            }
-
-            if (entry.Query) {
-                const queryDiv = document.createElement('div');
-                queryDiv.className = 'changelog-query';
-                queryDiv.innerHTML = `<div class="changelog-query-header">
-                    <span class="label">GraphQL Query:</span>
-                    <button class="run-query-btn"><i data-feather="play"></i> Run in Explorer</button>
-                </div>
-                <pre><code>${this._escapeHtml(entry.Query)}</code></pre>`;
-
-                const runBtn = queryDiv.querySelector('.run-query-btn');
-                runBtn.addEventListener('click', () => {
-                    if (this.options.onRunQuery) {
-                        this.options.onRunQuery(entry.Query);
-                    }
-                });
-
-                content.appendChild(queryDiv);
-            }
-
-            item.appendChild(content);
-            timelineWrapper.appendChild(item);
+        const search = el('label', 'cl-search');
+        search.appendChild(icon('search'));
+        const input = el('input');
+        input.type = 'search';
+        input.placeholder = 'Search changes';
+        input.setAttribute('aria-label', 'Search changelog');
+        input.value = this.searchText;
+        input.addEventListener('input', () => {
+            this.searchText = input.value;
+            this._renderEntries();
         });
+        search.appendChild(input);
+        box.appendChild(search);
 
-        if (!todayMarkerAdded) {
-            this._addTodayMarker(timelineWrapper);
-        }
-
-        container.appendChild(timelineWrapper);
+        const types = new Map();
+        entries.forEach(e => types.set(e.Type || 'Other', (types.get(e.Type || 'Other') || 0) + 1));
+        const chips = el('div', 'cl-chips');
+        chips.setAttribute('role', 'group');
+        chips.setAttribute('aria-label', 'Filter by change type');
+        const mkChip = (value, label, count, kind) => {
+            const b = el('button', `cl-chip${kind ? ' ' + kind : ''}${this.typeFilter === value ? ' active' : ''}`);
+            b.type = 'button';
+            b.setAttribute('aria-pressed', String(this.typeFilter === value));
+            b.append(label);
+            b.appendChild(el('span', 'cl-chip-count', String(count)));
+            b.addEventListener('click', () => {
+                this.typeFilter = value;
+                this._renderFilters(entries);
+                this._renderEntries();
+            });
+            chips.appendChild(b);
+        };
+        mkChip('all', 'All', entries.length);
+        [...types.entries()].sort((a, b) => b[1] - a[1]).forEach(([t, n]) => mkChip(t, t, n, changeKind(t)));
+        box.appendChild(chips);
         if (window.feather) window.feather.replace();
     }
 
-    _addTodayMarker(parent) {
-        const marker = document.createElement('div');
-        marker.className = 'changelog-today-marker';
-
-        const line = document.createElement('div');
-        line.className = 'changelog-today-line';
-        marker.appendChild(line);
-
-        const label = document.createElement('div');
-        label.className = 'changelog-today-label';
-        label.textContent = 'TODAY';
-        marker.appendChild(label);
-
-        parent.appendChild(marker);
+    renderChangelog() {
+        if (!this.changelogData || !this.els.changelogContent) return;
+        this._renderFilters(this.changelogData);
+        this._renderEntries();
     }
 
-    _escapeHtml(str) {
-        if (!str) return '';
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+    _renderEntries() {
+        const container = this.els.changelogContent;
+        container.innerHTML = '';
+        const today = this._today();
+        const q = this.searchText.trim().toLowerCase();
+
+        const entries = [...this.changelogData]
+            .filter(e => this.typeFilter === 'all' || (e.Type || 'Other') === this.typeFilter)
+            .filter(e => !q || [e.Date, e.Type, e.Description, e.OldValue, e.NewValue, e.Query].some(v => String(v || '').toLowerCase().includes(q)))
+            .sort((a, b) => String(b.Date).localeCompare(String(a.Date)));
+
+        if (!entries.length) {
+            this._setContent(container, 'empty', 'No changes match the current filter.');
+            return;
+        }
+
+        const upcoming = entries.filter(e => String(e.Date).slice(0, 10) > today).reverse(); // soonest first
+        const past = entries.filter(e => String(e.Date).slice(0, 10) <= today);
+
+        const section = (title, list, kind) => {
+            if (!list.length) return;
+            const sec = el('section', `cl-section ${kind}`);
+            const h = el('h4', 'cl-section-title', title);
+            h.appendChild(el('span', 'cl-chip-count', String(list.length)));
+            sec.appendChild(h);
+            list.forEach(e => sec.appendChild(this._renderEntry(e, today, kind)));
+            container.appendChild(sec);
+        };
+        section('Upcoming', upcoming, 'upcoming');
+        section('Past changes', past, 'past');
+        if (window.feather) window.feather.replace();
+    }
+
+    _renderEntry(entry, today, kind) {
+        const item = el('article', `cl-item ${kind}`);
+
+        const date = el('div', 'cl-date');
+        date.appendChild(el('strong', '', formatDate(entry.Date)));
+        date.appendChild(el('span', '', relativeDay(entry.Date, today)));
+        item.appendChild(date);
+
+        const body = el('div', 'cl-body');
+        const head = el('div', 'cl-head');
+        head.appendChild(el('span', `cl-badge ${changeKind(entry.Type)}`, entry.Type || 'Change'));
+        body.appendChild(head);
+
+        if (entry.Description) body.appendChild(el('p', 'cl-desc', entry.Description));
+
+        if (entry.OldValue || entry.NewValue) {
+            const diff = el('div', 'cl-diff');
+            if (entry.OldValue) {
+                const row = el('div', 'cl-diff-row old');
+                row.appendChild(el('span', 'cl-diff-label', 'Old'));
+                row.appendChild(el('code', '', entry.OldValue));
+                diff.appendChild(row);
+            }
+            if (entry.NewValue) {
+                const row = el('div', 'cl-diff-row new');
+                row.appendChild(el('span', 'cl-diff-label', 'New'));
+                row.appendChild(el('code', '', entry.NewValue));
+                diff.appendChild(row);
+            }
+            body.appendChild(diff);
+        }
+
+        if (entry.Query) {
+            const actions = el('div', 'cl-actions');
+            const run = el('button', 'cl-btn primary');
+            run.type = 'button';
+            run.appendChild(icon('play'));
+            run.append(' Run in Explorer');
+            run.addEventListener('click', () => { if (this.options.onRunQuery) this.options.onRunQuery(entry.Query); });
+
+            const toggle = el('button', 'cl-btn');
+            toggle.type = 'button';
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.appendChild(icon('code'));
+            toggle.append(' Show query');
+            const pre = el('pre', 'cl-query hidden');
+            pre.appendChild(el('code', '', entry.Query));
+            toggle.addEventListener('click', () => {
+                const open = pre.classList.toggle('hidden') === false;
+                toggle.setAttribute('aria-expanded', String(open));
+                toggle.lastChild.textContent = open ? ' Hide query' : ' Show query';
+            });
+            actions.append(run, toggle);
+            body.append(actions, pre);
+        }
+
+        item.appendChild(body);
+        return item;
     }
 
     _setContent(el, type, text) {

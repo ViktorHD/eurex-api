@@ -1,11 +1,11 @@
-import { GraphQLClient } from './client.js';
+import { GraphQLClient } from './client.js?v=2';
 import { UIManager, downloadText } from './ui.js?v=4';
 import { TabManager } from './tabs.js';
 import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
 import { TimelineManager } from './timeline.js?v=2';
-import { InfoPanel } from './info.js';
+import { InfoPanel } from './info.js?v=3';
 import { OverviewManager } from './overview.js?v=6';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
@@ -418,7 +418,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const infoPanel = new InfoPanel(client, {
         panel: infoPane,
         statusGrid: document.getElementById('statusGrid'),
+        statusSummary: document.getElementById('statusSummary'),
         changelogContent: document.getElementById('changelogContent'),
+        changelogFilters: document.getElementById('changelogFilters'),
         changelogLoading: document.getElementById('changelogLoading'),
         closeBtn: document.getElementById('closeInfoBtn'),
         refreshBtn: document.getElementById('refreshInfoBtn')

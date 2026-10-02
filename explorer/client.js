@@ -10,13 +10,15 @@ export class GraphQLClient {
     setEndpoint(url) { this.endpoint = url; }
     setApiKey(key) { this.apiKey = key; }
 
-    async request(query, variables = null, flatten = true) {
+    // options.fresh: skip the response cache (e.g. an explicit refresh)
+    async request(query, variables = null, flatten = true, options = {}) {
         if (!this.apiKey || !query) {
             throw new Error('API Key and Query are required.');
         }
 
         const cacheKey = JSON.stringify({ query, variables, endpoint: this.endpoint, apiKey: this.apiKey, flatten });
         const now = Date.now();
+        if (options.fresh) this.cache.delete(cacheKey);
 
         // Check cache
         if (this.cache.has(cacheKey)) {
