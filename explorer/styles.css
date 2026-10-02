@@ -3597,3 +3597,5 @@ th.num .th-sort { flex-direction: row-reverse; }
     .cl-item { grid-template-columns: minmax(0, 1fr); gap: 6px; }
     .cl-date { flex-direction: row; gap: 8px; align-items: baseline; }
 }
+
+.cl-query-msg { margin: 8px 0 0; font-size: 0.76rem; color: #8a5a00; background: #fff6e5; padding: 6px 10px; border-radius: 6px; }

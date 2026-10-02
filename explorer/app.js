@@ -5,7 +5,7 @@ import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
 import { Chatbot } from './chatbot.js';
 import { TimelineManager } from './timeline.js?v=2';
-import { InfoPanel } from './info.js?v=3';
+import { InfoPanel } from './info.js?v=4';
 import { OverviewManager } from './overview.js?v=6';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
@@ -432,7 +432,9 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         onClose: () => {
             switchAppView('api-explorer');
-        }
+        },
+        // Used to turn changelog attributes into full queries
+        getSchema: () => schemaExplorer.fetchSchema()
     });
 
     const schemaExplorer = new SchemaExplorer(client, {
