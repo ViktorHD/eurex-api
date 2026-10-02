@@ -1,5 +1,5 @@
 import { GraphQLClient } from './client.js';
-import { UIManager, downloadText } from './ui.js?v=3';
+import { UIManager, downloadText } from './ui.js?v=4';
 import { TabManager } from './tabs.js';
 import { Autocomplete } from './autocomplete.js';
 import { SchemaExplorer } from './schema.js';
