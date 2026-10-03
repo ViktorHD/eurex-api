@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="explorer/styles.css?v=10">
+    <link rel="stylesheet" href="explorer/styles.css?v=11">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -423,11 +423,14 @@ query {
                 <!-- Right Pane: Docs (Schema Introspection) -->
                 <section class="pane docs-pane hidden" id="docsPane">
                     <div class="pane-header">
-                        <span>Schema Explorer</span>
+                        <span>Schema</span>
                         <button id="closeDocsBtn" class="icon-btn" aria-label="Close Schema Explorer" title="Close Schema Explorer"><i data-feather="x"></i></button>
                     </div>
                     <div class="docs-content" id="docsContent">
-                        <input type="text" id="docsSearch" placeholder="Search types and fields..." class="docs-search">
+                        <label class="dx-search">
+                            <i data-feather="search" aria-hidden="true"></i>
+                            <input type="search" id="docsSearch" placeholder="Search queries, fields, descriptions" aria-label="Search the schema">
+                        </label>
                         <div id="docsLoading" class="docs-loading hidden">
                             <div class="skeleton skeleton-header" style="width: 70%;"></div>
                             <div class="skeleton skeleton-row"></div>
@@ -437,7 +440,7 @@ query {
                             <i data-feather="book-open"></i>
                             <div>
                                 <h3>Schema Explorer</h3>
-                                <p>Click <strong>Docs</strong> to introspect.</p>
+                                <p>The schema could not be loaded yet. Check the API key, then reopen Docs.</p>
                             </div>
                         </div>
                         <div id="docsTree" class="docs-tree hidden"></div>
@@ -566,7 +569,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="explorer/app.js?v=10"></script>
+    <script type="module" src="explorer/app.js?v=11"></script>
     <script>
       feather.replace();
     </script>
