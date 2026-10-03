@@ -1,72 +1,25 @@
 import { GraphQLClient } from './client.js?v=3';
-import { UIManager, downloadText } from './ui.js?v=6';
+import { UIManager, downloadText } from './ui.js?v=7';
 import { buildNextPageQuery, canPaginate } from './pagination.js';
-import { TabManager } from './tabs.js';
-import { Autocomplete } from './autocomplete.js?v=2';
-import { QueryEditor, addToHistory, loadHistory, clearHistory, timeAgo } from './editor.js?v=1';
-import { SchemaExplorer } from './schema.js?v=2';
+import { TabManager, loadTabsSnapshot, saveTabsSnapshot } from './tabs.js?v=2';
+import { Autocomplete } from './autocomplete.js?v=3';
+import { QueryEditor, addToHistory, loadHistory, clearHistory, timeAgo, rootFieldsOf, loadSaved, saveQuery, deleteSaved } from './editor.js?v=2';
+import { SchemaExplorer, schemaToSdl } from './schema.js?v=3';
 import { Chatbot } from './chatbot.js';
-import { TimelineManager } from './timeline.js?v=3';
-import { InfoPanel } from './info.js?v=5';
+import { TimelineManager } from './timeline.js?v=4';
+import { InfoPanel } from './info.js?v=6';
+import { DOMAIN_QUERIES } from './examples.js';
+import { shareUrl, stateFromSearch } from './share.js';
+import { buildSchemaIndex, validateAgainstSchema, completionsAt } from './schemacheck.js';
+import { fetchProductCatalog } from './catalog.js';
+import { ProductCard } from './productcard.js';
+import { ProductsView } from './productsview.js';
+import { CalendarView } from './calendarview.js';
+import { loadDisplay, setDisplay, getDisplay, NUMBER_MODES, DATE_MODES } from './displayformat.js';
+import { XLSX_MIME } from './xlsx.js';
 import { OverviewManager } from './overview.js?v=7';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
-
-/**
- * Extracts root field names from a GraphQL query string.
- * @param {string} query
- * @returns {string[]}
- */
-function getRootFields(query) {
-    if (!query) return [];
-    const cleanQuery = query.replace(/#.*$/gm, ' ');
-    const firstBraceIndex = cleanQuery.indexOf('{');
-    if (firstBraceIndex === -1) return [];
-
-    let inner = cleanQuery.substring(firstBraceIndex + 1);
-    let fields = [];
-    let braceDepth = 0;
-    let parenDepth = 0;
-    let currentToken = '';
-
-    for (let i = 0; i < inner.length; i++) {
-        const char = inner[i];
-        if (char === '{') {
-            if (braceDepth === 0 && parenDepth === 0) {
-                const t = currentToken.trim().split(/[\s,:]+/).filter(x => x).pop();
-                if (t) fields.push(t);
-                currentToken = '';
-            }
-            braceDepth++;
-        } else if (char === '}') {
-            if (braceDepth === 0) break;
-            braceDepth--;
-        } else if (char === '(') {
-            if (braceDepth === 0 && parenDepth === 0) {
-                const t = currentToken.trim().split(/[\s,:]+/).filter(x => x).pop();
-                if (t) fields.push(t);
-                currentToken = '';
-            }
-            parenDepth++;
-        } else if (char === ')') {
-            parenDepth--;
-        } else if (braceDepth === 0 && parenDepth === 0) {
-            if (/[\s,]/.test(char)) {
-                const parts = currentToken.trim().split(/[\s,:]+/).filter(x => x);
-                if (parts.length > 0) {
-                    for (let j = 0; j < parts.length; j++) fields.push(parts[j]);
-                }
-                currentToken = '';
-            } else {
-                currentToken += char;
-            }
-        }
-    }
-    const finalParts = currentToken.trim().split(/[\s,:]+/).filter(x => x);
-    for (let j = 0; j < finalParts.length; j++) fields.push(finalParts[j]);
-
-    return fields.filter((f, index) => fields.indexOf(f) === index && f && !['query', 'mutation', 'subscription', 'fragment', 'on'].includes(f));
-}
 
 document.addEventListener('DOMContentLoaded', () => {
     const apiUrlInput = document.getElementById('apiUrl');
@@ -92,34 +45,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Global Nav
     const appNav = document.querySelector('.app-nav');
-    const navEurexOverview = document.getElementById('nav-eurex-overview');
-    const navTradingHours = document.getElementById('nav-trading-hours');
     const navApiExplorer = document.getElementById('nav-api-explorer');
-    const navInfo = document.getElementById('nav-info');
     const actionBar = document.querySelector('.action-bar');
     const tabsBar = document.getElementById('tabsBar');
 
     // Panes addition
     const overviewPane = document.getElementById('overviewPane');
     const apiOverviewPane = document.getElementById('apiOverviewPane');
+    const productsPane = document.getElementById('productsPane');
+    const productPane = document.getElementById('productPane');
+    const calendarPane = document.getElementById('calendarPane');
 
     // Toggles
     const toggleQueryBtn = document.getElementById('toggleQueryBtn');
     const closeQueryBtn = document.getElementById('closeQueryBtn');
     const firstSplitter = document.querySelector('.resize-handle:not(#docsSplitter)');
 
-    function switchAppView(view) {
+    // Every view except the API Explorer is one pane with one navigation entry.
+    // onShow runs when it opens, onHide when another view replaces it.
+    const VIEWS = {
+        'api-overview': { nav: 'nav-api-overview', pane: apiOverviewPane },
+        'products': { nav: 'nav-products', pane: productsPane, onShow: () => productsView.show() },
+        'product': { nav: 'nav-products', pane: productPane },
+        'eurex-overview': {
+            nav: 'nav-eurex-overview',
+            pane: overviewPane,
+            onShow: () => {
+                if (!overviewProductsLoaded) {
+                    overviewProductsLoaded = true;
+                    overviewManager.loadProducts().then(() => overviewManager.fetchAndRender());
+                }
+            }
+        },
+        'trading-hours': { nav: 'nav-trading-hours', pane: timelinePane, onShow: () => timelineManager.fetchAndRender() },
+        'calendar': { nav: 'nav-calendar', pane: calendarPane, onShow: () => calendarView.show(), onHide: () => calendarView.hide() },
+        'info': { nav: 'nav-info', pane: infoPane, onShow: () => infoPanel.load() }
+    };
+    let currentView = 'api-explorer';
+
+    function switchAppView(view, options = {}) {
+        VIEWS[currentView]?.onHide?.();
+        currentView = VIEWS[view] ? view : 'api-explorer';
+
         // Reset active states
-        navEurexOverview?.classList.remove('active');
-        navTradingHours?.classList.remove('active');
-        navApiExplorer?.classList.remove('active');
-        navInfo?.classList.remove('active');
-        const navApiOverview = document.getElementById('nav-api-overview');
-        navApiOverview?.classList.remove('active');
+        document.querySelectorAll('.app-nav .nav-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('mobileViewsBtn')?.classList.toggle('active', currentView !== 'api-explorer');
 
         // Hide all major panes
-        overviewPane.classList.add('hidden');
-        if (apiOverviewPane) apiOverviewPane.classList.add('hidden');
+        Object.values(VIEWS).forEach(v => v.pane.classList.add('hidden'));
         timelinePane.classList.add('hidden');
         infoPane.classList.add('hidden');
         queryPane.classList.add('hidden');
@@ -129,57 +102,38 @@ document.addEventListener('DOMContentLoaded', () => {
         tabsBar.classList.add('hidden');
         document.querySelectorAll('.resize-handle').forEach(h => h.classList.add('hidden'));
 
-        if (view === 'eurex-overview') {
-            navEurexOverview?.classList.add('active');
-            overviewPane.classList.remove('hidden');
-            if (!overviewProductsLoaded) {
-                overviewProductsLoaded = true;
-                overviewManager.loadProducts().then(() => overviewManager.fetchAndRender());
-            }
-        } else if (view === 'api-overview') {
-            navApiOverview?.classList.add('active');
-            if (apiOverviewPane) apiOverviewPane.classList.remove('hidden');
-        } else if (view === 'trading-hours') {
-            navTradingHours?.classList.add('active');
-            timelinePane.classList.remove('hidden');
-            timelineManager.fetchAndRender();
-        } else if (view === 'info') {
-            navInfo?.classList.add('active');
-            infoPane.classList.remove('hidden');
-            infoPanel.load();
+        const spec = VIEWS[currentView];
+        if (spec) {
+            document.getElementById(spec.nav)?.classList.add('active');
+            bottomNavItems.forEach(item => item.classList.toggle('active', item.getAttribute('data-pane') === (currentView === 'info' ? 'info' : 'views')));
+            spec.pane.classList.remove('hidden');
+            spec.onShow?.();
+            return;
+        }
+
+        navApiExplorer?.classList.add('active');
+
+        // Show API Explorer specifics
+        actionBar.classList.remove('hidden');
+        tabsBar.classList.remove('hidden');
+
+        if (isMobile()) {
+            switchMobilePane(options.mobilePane || 'query');
         } else {
-            navApiExplorer?.classList.add('active');
-            
-            // Show API Explorer specifics
-            actionBar.classList.remove('hidden');
-            tabsBar.classList.remove('hidden');
-            
-            if (isMobile()) {
-                switchMobilePane('query');
-            } else {
-                resultsPane.classList.remove('hidden');
-                // Ensure Query pane is always open when switching to or clicking API Explorer
-                queryPane.classList.remove('hidden');
-                if (firstSplitter) firstSplitter.classList.remove('hidden');
-            }
+            resultsPane.classList.remove('hidden');
+            // Ensure Query pane is always open when switching to or clicking API Explorer
+            queryPane.classList.remove('hidden');
+            if (firstSplitter) firstSplitter.classList.remove('hidden');
         }
     }
 
-    if (navEurexOverview) {
-        navEurexOverview.addEventListener('click', () => switchAppView('eurex-overview'));
-    }
-    const navApiOverviewBtn = document.getElementById('nav-api-overview');
-    if (navApiOverviewBtn) {
-        navApiOverviewBtn.addEventListener('click', () => switchAppView('api-overview'));
-    }
-    if (navTradingHours) {
-        navTradingHours.addEventListener('click', () => switchAppView('trading-hours'));
-    }
-    if (navApiExplorer) {
-        navApiExplorer.addEventListener('click', () => switchAppView('api-explorer'));
-    }
-    if (navInfo) {
-        navInfo.addEventListener('click', () => switchAppView('info'));
+    ['api-overview', 'products', 'eurex-overview', 'trading-hours', 'calendar', 'info', 'api-explorer'].forEach(view => {
+        const id = view === 'api-explorer' ? 'nav-api-explorer' : (VIEWS[view]?.nav);
+        document.getElementById(id)?.addEventListener('click', () => switchAppView(view));
+    });
+
+    function deactivateTimeline() {
+        switchAppView('api-explorer');
     }
 
     // Sidebar Autohide/Unhide logic with 300ms hover delay
@@ -205,6 +159,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        // Keyboard users reach the labels too: the sidebar opens while focus is inside it
+        // (only for keyboard focus: a mouse press also focuses the button, and expanding then would shift the layout under the click)
+        appNav.addEventListener('focusin', (e) => {
+            if (!isMobile() && e.target.matches?.(':focus-visible')) appNav.classList.add('expanded');
+        });
+        appNav.addEventListener('focusout', (e) => {
+            if (!appNav.contains(e.relatedTarget) && !isMobile()) appNav.classList.remove('expanded');
+        });
+
         // Hide sidebar when a nav item is clicked
         const navBtns = appNav.querySelectorAll('.nav-btn');
         navBtns.forEach(btn => {
@@ -220,16 +183,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function deactivateTimeline() {
-        switchAppView('api-explorer');
-    }
-
     toggleQueryBtn.addEventListener('click', () => {
         if (isMobile()) {
             switchMobilePane('query');
         } else {
-            const isApiExplorerActive = navApiExplorer?.classList.contains('active');
-            if (!isApiExplorerActive) {
+            if (currentView !== 'api-explorer') {
                 switchAppView('api-explorer');
                 queryPane.classList.remove('hidden');
                 if (firstSplitter) firstSplitter.classList.remove('hidden');
@@ -276,6 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
         shareBtn: document.getElementById('actionShareBtn'),
         downloadCsvBtn: document.getElementById('downloadCsvBtn'),
         downloadMdBtn: document.getElementById('downloadMdBtn'),
+        downloadXlsxBtn: document.getElementById('downloadXlsxBtn'),
         loadPage: (pager) => loadNextPage(pager),
         onStateChange: (state) => {
             // `data` too: rows loaded from further pages belong to the tab
@@ -292,6 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.data = ui.currentData;
                 Object.assign(state, ui.exportState());
             },
+            onTabsChanged: () => persistTabs(),
             onTabLoad: (state) => {
                 deactivateTimeline();
                 queryInput.value = state.query || '';
@@ -315,13 +275,42 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     );
+
+    // Tabs (queries, variables, names) are kept between visits; a shared link replaces them
+    let tabsPersistTimer = null;
+    function persistTabs() {
+        clearTimeout(tabsPersistTimer);
+        tabsPersistTimer = setTimeout(() => {
+            const active = tabs.getActiveState();
+            if (active) { active.query = queryInput.value; active.variables = variablesInput.value; }
+            saveTabsSnapshot(tabs.snapshot());
+        }, 400);
+    }
+    const hasSharedLink = !!stateFromSearch(window.location.search);
+    if (!hasSharedLink) {
+        const restored = tabs.restore(loadTabsSnapshot());
+        if (restored) {
+            queryInput.value = restored.query || '';
+            variablesInput.value = restored.variables || '';
+            const resultLabel = document.getElementById('resultLabel');
+            if (resultLabel && !/^Query \d+$/.test(restored.name)) resultLabel.textContent = restored.name;
+        }
+    }
     tabs.render();
+    queryInput.addEventListener('input', persistTabs);
+    variablesInput.addEventListener('input', persistTabs);
 
     const autocomplete = new Autocomplete(document.querySelector('.editor-pane'), queryInput);
 
     // Editor (created after autocomplete so its key handling runs second and respects open suggestions)
     let schemaRootNames = null;
-    const queryEditor = new QueryEditor(queryInput, { getRootNames: () => schemaRootNames });
+    let schemaIndex = null; // introspection result prepared for validation and completions
+    let productChoices = null; // product codes offered inside { Product: { eq: "…" } }
+    const queryEditor = new QueryEditor(queryInput, {
+        getRootNames: () => schemaRootNames,
+        getProblems: (src) => (schemaIndex ? validateAgainstSchema(src, schemaIndex) : [])
+    });
+    autocomplete.setProvider((text, pos) => (schemaIndex ? completionsAt(text, pos, schemaIndex, { products: productChoices }) : null));
 
     // Load the schema in the background the first time the editor is used: feeds autocomplete and
     // the "unknown query" check without having to open the Docs pane first.
@@ -334,7 +323,10 @@ document.addEventListener('DOMContentLoaded', () => {
             autocomplete.setSchema(schema);
             const queryType = schema.types.find(t => t.name === (schema.queryType?.name || 'Query'));
             schemaRootNames = new Set((queryType?.fields || []).map(f => f.name));
+            schemaIndex = buildSchemaIndex(schema);
             queryEditor.refresh();
+            // Product codes for the Product filter; the editor works without them
+            fetchProductCatalog(client).then(list => { productChoices = list; }).catch(() => {});
         }).catch(() => { schemaRequested = false; });
     };
     queryInput.addEventListener('focus', ensureSchema);
@@ -436,7 +428,8 @@ document.addEventListener('DOMContentLoaded', () => {
         timezoneSelect: document.getElementById('timezoneSelect'),
         refreshBtn: document.getElementById('refreshTimelineBtn'),
         filterInput: document.getElementById('timelineFilter'),
-        expandAllBtn: document.getElementById('timelineExpandAllBtn')
+        expandAllBtn: document.getElementById('timelineExpandAllBtn'),
+        watchOnlyBtn: document.getElementById('timelineWatchBtn')
     });
 
     const infoPanel = new InfoPanel(client, {
@@ -479,6 +472,27 @@ document.addEventListener('DOMContentLoaded', () => {
             executeGraphQLQuery(query).catch(() => {});
         }
     });
+
+    // ---- Products, product card, calendar ----
+    const getSchemaOnce = () => schemaExplorer.fetchSchema();
+    const productCard = new ProductCard(client, { content: document.getElementById('productCardContent') }, {
+        getSchema: getSchemaOnce,
+        onRunQuery: (query) => {
+            queryInput.value = query;
+            tabs.updateActiveState({ query });
+            switchAppView('api-explorer');
+            executeGraphQLQuery(query).catch(() => {});
+        },
+        onOpenStrikeWindow: (product) => openStrikeWindow(product),
+        onShare: (product) => openShare({ view: 'product', p: product, e: apiUrlInput.value.trim() }, 'Share product card')
+    });
+    function openProduct(code) {
+        switchAppView('product');
+        productCard.open(code);
+    }
+    const productsView = new ProductsView(client, { content: document.getElementById('productsContent') }, { onOpenProduct: openProduct, getSchema: getSchemaOnce });
+    const calendarView = new CalendarView(client, { content: document.getElementById('calendarContent') }, { onOpenProduct: openProduct });
+    document.getElementById('productBackBtn')?.addEventListener('click', () => switchAppView('products'));
 
     // Provider selector show/hide logic
     const aiProviderSelect = document.getElementById('aiProvider');
@@ -560,6 +574,16 @@ ${schemaSDL}
     function switchMobilePane(paneId) {
         if (!isMobile()) return;
 
+        // The explorer panes belong to the API Explorer: leave any other view first
+        if (currentView !== 'api-explorer' && ['query', 'results', 'docs'].includes(paneId)) {
+            switchAppView('api-explorer', { mobilePane: paneId });
+            return;
+        }
+        if (paneId === 'info') {
+            switchAppView('info');
+            return;
+        }
+
         // Update active nav item
         bottomNavItems.forEach(item => {
             item.classList.toggle('active', item.getAttribute('data-pane') === paneId);
@@ -569,15 +593,7 @@ ${schemaSDL}
         queryPane.classList.toggle('hidden', paneId !== 'query');
         resultsPane.classList.toggle('hidden', paneId !== 'results');
         docsPane.classList.toggle('hidden', paneId !== 'docs');
-        timelinePane.classList.toggle('hidden', paneId !== 'hours');
-        infoPane.classList.toggle('hidden', paneId !== 'info');
-
-        if (paneId === 'hours') {
-            timelineManager.fetchAndRender();
-        }
-        if (paneId === 'info') {
-            infoPanel.load();
-        }
+        infoPane.classList.add('hidden');
 
         // Special handling for splitters/resizers (hide on mobile)
         const allSplitters = document.querySelectorAll('.resize-handle');
@@ -591,9 +607,27 @@ ${schemaSDL}
         }
     }
 
+    // Views sheet: every view of the app, for phones where the sidebar is not shown
+    const viewSheet = document.getElementById('viewSheet');
+    const viewsBtn = document.getElementById('mobileViewsBtn');
+    const closeViewSheet = () => { viewSheet.classList.add('hidden'); viewsBtn.setAttribute('aria-expanded', 'false'); };
+    viewsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = viewSheet.classList.toggle('hidden') === false;
+        viewsBtn.setAttribute('aria-expanded', String(open));
+    });
+    viewSheet.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-view]');
+        if (target) switchAppView(target.getAttribute('data-view'));
+        closeViewSheet();
+    });
+    document.addEventListener('click', (e) => { if (!viewSheet.contains(e.target) && e.target !== viewsBtn && !viewsBtn.contains(e.target)) closeViewSheet(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeViewSheet(); });
+
     bottomNavItems.forEach(item => {
         item.addEventListener('click', () => {
             const paneId = item.getAttribute('data-pane');
+            if (paneId === 'views') return; // handled above
             switchMobilePane(paneId);
         });
     });
@@ -672,7 +706,7 @@ ${schemaSDL}
         }
 
         // Dynamic Naming (Update early so it shows even on failure/loading)
-        const rootFields = getRootFields(query);
+        const rootFields = rootFieldsOf(query);
         const newName = rootFields.length > 0 ? rootFields.join(', ') : '';
         const resultLabel = document.getElementById('resultLabel');
 
@@ -725,7 +759,7 @@ ${schemaSDL}
             if (pagers.some(Boolean)) tableState.pagers = pagers;
 
             tabs.updateActiveState({ data: data, ...tableState });
-            addToHistory(query);
+            addToHistory(query, globalThis.localStorage, Date.now(), variablesInput.value);
 
             if (data.length === 0) {
                 ui.showEmptyState(warnings.length ? `Query returned no data. ${warnings.join(' ')}` : "Query successful, but no data was returned.");
@@ -918,14 +952,79 @@ ${schemaSDL}
         historyMenu.classList.add('hidden');
         historyBtn.setAttribute('aria-expanded', 'false');
     };
+    const loadQueryIntoEditor = (item) => {
+        queryInput.value = item.query;
+        // History and saved entries remember their variables; an entry without any leaves the current ones alone
+        if (item.variables) variablesInput.value = item.variables;
+        tabs.updateActiveState({ query: item.query, variables: variablesInput.value });
+        if (variablesInput.value.trim()) variablesInput.dispatchEvent(new Event('input'));
+        closeHistory();
+        queryInput.focus();
+    };
     const renderHistory = () => {
         historyMenu.innerHTML = '';
+
+        // Save the query in the editor under a name
+        const saveForm = document.createElement('form');
+        saveForm.className = 'qe-save';
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.placeholder = 'Name this query to save it';
+        nameInput.maxLength = 60;
+        nameInput.setAttribute('aria-label', 'Name for the saved query');
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'submit';
+        saveBtn.className = 'qe-save-btn';
+        saveBtn.textContent = 'Save';
+        saveForm.append(nameInput, saveBtn);
+        saveForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (!nameInput.value.trim() || !queryInput.value.trim()) return;
+            saveQuery(nameInput.value, queryInput.value, variablesInput.value);
+            renderHistory();
+        });
+        historyMenu.appendChild(saveForm);
+
+        const section = (title, list, build) => {
+            const head = document.createElement('div');
+            head.className = 'qe-history-head';
+            head.textContent = title;
+            historyMenu.appendChild(head);
+            list.forEach(build);
+        };
+        const preview = (q, vars) => {
+            const code = document.createElement('code');
+            code.textContent = q.replace(/\s+/g, ' ').trim().slice(0, 90) + (vars && vars.trim() ? '  + variables' : '');
+            return code;
+        };
+
+        const saved = loadSaved();
+        if (saved.length) {
+            section('Saved', saved, (h) => {
+                const row = document.createElement('div');
+                row.className = 'qe-saved-row';
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'qe-history-item';
+                item.setAttribute('role', 'menuitem');
+                const name = document.createElement('strong');
+                name.textContent = h.name;
+                item.append(name, preview(h.query, h.variables));
+                item.addEventListener('click', () => loadQueryIntoEditor(h));
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'qe-saved-delete';
+                del.textContent = '×';
+                del.title = `Delete ${h.name}`;
+                del.setAttribute('aria-label', `Delete saved query ${h.name}`);
+                del.addEventListener('click', (e) => { e.stopPropagation(); deleteSaved(h.name); renderHistory(); });
+                row.append(item, del);
+                historyMenu.appendChild(row);
+            });
+        }
+
         const list = loadHistory();
-        const head = document.createElement('div');
-        head.className = 'qe-history-head';
-        head.textContent = list.length ? 'Recently run' : 'No queries run yet';
-        historyMenu.appendChild(head);
-        list.forEach(h => {
+        section(list.length ? 'Recently run' : 'No queries run yet', list, (h) => {
             const item = document.createElement('button');
             item.type = 'button';
             item.className = 'qe-history-item';
@@ -934,15 +1033,8 @@ ${schemaSDL}
             name.textContent = (h.roots && h.roots.length ? h.roots.join(', ') : 'Query');
             const when = document.createElement('span');
             when.textContent = timeAgo(h.at);
-            const preview = document.createElement('code');
-            preview.textContent = h.query.replace(/\s+/g, ' ').trim().slice(0, 90);
-            item.append(name, when, preview);
-            item.addEventListener('click', () => {
-                queryInput.value = h.query;
-                tabs.updateActiveState({ query: h.query });
-                closeHistory();
-                queryInput.focus();
-            });
+            item.append(name, when, preview(h.query, h.variables));
+            item.addEventListener('click', () => loadQueryIntoEditor(h));
             historyMenu.appendChild(item);
         });
         if (list.length) {
@@ -950,7 +1042,7 @@ ${schemaSDL}
             clear.type = 'button';
             clear.className = 'qe-history-clear';
             clear.textContent = 'Clear history';
-            clear.addEventListener('click', () => { clearHistory(); renderHistory(); });
+            clear.addEventListener('click', (e) => { e.stopPropagation(); clearHistory(); renderHistory(); });
             historyMenu.appendChild(clear);
         }
     };
@@ -962,6 +1054,8 @@ ${schemaSDL}
     });
     document.addEventListener('click', (e) => { if (!e.target.closest('.qe-history')) closeHistory(); });
     historyMenu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeHistory(); historyBtn.focus(); } });
+    // Escape closes the menu from anywhere, e.g. after saving a query re-drew it and focus left the menu
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !historyMenu.classList.contains('hidden')) closeHistory(); });
 
     // Variables: live JSON check
     const varsStatus = document.getElementById('varsStatus');
@@ -1035,6 +1129,44 @@ ${schemaSDL}
     document.getElementById('mobileCsvBtn').addEventListener('click', downloadCsvAction);
 
     document.getElementById('downloadMdBtn').addEventListener('click', downloadMdAction);
+
+    const downloadXlsxAction = () => {
+        if (!ui.tables.length) return;
+        downloadText(ui.exportXlsx(), `${ui.exportFileBase()}.xlsx`, XLSX_MIME);
+    };
+    document.getElementById('downloadXlsxBtn').addEventListener('click', downloadXlsxAction);
+    document.getElementById('mobileXlsxBtn').addEventListener('click', downloadXlsxAction);
+
+    // Display settings: how numbers and dates are drawn in tables
+    loadDisplay();
+    const displayBtn = document.getElementById('displayBtn');
+    const displayMenu = document.getElementById('displayMenu');
+    const fillSelect = (id, options, current) => {
+        const sel = document.getElementById(id);
+        sel.innerHTML = '';
+        Object.entries(options).forEach(([value, label]) => {
+            const o = document.createElement('option');
+            o.value = value;
+            o.textContent = label;
+            sel.appendChild(o);
+        });
+        sel.value = current;
+        return sel;
+    };
+    const numbersSel = fillSelect('displayNumbers', NUMBER_MODES, getDisplay().numbers);
+    const datesSel = fillSelect('displayDates', DATE_MODES, getDisplay().dates);
+    const applyDisplay = () => { setDisplay({ numbers: numbersSel.value, dates: datesSel.value }); ui.refreshDisplay(); };
+    numbersSel.addEventListener('change', applyDisplay);
+    datesSel.addEventListener('change', applyDisplay);
+    const closeDisplayMenu = () => { displayMenu.classList.add('hidden'); displayBtn.setAttribute('aria-expanded', 'false'); };
+    displayBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = displayMenu.classList.toggle('hidden') === false;
+        displayBtn.setAttribute('aria-expanded', String(open));
+    });
+    displayMenu.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', closeDisplayMenu);
+    displayMenu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeDisplayMenu(); displayBtn.focus(); } });
     document.getElementById('mobileMdBtn').addEventListener('click', downloadMdAction);
 
     // Share Logic
@@ -1044,31 +1176,41 @@ ${schemaSDL}
     const closeShareModal = document.getElementById('closeShareModal');
     const shareLinkInput = document.getElementById('shareLinkInput');
     const copyShareLinkBtn = document.getElementById('copyShareLinkBtn');
+    const shareTitle = shareModal.querySelector('.modal-header span');
+
+    // Opens the share dialog with a link that restores `state` (see share.js)
+    function openShare(state, title = 'Share Results') {
+        shareTitle.textContent = title;
+        shareLinkInput.value = shareUrl(state);
+        shareModal.classList.remove('hidden');
+    }
 
     const shareOverviewAction = () => {
         const productInput = document.getElementById('overviewProductInput');
         const viewSelect = document.getElementById('overviewViewSelect');
-        const state = {
+        openShare({
             view: 'eurex-overview',
             p: productInput ? productInput.value.trim() : '',
             m: viewSelect ? viewSelect.value : 'strike',
             e: apiUrlInput.value.trim()
-        };
+        }, 'Share Strike Window');
+    };
 
-        const jsonState = JSON.stringify(state);
-        const encodedState = btoa(encodeURIComponent(jsonState).replace(/%([0-9A-F]{2})/g, (match, p1) => {
-            return String.fromCharCode('0x' + p1);
-        }));
+    const shareTimelineAction = () => openShare({ view: 'trading-hours', e: apiUrlInput.value.trim(), ...timelineManager.getState() }, 'Share Trading Hours');
 
-        const url = new URL(window.location.href);
-        url.searchParams.set('eurex-api-state', encodedState);
-
-        shareLinkInput.value = url.toString();
-        shareModal.classList.remove('hidden');
+    // Sorting, filters, pinned and hidden columns of one table, in the short keys of the link format
+    const tableShareState = (t) => {
+        const ts = {};
+        if (t.sortCol) ts.sc = t.sortCol;
+        if (t.sortAsc === false) ts.sa = false;
+        if (t.columnFilters && Object.keys(t.columnFilters).length > 0) ts.cf = t.columnFilters;
+        if (t.stickyCols && t.stickyCols.length > 0) ts.stc = t.stickyCols;
+        if (t.hiddenCols && t.hiddenCols.length > 0) ts.hc = t.hiddenCols;
+        return ts;
     };
 
     const shareAction = () => {
-        if (navEurexOverview?.classList.contains('active')) {
+        if (currentView === 'eurex-overview') {
             shareOverviewAction();
             return;
         }
@@ -1082,36 +1224,12 @@ ${schemaSDL}
         // Handle table states (sorting, filtering, etc.)
         if (uiState.tables && uiState.tables.length > 0) {
             if (uiState.tables.length === 1) {
-                // Legacy/Single table support
-                const t = uiState.tables[0];
-                if (t.sortCol) state.sc = t.sortCol;
-                if (t.sortAsc === false) state.sa = false;
-                if (t.columnFilters && Object.keys(t.columnFilters).length > 0) state.cf = t.columnFilters;
-                if (t.stickyCols && t.stickyCols.length > 0) state.stc = t.stickyCols;
+                Object.assign(state, tableShareState(uiState.tables[0]));
             } else {
-                // Multi-table support
-                state.ts = uiState.tables.map(t => {
-                    const ts = {};
-                    if (t.sortCol) ts.sc = t.sortCol;
-                    if (t.sortAsc === false) ts.sa = false;
-                    if (t.columnFilters && Object.keys(t.columnFilters).length > 0) ts.cf = t.columnFilters;
-                    if (t.stickyCols && t.stickyCols.length > 0) ts.stc = t.stickyCols;
-                    return ts;
-                });
+                state.ts = uiState.tables.map(tableShareState);
             }
         }
-
-        // Use a more robust way to encode to base64 for Unicode support
-        const jsonState = JSON.stringify(state);
-        const encodedState = btoa(encodeURIComponent(jsonState).replace(/%([0-9A-F]{2})/g, (match, p1) => {
-            return String.fromCharCode('0x' + p1);
-        }));
-
-        const url = new URL(window.location.href);
-        url.searchParams.set('eurex-api-state', encodedState);
-
-        shareLinkInput.value = url.toString();
-        shareModal.classList.remove('hidden');
+        openShare(state);
     };
 
     closeShareModal.addEventListener('click', () => {
@@ -1131,6 +1249,7 @@ ${schemaSDL}
 
     shareBtn.addEventListener('click', shareAction);
     if (shareOverviewBtn) shareOverviewBtn.addEventListener('click', shareOverviewAction);
+    document.getElementById('shareTimelineBtn')?.addEventListener('click', shareTimelineAction);
     document.getElementById('mobileShareBtn').addEventListener('click', shareAction);
 
     window.addEventListener('click', (e) => {
@@ -1139,78 +1258,99 @@ ${schemaSDL}
         }
     });
 
-    // Handle shared link on load
-    const urlParams = new URLSearchParams(window.location.search);
-    const sharedStateEncoded = urlParams.get('eurex-api-state');
-    if (sharedStateEncoded) {
-        try {
-            // Robustly decode base64
-            const decodedJson = decodeURIComponent(atob(sharedStateEncoded).split('').map((c) => {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join(''));
-            const s = JSON.parse(decodedJson);
+    // Opens the Strike Window for an option product
+    function openStrikeWindow(product) {
+        switchAppView('eurex-overview');
+        const pInput = document.getElementById('overviewProductInput');
+        if (pInput) pInput.value = product;
+        const vSelect = document.getElementById('overviewViewSelect');
+        if (vSelect) vSelect.value = 'strike';
 
-            const view = s.view;
-            const endpoint = s.e || s.endpoint;
-
-            if (endpoint) {
-                apiUrlInput.value = endpoint;
-                client.setEndpoint(endpoint);
-            }
-
-            // Set demo key if current key is empty, to ensure "directly provides results"
-            if (!apiKeyInput.value.trim()) {
-                apiKeyInput.value = DEMO_API_KEY;
-                client.setApiKey(DEMO_API_KEY);
-            }
-
-            if (view === 'eurex-overview') {
-                switchAppView('eurex-overview');
-                const overviewProductInput = document.getElementById('overviewProductInput');
-                const overviewViewSelect = document.getElementById('overviewViewSelect');
-                if (s.p && overviewProductInput) overviewProductInput.value = s.p;
-                if (s.m && overviewViewSelect) overviewViewSelect.value = s.m;
-
-                setTimeout(() => {
-                    if (!overviewProductsLoaded) {
-                        overviewProductsLoaded = true;
-                        overviewManager.loadProducts().then(() => overviewManager.fetchAndRender());
-                    } else {
-                        overviewManager.fetchAndRender();
+        setTimeout(() => {
+            if (!overviewProductsLoaded) {
+                overviewProductsLoaded = true;
+                overviewManager.loadProducts().then(() => {
+                    if (overviewManager.state) {
+                        overviewManager.state.p = product;
+                        overviewManager.state.m = 'strike';
                     }
-                }, 100);
+                    overviewManager.fetchAndRender();
+                });
             } else {
-                const query = s.q || s.query;
-                const variables = s.v || s.variables;
-
-                if (query) queryInput.value = query;
-                if (variables) variablesInput.value = variables;
-
-                // Wait a bit for everything to be ready
-                setTimeout(() => {
-                    const tableOptions = {};
-
-                    if (s.ts) {
-                        // New multi-table format
-                        tableOptions.tables = s.ts.map(t => ({
-                            sortCol: t.sc || t.sortCol || null,
-                            sortAsc: t.sa !== undefined ? t.sa : (t.sortAsc !== undefined ? t.sortAsc : true),
-                            columnFilters: t.cf || t.columnFilters || {},
-                            stickyCols: t.stc || t.stickyCols || []
-                        }));
-                    } else {
-                        // Backward compatibility / Single table
-                        tableOptions.sortCol = s.sc || s.sortCol || null;
-                        tableOptions.sortAsc = s.sa !== undefined ? s.sa : (s.sortAsc !== undefined ? s.sortAsc : true);
-                        tableOptions.columnFilters = s.cf || s.columnFilters || {};
-                        tableOptions.stickyCols = s.stc || s.stickyCols || [];
-                    }
-
-                    executeGraphQLQuery(query, tableOptions).catch(() => {});
-                }, 500);
+                if (overviewManager.state) {
+                    overviewManager.state.p = product;
+                    overviewManager.state.m = 'strike';
+                }
+                overviewManager.fetchAndRender();
             }
-        } catch (e) {
-            console.error('Failed to parse shared state', e);
+        }, 100);
+    }
+
+    // Handle shared link on load
+    const s = stateFromSearch(window.location.search);
+    if (s) {
+        const view = s.view;
+        const endpoint = s.e || s.endpoint;
+
+        if (endpoint) {
+            apiUrlInput.value = endpoint;
+            client.setEndpoint(endpoint);
+        }
+
+        // Set demo key if current key is empty, to ensure "directly provides results"
+        if (!apiKeyInput.value.trim()) {
+            apiKeyInput.value = DEMO_API_KEY;
+            client.setApiKey(DEMO_API_KEY);
+        }
+
+        if (view === 'eurex-overview') {
+            switchAppView('eurex-overview');
+            const overviewProductInput = document.getElementById('overviewProductInput');
+            const overviewViewSelect = document.getElementById('overviewViewSelect');
+            if (s.p && overviewProductInput) overviewProductInput.value = s.p;
+            if (s.m && overviewViewSelect) overviewViewSelect.value = s.m;
+
+            setTimeout(() => {
+                if (!overviewProductsLoaded) {
+                    overviewProductsLoaded = true;
+                    overviewManager.loadProducts().then(() => overviewManager.fetchAndRender());
+                } else {
+                    overviewManager.fetchAndRender();
+                }
+            }, 100);
+        } else if (view === 'trading-hours') {
+            timelineManager.setState(s);
+            switchAppView('trading-hours');
+        } else if (view === 'product' && s.p) {
+            openProduct(String(s.p));
+        } else {
+            const query = s.q || s.query;
+            const variables = s.v || s.variables;
+
+            if (query) queryInput.value = query;
+            if (variables) variablesInput.value = variables;
+
+            // Wait a bit for everything to be ready
+            setTimeout(() => {
+                const tableOptions = {};
+                const read = (t) => ({
+                    sortCol: t.sc || t.sortCol || null,
+                    sortAsc: t.sa !== undefined ? t.sa : (t.sortAsc !== undefined ? t.sortAsc : true),
+                    columnFilters: t.cf || t.columnFilters || {},
+                    stickyCols: t.stc || t.stickyCols || [],
+                    hiddenCols: t.hc || t.hiddenCols || []
+                });
+
+                if (s.ts) {
+                    // New multi-table format
+                    tableOptions.tables = s.ts.map(read);
+                } else {
+                    // Backward compatibility / Single table
+                    Object.assign(tableOptions, read(s));
+                }
+
+                executeGraphQLQuery(query, tableOptions).catch(() => {});
+            }, 500);
         }
     } else {
         switchAppView('api-overview');
@@ -1237,32 +1377,7 @@ ${schemaSDL}
             e.preventDefault();
             const input = document.getElementById('apiOverviewStrikeProduct');
             const product = input.value.trim().toUpperCase();
-            if (/^[A-Z0-9_-]{1,32}$/.test(product)) {
-                switchAppView('eurex-overview');
-                const pInput = document.getElementById('overviewProductInput');
-                if (pInput) pInput.value = product;
-                const vSelect = document.getElementById('overviewViewSelect');
-                if (vSelect) vSelect.value = 'strike';
-                
-                setTimeout(() => {
-                    if (!overviewProductsLoaded) {
-                        overviewProductsLoaded = true;
-                        overviewManager.loadProducts().then(() => {
-                            if (overviewManager.state) {
-                                overviewManager.state.p = product;
-                                overviewManager.state.m = 'strike';
-                            }
-                            overviewManager.fetchAndRender();
-                        });
-                    } else {
-                        if (overviewManager.state) {
-                            overviewManager.state.p = product;
-                            overviewManager.state.m = 'strike';
-                        }
-                        overviewManager.fetchAndRender();
-                    }
-                }, 100);
-            }
+            if (/^[A-Z0-9_-]{1,32}$/.test(product)) openStrikeWindow(product);
         });
     }
 

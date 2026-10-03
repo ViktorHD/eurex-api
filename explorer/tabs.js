@@ -1,3 +1,22 @@
+const TABS_KEY = 'eurexExplorer.tabs';
+const MAX_TABS = 20;
+const MAX_TEXT = 100000;
+
+// Snapshots are stored per browser; oversized or malformed ones are ignored
+export function loadTabsSnapshot(storage = globalThis.localStorage) {
+    try {
+        const snap = JSON.parse(storage?.getItem(TABS_KEY) || 'null');
+        return snap && Array.isArray(snap.tabs) && snap.tabs.length ? snap : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+export function saveTabsSnapshot(snapshot, storage = globalThis.localStorage) {
+    const tabs = (snapshot?.tabs || []).slice(0, MAX_TABS).map(t => ({ ...t, query: String(t.query || '').slice(0, MAX_TEXT), variables: String(t.variables || '').slice(0, MAX_TEXT) }));
+    try { storage?.setItem(TABS_KEY, JSON.stringify({ activeTabId: snapshot?.activeTabId, tabs })); } catch (e) { /* storage unavailable */ }
+}
+
 // Elements in tests are plain mocks without setAttribute
 const attr = (el, name, value) => { if (el && el.setAttribute) el.setAttribute(name, value); };
 
@@ -173,5 +192,6 @@ export class TabManager {
 
             this.tabsBar.insertBefore(tab, this.addTabBtn);
         });
+        if (this.callbacks.onTabsChanged) this.callbacks.onTabsChanged();
     }
 }
