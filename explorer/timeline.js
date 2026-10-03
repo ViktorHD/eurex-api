@@ -1,3 +1,6 @@
+import { resolveTz, nowIn, timeToMinutes, inRange, cetDate, getStatus, nextHoliday, buildHolidayMap, STATUS_LABELS } from './tradingstatus.js';
+import { getWatchlist, toggleWatched, onWatchlistChange } from './watchlist.js';
+
 export class TimelineManager {
     constructor(client, els) {
         this.client = client;
@@ -9,8 +12,10 @@ export class TimelineManager {
         this.tooltip = this._createTooltip();
         this.tooltipTimer = null;
         this.expandedGroups = new Set();
+        this.watchOnly = false; // only products on the watchlist
 
         this.bindEvents();
+        onWatchlistChange(() => { if (this.data) this.render(); });
         // Keep the "now" line and open/closed status current while the view is open
         this.nowTimer = setInterval(() => this._updateNow(), 60 * 1000);
     }
@@ -27,6 +32,13 @@ export class TimelineManager {
                 this.render();
             });
         }
+        if (this.els.watchOnlyBtn) {
+            this.els.watchOnlyBtn.addEventListener('click', () => {
+                this.watchOnly = !this.watchOnly;
+                this._syncWatchBtn();
+                this.render();
+            });
+        }
         if (this.els.expandAllBtn) {
             this.els.expandAllBtn.addEventListener('click', () => {
                 if (!this.data) return;
@@ -36,6 +48,30 @@ export class TimelineManager {
                 this.render();
             });
         }
+    }
+
+    _syncWatchBtn() {
+        const b = this.els.watchOnlyBtn;
+        if (!b) return;
+        b.classList.toggle('active', this.watchOnly);
+        b.setAttribute('aria-pressed', String(this.watchOnly));
+    }
+
+    // View settings for share links, and applying them
+    getState() {
+        return { tz: this.timezone, f: this.filterText, w: this.watchOnly };
+    }
+
+    setState(state = {}) {
+        if (state.tz && Array.from(this.els.timezoneSelect.options).some(o => o.value === state.tz)) {
+            this.timezone = state.tz;
+            this.els.timezoneSelect.value = state.tz;
+        }
+        this.filterText = String(state.f || '').trim().toLowerCase();
+        if (this.els.filterInput) this.els.filterInput.value = state.f || '';
+        this.watchOnly = !!state.w;
+        this._syncWatchBtn();
+        if (this.data) this.render();
     }
 
     _createTooltip() {
@@ -141,28 +177,11 @@ export class TimelineManager {
             .filter(p => p.hours);
     }
 
-    // Product -> sorted ISO dates (YYYY-MM-DD); rows without a usable date are ignored
-    buildHolidayMap(rows) {
-        const map = new Map();
-        (rows || []).forEach(r => {
-            const day = String(r.Holiday ?? '').slice(0, 10);
-            if (!r.Product || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
-            if (!map.has(r.Product)) map.set(r.Product, new Set());
-            map.get(r.Product).add(day);
-        });
-        return new Map([...map].map(([product, days]) => [product, [...days].sort()]));
-    }
+    buildHolidayMap(rows) { return buildHolidayMap(rows); }
 
-    // Calendar date (YYYY-MM-DD) in Eurex time
-    _cetDate(now = new Date()) {
-        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
-    }
+    _cetDate(now = new Date()) { return cetDate(now); }
 
-    _timeToMinutes(timeStr) {
-        if (!timeStr) return null;
-        const [h, m, s] = timeStr.split(':').map(Number);
-        return h * 60 + m;
-    }
+    _timeToMinutes(timeStr) { return timeToMinutes(timeStr); }
 
     _convertTime(timeStr, fromTz, toTz) {
         if (!timeStr) return null;
@@ -252,55 +271,22 @@ export class TimelineManager {
         return (tzDate - localDate) / 60000;
     }
 
-    _resolveTz(tz) {
-        if (tz === 'LOCAL') return Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (tz === 'CET') return 'Europe/Berlin';
-        if (tz === 'SGT') return 'Asia/Singapore';
-        if (tz === 'CST') return 'America/Chicago';
-        return 'UTC';
-    }
+    _resolveTz(tz) { return resolveTz(tz); }
 
     // Current wall-clock time in a timezone: { minutes, weekday (0 = Sunday) }
-    _nowIn(tz, now = new Date()) {
-        const parts = new Intl.DateTimeFormat('en-US', {
-            timeZone: this._resolveTz(tz), hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false
-        }).formatToParts(now);
-        const get = (t) => parts.find(p => p.type === t)?.value;
-        const hour = Number(get('hour')) % 24;
-        const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'));
-        return { minutes: hour * 60 + Number(get('minute')), weekday };
-    }
+    _nowIn(tz, now = new Date()) { return nowIn(tz, now); }
 
-    _inRange(mins, start, end) {
-        const s = this._timeToMinutes(start);
-        const e = this._timeToMinutes(end);
-        if (s === null || e === null) return false;
-        return s <= e ? (mins >= s && mins < e) : (mins >= s || mins < e);
-    }
+    _inRange(mins, start, end) { return inRange(mins, start, end); }
 
     // Trading status of a product right now, based on Eurex (CET) hours: 'open', 'tes', 'closed' or 'holiday'.
-    // `hours` may be one hour set or a list of them (open if any is open); `holidays` the product's holiday dates.
-    getStatus(hours, now = new Date(), holidays = null) {
-        const sets = (Array.isArray(hours) ? hours : [hours]).filter(Boolean);
-        if (!sets.length) return 'closed';
-        const { minutes, weekday } = this._nowIn('CET', now);
-        if (weekday === 0 || weekday === 6) return 'closed';
-        if (holidays && holidays.length && holidays.includes(this._cetDate(now))) return 'holiday';
-        if (sets.some(h => this._inRange(minutes, h.StartContinuousTrading, h.EndContinuousTrading))) return 'open';
-        if (sets.some(h => this._inRange(minutes, h.StartTES, h.EndTES))) return 'tes';
-        return 'closed';
-    }
+    getStatus(hours, now = new Date(), holidays = null) { return getStatus(hours, now, holidays); }
 
-    // First holiday of the product after today (YYYY-MM-DD), or null
-    nextHoliday(holidays, now = new Date()) {
-        const today = this._cetDate(now);
-        return (holidays || []).find(d => d > today) || null;
-    }
+    nextHoliday(holidays, now = new Date()) { return nextHoliday(holidays, now); }
 
     _statusFor(product, now = new Date()) {
         const hours = product?.allHours?.length ? product.allHours : product?.hours;
         const holidays = this.holidays.get(product?.Product) || null;
-        return { status: this.getStatus(hours, now, holidays), next: this.nextHoliday(holidays, now) };
+        return { status: getStatus(hours, now, holidays), next: nextHoliday(holidays, now) };
     }
 
     _formatDuration(startMin, endMin) {
@@ -327,8 +313,7 @@ export class TimelineManager {
     }
 
     _applyStatus(dot, { status, next }) {
-        const labels = { open: 'Continuous trading now', tes: 'TES only now', closed: 'Closed now', holiday: 'Holiday today: no trading' };
-        const text = labels[status] + (next ? `. Next holiday: ${next}` : '');
+        const text = STATUS_LABELS[status] + (next ? `. Next holiday: ${next}` : '');
         dot.className = `timeline-status status-${status}`;
         dot.title = text;
         dot.setAttribute('aria-label', text);
@@ -411,6 +396,11 @@ export class TimelineManager {
         groupNames.forEach(name => {
             let group = this.data[name];
 
+            if (this.watchOnly) {
+                const watched = new Set(getWatchlist());
+                group = group.filter(p => watched.has(p.Product));
+            }
+
             // Apply filtering (product code, name or product type)
             if (this.filterText) {
                 const f = this.filterText;
@@ -421,10 +411,10 @@ export class TimelineManager {
             if (group.length === 0) return;
             shown += group.length;
 
-            const isExpanded = this.expandedGroups.has(name) || this.filterText !== '';
+            const isExpanded = this.expandedGroups.has(name) || this.filterText !== '' || this.watchOnly;
 
             // Representing the group as a whole
-            if (!this.filterText) {
+            if (!this.filterText && !this.watchOnly) {
                 this._renderGroupRow(this.els.content, name, group, isExpanded);
             }
 
@@ -441,14 +431,16 @@ export class TimelineManager {
         if (shown === 0) {
             const empty = document.createElement('div');
             empty.className = 'timeline-empty';
-            empty.textContent = this.filterText ? `No products match "${this.filterText}".` : 'No trading hours available.';
+            empty.textContent = this.watchOnly && !getWatchlist().length
+                ? 'Your watchlist is empty. Follow products with the star (here or in Products).'
+                : this.filterText ? `No products match "${this.filterText}".` : this.watchOnly ? 'None of your watchlist products has trading hours.' : 'No trading hours available.';
             this.els.content.appendChild(empty);
         }
 
         if (this.els.expandAllBtn) {
             const allOpen = groupNames.every(n => this.expandedGroups.has(n));
             this.els.expandAllBtn.textContent = allOpen ? 'Collapse all' : 'Expand all';
-            this.els.expandAllBtn.disabled = this.filterText !== '';
+            this.els.expandAllBtn.disabled = this.filterText !== '' || this.watchOnly;
         }
 
         this._updateNow();
@@ -554,6 +546,17 @@ export class TimelineManager {
         const code = document.createElement('strong');
         code.textContent = product.Product;
         label.appendChild(code);
+
+        const star = document.createElement('button');
+        star.type = 'button';
+        star.className = 'watch-star';
+        const watched = getWatchlist().includes(product.Product);
+        star.textContent = watched ? '★' : '☆';
+        star.setAttribute('aria-pressed', String(watched));
+        star.setAttribute('aria-label', `${watched ? 'Unfollow' : 'Follow'} ${product.Product}`);
+        star.title = watched ? 'On your watchlist' : 'Add to your watchlist';
+        star.addEventListener('click', (e) => { e.stopPropagation(); toggleWatched(product.Product); });
+        label.appendChild(star);
 
         const nameEl = document.createElement('span');
         nameEl.className = 'timeline-product-name';

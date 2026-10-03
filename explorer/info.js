@@ -13,6 +13,7 @@ const STATUS_QUERY = `query {
     Changelog { date }
     Expirations { date }
     TESProfiles { date }
+    FesxHolidays: Holidays(filter: { Product: { eq: "FESX" } }) { data { Holiday } }
 }`;
 
 // Datasets that change only occasionally: their date is shown but never counted as stale.
@@ -44,33 +45,41 @@ const STATUS_NAMES = [
 
 
 import { buildChangelogQuery } from './changelog-query.js?v=2';
+import { getWatchlist, onWatchlistChange } from './watchlist.js';
+import { buildIcs } from './ics.js';
+import { downloadText } from './ui.js';
 
 const DAY = 86400000;
 const toUtcDay = (iso) => {
     const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
     return Date.UTC(y, m - 1, d);
 };
-const isoOf = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+// Today's date in Eurex time (Frankfurt), not the browser's
+export const isoOf = (date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 
-// Business days (Mon–Fri) after `fromIso` up to and including `toIso`; 0 when from >= to.
-export function businessDaysBetween(fromIso, toIso) {
+// Business days (Mon–Fri, minus the given exchange holidays) after `fromIso` up to and including `toIso`;
+// 0 when from >= to. holidays: Set of 'YYYY-MM-DD'.
+export function businessDaysBetween(fromIso, toIso, holidays = null) {
     let from = toUtcDay(fromIso);
     const to = toUtcDay(toIso);
     let n = 0;
     while (from < to) {
         from += DAY;
-        const wd = new Date(from).getUTCDay();
-        if (wd !== 0 && wd !== 6) n++;
+        const day = new Date(from);
+        const wd = day.getUTCDay();
+        if (wd === 0 || wd === 6) continue;
+        if (holidays && holidays.has(day.toISOString().slice(0, 10))) continue;
+        n++;
     }
     return n;
 }
 
 // 'ok' (current), 'stale' (older than the last business day), 'static' (reference data) or 'error' (no data).
-// On weekends Friday's data counts as current.
-export function datasetState(name, dateIso, todayIso) {
+// On weekends and exchange holidays the last business day's data counts as current.
+export function datasetState(name, dateIso, todayIso, holidays = null) {
     if (!dateIso) return 'error';
     if (STATIC_DATASETS.has(name)) return 'static';
-    return businessDaysBetween(dateIso, todayIso) === 0 ? 'ok' : 'stale';
+    return businessDaysBetween(dateIso, todayIso, holidays) === 0 ? 'ok' : 'stale';
 }
 
 export function summarizeStatus(states) {
@@ -128,6 +137,29 @@ const el = (tag, className, text) => {
     return e;
 };
 
+// Product codes of `products` that an entry talks about (description, old / new value, affected query)
+export function productsMentioned(entry, products) {
+    if (!products || !products.length) return [];
+    const words = new Set(String([entry.Description, entry.OldValue, entry.NewValue, entry.Query].filter(Boolean).join(' ')).toUpperCase().match(/[A-Z0-9_-]+/g) || []);
+    return products.filter(p => words.has(p));
+}
+
+// All-day calendar events for changelog entries that have a valid date
+export function changelogEvents(entries) {
+    return entries
+        .filter(e => /^\d{4}-\d{2}-\d{2}/.test(String(e.Date || '')))
+        .map((e, i) => {
+            const text = String(e.Description || '').replace(/\s+/g, ' ').trim();
+            const lines = [e.Description, e.OldValue && `Old: ${e.OldValue}`, e.NewValue && `New: ${e.NewValue}`, e.Query && `Affected query: ${e.Query}`].filter(Boolean);
+            return {
+                uid: `changelog-${String(e.Date).slice(0, 10)}-${i}`,
+                date: String(e.Date).slice(0, 10),
+                summary: `Eurex API: ${e.Type || 'Change'}${text ? ' - ' + (text.length > 70 ? text.slice(0, 67) + '...' : text) : ''}`,
+                description: lines.join('\n')
+            };
+        });
+}
+
 export class InfoPanel {
     constructor(client, elements, options = {}) {
         this.client = client;
@@ -137,8 +169,11 @@ export class InfoPanel {
         this.typeFilter = 'all';
         this.searchText = '';
         this.showPast = true;
+        this.onlyWatched = false;
 
         this.bindEvents();
+        // Follow / unfollow a product elsewhere: the "My products" filter and its count change
+        onWatchlistChange(() => { if (this.changelogData) this.renderChangelog(); });
     }
 
     bindEvents() {
@@ -175,13 +210,15 @@ export class InfoPanel {
         try {
             const data = await this.client.request(STATUS_QUERY, null, false, { fresh: !!options.fresh });
             const today = this._today();
+            // FESX holidays stand for the Eurex calendar; without them only weekends are skipped
+            const holidays = new Set((data?.FesxHolidays?.data || []).map(h => String(h.Holiday || '').slice(0, 10)).filter(Boolean));
 
             this.els.statusGrid.innerHTML = '';
             // Datasets needing attention first: unavailable, then stale (oldest first), then current, then reference
             const rank = { error: 0, stale: 1, ok: 2, static: 3 };
             const rows = STATUS_NAMES.map(name => {
                 const date = data?.[name]?.date ?? null;
-                return { name, date, state: datasetState(name, date, today) };
+                return { name, date, state: datasetState(name, date, today, holidays) };
             }).sort((a, b) => rank[a.state] - rank[b.state] || String(a.date || '').localeCompare(String(b.date || '')) || a.name.localeCompare(b.name));
             const states = rows.map(r => r.state);
             rows.forEach(({ name, date, state }) => {
@@ -201,7 +238,7 @@ export class InfoPanel {
                 else if (state === 'static') label = 'Reference';
                 else if (state === 'ok') label = 'Current';
                 else {
-                    const age = businessDaysBetween(date, today);
+                    const age = businessDaysBetween(date, today, holidays);
                     label = `${age} business day${age === 1 ? '' : 's'} old`;
                 }
                 meta.appendChild(el('span', `status-chip ${state}`, label));
@@ -315,6 +352,33 @@ export class InfoPanel {
         mkChip('all', 'All', entries.length);
         [...types.entries()].sort((a, b) => b[1] - a[1]).forEach(([t, n]) => mkChip(t, t, n, changeKind(t)));
         box.appendChild(chips);
+
+        const watched = getWatchlist();
+        const actions = el('div', 'cl-chips');
+        if (watched.length) {
+            const mine = entries.filter(e => productsMentioned(e, watched).length).length;
+            const b = el('button', `cl-chip watch${this.onlyWatched ? ' active' : ''}`);
+            b.type = 'button';
+            b.setAttribute('aria-pressed', String(this.onlyWatched));
+            b.title = `Changes that mention ${watched.join(', ')}`;
+            b.append('★ My products');
+            b.appendChild(el('span', 'cl-chip-count', String(mine)));
+            b.addEventListener('click', () => {
+                this.onlyWatched = !this.onlyWatched;
+                this._renderFilters(entries);
+                this._renderEntries();
+            });
+            actions.appendChild(b);
+        }
+        const ics = el('button', 'cl-chip');
+        ics.type = 'button';
+        ics.title = 'Download the upcoming changes shown here as a calendar file (.ics)';
+        ics.appendChild(icon('calendar'));
+        ics.append(' Add upcoming to calendar');
+        ics.addEventListener('click', () => this._downloadIcs());
+        this._icsBtn = ics;
+        actions.appendChild(ics);
+        box.appendChild(actions);
         if (window.feather) window.feather.replace();
     }
 
@@ -324,16 +388,35 @@ export class InfoPanel {
         this._renderEntries();
     }
 
+    // Entries after the type, search and "My products" filters, newest first
+    _visibleEntries() {
+        const q = this.searchText.trim().toLowerCase();
+        const watched = this.onlyWatched ? getWatchlist() : null;
+        return [...this.changelogData]
+            .filter(e => this.typeFilter === 'all' || (e.Type || 'Other') === this.typeFilter)
+            .filter(e => !q || [e.Date, e.Type, e.Description, e.OldValue, e.NewValue, e.Query].some(v => String(v || '').toLowerCase().includes(q)))
+            .filter(e => !watched || productsMentioned(e, watched).length)
+            .sort((a, b) => String(b.Date).localeCompare(String(a.Date)));
+    }
+
+    _downloadIcs() {
+        const today = this._today();
+        const upcoming = this._visibleEntries().filter(e => String(e.Date).slice(0, 10) > today);
+        if (!upcoming.length) return;
+        downloadText(buildIcs(changelogEvents(upcoming), { name: 'Eurex API changes' }), 'eurex-api-changes.ics', 'text/calendar');
+    }
+
     _renderEntries() {
         const container = this.els.changelogContent;
         container.innerHTML = '';
         const today = this._today();
-        const q = this.searchText.trim().toLowerCase();
 
-        const entries = [...this.changelogData]
-            .filter(e => this.typeFilter === 'all' || (e.Type || 'Other') === this.typeFilter)
-            .filter(e => !q || [e.Date, e.Type, e.Description, e.OldValue, e.NewValue, e.Query].some(v => String(v || '').toLowerCase().includes(q)))
-            .sort((a, b) => String(b.Date).localeCompare(String(a.Date)));
+        const entries = this._visibleEntries();
+        if (this._icsBtn) {
+            const n = entries.filter(e => String(e.Date).slice(0, 10) > today).length;
+            this._icsBtn.disabled = n === 0;
+            this._icsBtn.title = n ? `Download the ${n} upcoming change${n === 1 ? '' : 's'} shown here as a calendar file (.ics)` : 'No upcoming changes in the current view';
+        }
 
         if (!entries.length) {
             this._setContent(container, 'empty', 'No changes match the current filter.');

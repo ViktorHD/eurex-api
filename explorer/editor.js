@@ -62,8 +62,9 @@ const escapeHtml = (s) => s.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;'
 
 // HTML for the overlay. Names are classified by context: argument names (inside parentheses, before ':'),
 // root query fields (first level of the operation) and other fields.
-export function highlightGraphQL(src) {
+export function highlightGraphQL(src, problems = []) {
     const tokens = tokenize(src);
+    const badAt = new Map(problems.map(p => [p.start, p.severity === 'warn' ? 'tk-warn' : 'tk-bad']));
     let braceDepth = 0;
     let parenDepth = 0;
     let html = '';
@@ -87,6 +88,7 @@ export function highlightGraphQL(src) {
             cls = 'tk-' + t.type;
         }
         const text = escapeHtml(t.text);
+        if (badAt.has(t.start)) cls = `${cls} ${badAt.get(t.start)}`.trim();
         html += cls ? `<span class="${cls}">${text}</span>` : text;
     });
     // A trailing newline needs a character after it to be rendered in a <pre>
@@ -273,7 +275,7 @@ const PAIRS = { '{': '}', '(': ')', '[': ']', '"': '"' };
 export class QueryEditor {
     constructor(textarea, options = {}) {
         this.ta = textarea;
-        this.options = options; // { onRun, getRootNames: () => Set|null }
+        this.options = options; // { getRootNames: () => Set|null, getProblems: (src) => [{ message, start, line, severity }] }
         this._build();
         this._interceptValue();
         this._bind();
@@ -341,7 +343,9 @@ export class QueryEditor {
 
     refresh() {
         const v = this.ta.value;
-        this.code.innerHTML = highlightGraphQL(v);
+        // Problems against the schema (when it is loaded) underline the tokens they belong to
+        this.schemaProblems = this.options.getProblems && !validateGraphQL(v) ? this.options.getProblems(v) : [];
+        this.code.innerHTML = highlightGraphQL(v, this.schemaProblems);
         const lines = v.split('\n').length;
         if (this._lines !== lines) {
             this._lines = lines;
@@ -356,7 +360,7 @@ export class QueryEditor {
         const v = this.ta.value;
         const problem = validateGraphQL(v);
         this.status.classList.remove('ok', 'warn', 'error');
-        this.gutter.querySelectorAll('.err').forEach(s => s.classList.remove('err'));
+        this.gutter.querySelectorAll('.err, .warn').forEach(s => s.classList.remove('err', 'warn'));
         if (problem && !problem.empty) {
             this.status.classList.add('error');
             this.statusMsg.textContent = `${problem.message} (line ${problem.line})`;
@@ -370,6 +374,15 @@ export class QueryEditor {
             return;
         }
         const roots = rootFieldsOf(v);
+        const found = this.schemaProblems || [];
+        if (found.length) {
+            const first = found[0];
+            const errors = found.filter(p => p.severity !== 'warn').length;
+            this.status.classList.add(errors ? 'error' : 'warn');
+            this.statusMsg.textContent = `${first.message} (line ${first.line})${found.length > 1 ? ` · +${found.length - 1} more` : ''}`;
+            found.forEach(p => this.gutter.children[p.line - 1]?.classList.add(p.severity === 'warn' ? 'warn' : 'err'));
+            return;
+        }
         const known = this.options.getRootNames ? this.options.getRootNames() : null;
         const unknown = known ? roots.filter(r => !known.has(r)) : [];
         if (unknown.length) {
@@ -497,12 +510,14 @@ export function loadHistory(storage = globalThis.localStorage) {
 }
 
 // Adds a query to the front of the history (deduplicated by normalised text). Returns the new list.
-export function addToHistory(query, storage = globalThis.localStorage, now = Date.now()) {
+export function addToHistory(query, storage = globalThis.localStorage, now = Date.now(), variables = '') {
     const norm = (q) => q.replace(/\s+/g, ' ').trim();
     const key = norm(query);
     if (!key) return loadHistory(storage);
-    const list = loadHistory(storage).filter(h => norm(h.query) !== key);
-    list.unshift({ query, at: now, roots: rootFieldsOf(query) });
+    const vars = String(variables || '').trim();
+    // The same query with different variables is a different run
+    const list = loadHistory(storage).filter(h => !(norm(h.query) === key && norm(h.variables || '') === norm(vars)));
+    list.unshift({ query, variables: vars, at: now, roots: rootFieldsOf(query) });
     const trimmed = list.slice(0, HISTORY_MAX);
     try { storage?.setItem(HISTORY_KEY, JSON.stringify(trimmed)); } catch (e) { /* storage unavailable */ }
     return trimmed;
@@ -521,4 +536,37 @@ export function timeAgo(ts, now = Date.now()) {
     if (h < 24) return `${h} h ago`;
     const d = Math.round(h / 24);
     return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
+// ---------- Saved queries ----------
+// Named queries (with their variables) the user keeps; stored per browser, newest first.
+
+const SAVED_KEY = 'eurexExplorer.savedQueries';
+const SAVED_MAX = 50;
+
+export function loadSaved(storage = globalThis.localStorage) {
+    try {
+        const list = JSON.parse(storage?.getItem(SAVED_KEY) || '[]');
+        return Array.isArray(list) ? list.filter(s => s && typeof s.query === 'string' && typeof s.name === 'string') : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+const writeSaved = (list, storage) => {
+    try { storage?.setItem(SAVED_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable */ }
+    return list;
+};
+
+// Saves a query under a name; an existing entry with that name (case-insensitive) is replaced.
+export function saveQuery(name, query, variables = '', storage = globalThis.localStorage, now = Date.now()) {
+    const label = String(name || '').trim().slice(0, 60);
+    if (!label || !String(query || '').trim()) return loadSaved(storage);
+    const list = loadSaved(storage).filter(s => s.name.toLowerCase() !== label.toLowerCase());
+    list.unshift({ name: label, query, variables: String(variables || '').trim(), at: now });
+    return writeSaved(list.slice(0, SAVED_MAX), storage);
+}
+
+export function deleteSaved(name, storage = globalThis.localStorage) {
+    return writeSaved(loadSaved(storage).filter(s => s.name !== name), storage);
 }
