@@ -36,6 +36,20 @@ export function toMarkdown(headers, rows) {
     ].join('\n');
 }
 
+// Scroll `el` into view inside `scroller` only. Element.scrollIntoView also scrolls every ancestor,
+// including the page itself, which shifts the app layout.
+function scrollWithin(scroller, el, { block = 'start', offset = 0 } = {}) {
+    if (!scroller || !el) return;
+    const sRect = scroller.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    if (block === 'nearest') {
+        if (eRect.top < sRect.top + offset) scroller.scrollTop += eRect.top - sRect.top - offset;
+        else if (eRect.bottom > sRect.bottom) scroller.scrollTop += eRect.bottom - sRect.bottom;
+        return;
+    }
+    scroller.scrollTop += eRect.top - sRect.top - offset;
+}
+
 const svgIcon = (name) => {
     const i = document.createElement('i');
     i.setAttribute('data-feather', name);
@@ -336,7 +350,8 @@ export class DataTable {
         if (tr) {
             tr.classList.add('dt-row-selected');
             tr.setAttribute('aria-selected', 'true');
-            if (scroll) tr.scrollIntoView({ block: 'nearest' });
+            // Keep the row visible below the sticky header row of this table's scroll area
+            if (scroll) scrollWithin(tr.closest('.dt-scroll'), tr, { block: 'nearest', offset: this.tableHead?.offsetHeight || 0 });
         }
     }
 
@@ -958,7 +973,7 @@ export class UIManager {
                 n.textContent = (t.data || []).length.toLocaleString('en-US');
                 chip.appendChild(n);
                 chip.addEventListener('click', () => {
-                    container.querySelectorAll('.table-wrapper')[i]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    scrollWithin(container.closest('.table-container'), container.querySelectorAll('.table-wrapper')[i], { offset: 12 });
                 });
                 nav.appendChild(chip);
             });

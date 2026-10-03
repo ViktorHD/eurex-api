@@ -1,10 +1,142 @@
 import { getTypeName } from './ui.js';
 
+const el = (tag, className, text) => {
+    const e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text !== undefined) e.textContent = text;
+    return e;
+};
+const icon = (name) => {
+    const i = document.createElement('i');
+    i.setAttribute('data-feather', name);
+    i.setAttribute('aria-hidden', 'true');
+    return i;
+};
+
+// Text with the search term wrapped in <mark>
+function highlight(text, term) {
+    const frag = document.createDocumentFragment();
+    const s = String(text ?? '');
+    if (!term) { frag.append(s); return frag; }
+    const lower = s.toLowerCase();
+    let i = 0;
+    let at;
+    while ((at = lower.indexOf(term, i)) !== -1) {
+        frag.append(s.slice(i, at));
+        const m = document.createElement('mark');
+        m.textContent = s.slice(at, at + term.length);
+        frag.append(m);
+        i = at + term.length;
+    }
+    frag.append(s.slice(i));
+    return frag;
+}
+
+// Scroll only the docs pane (scrollIntoView would also scroll the page layout around it)
+function scrollPaneTo(tree, card) {
+    const scroller = tree?.parentElement;
+    if (!scroller || !card) return;
+    const top = card.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 84;
+    scroller.scrollTop = Math.max(0, top);
+}
+
+const unwrapType = (t) => {
+    while (t && (t.kind === 'NON_NULL' || t.kind === 'LIST')) t = t.ofType;
+    return t;
+};
+
+const KIND_LABELS = { OBJECT: 'Object', INPUT_OBJECT: 'Input', ENUM: 'Enum', SCALAR: 'Scalar' };
+
+/**
+ * Documentation model from an introspection __schema:
+ * - queries: the root queries users call, with their row fields, arguments and sort options
+ * - typeGroups: all other named types grouped by kind (response wrappers hidden)
+ */
+export function buildDocsModel(schema) {
+    const types = (schema?.types || []).filter(t => t.name && !t.name.startsWith('__'));
+    const byName = new Map(types.map(t => [t.name, t]));
+    const queryTypeName = schema?.queryType?.name || 'Query';
+    const rootFields = byName.get(queryTypeName)?.fields || [];
+    const toField = (f) => ({ name: f.name, description: f.description || '', type: f.type, raw: f });
+
+    const usedBy = new Map();
+    const queries = rootFields.map(rf => {
+        const outer = byName.get(unwrapType(rf.type)?.name);
+        const dataField = outer?.fields?.find(f => f.name === 'data');
+        const rowType = dataField ? byName.get(unwrapType(dataField.type)?.name) : outer;
+        if (rowType) usedBy.set(rowType.name, [...(usedBy.get(rowType.name) || []), rf.name]);
+        const args = (rf.args || []).map(a => ({ name: a.name, description: a.description || '', type: a.type }));
+        const filterArg = args.find(a => a.name === 'filter');
+        const sortArg = args.find(a => a.name === 'sort');
+        const sortType = sortArg ? byName.get(unwrapType(sortArg.type)?.name) : null;
+        const sortFieldEnum = sortType?.inputFields?.find(f => f.name === 'field');
+        const sortEnum = sortFieldEnum ? byName.get(unwrapType(sortFieldEnum.type)?.name) : null;
+        return {
+            name: rf.name,
+            description: rf.description || outer?.description || '',
+            rootField: rf,
+            rowType: rowType || null,
+            fields: (rowType?.fields || []).map(toField),
+            args,
+            filterType: filterArg ? unwrapType(filterArg.type)?.name : null,
+            sortType: sortType?.name || null,
+            sortFields: (sortEnum?.enumValues || []).map(v => v.name)
+        };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    const groups = [
+        ['OBJECT', 'Row types'],
+        ['ENUM', 'Enums'],
+        ['INPUT_OBJECT', 'Inputs (filter & sort)'],
+        ['SCALAR', 'Scalars']
+    ];
+    const typeGroups = groups.map(([kind, title]) => ({
+        kind,
+        title,
+        types: types
+            .filter(t => t.kind === kind && t.name !== queryTypeName && t.name !== schema?.mutationType?.name && !t.name.endsWith('Response'))
+            .map(t => ({
+                name: t.name,
+                kind: t.kind,
+                kindLabel: KIND_LABELS[t.kind] || t.kind,
+                description: t.description || '',
+                fields: (t.fields || t.inputFields || []).map(toField),
+                enumValues: t.enumValues || [],
+                usedBy: usedBy.get(t.name) || [],
+                raw: t
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+    }));
+    return { schema, queries, typeGroups };
+}
+
+export function fieldMatches(f, term) {
+    if (!term) return true;
+    return f.name.toLowerCase().includes(term) || (f.description || '').toLowerCase().includes(term);
+}
+
+function nameMatch(q, term) {
+    return q.name.toLowerCase().includes(term) || (q.description || '').toLowerCase().includes(term);
+}
+
+export function queryMatchesFilter(q, term) {
+    if (!term) return true;
+    return nameMatch(q, term) || q.fields.some(f => fieldMatches(f, term));
+}
+
+export function typeMatchesFilter(t, term) {
+    if (!term) return true;
+    return t.name.toLowerCase().includes(term)
+        || (t.description || '').toLowerCase().includes(term)
+        || t.fields.some(f => fieldMatches(f, term))
+        || t.enumValues.some(v => v.name.toLowerCase().includes(term));
+}
+
 export class SchemaExplorer {
     constructor(client, els, options) {
         this.client = client;
         this.els = els; // { docsTree, docsLoading, docsEmpty, docsSearch }
-        this.options = options; // { onInsertField: (fieldName) => void, onSetQuery: (query) => void }
+        this.options = options; // { onInsertField, onInsertFilter, onSetQuery, onRunQuery }
         this.schemaData = null;
 
         if (this.els.docsSearch) {
@@ -71,211 +203,284 @@ export class SchemaExplorer {
         }
     }
 
+    // ---------- Rendering ----------
+
     renderSchema(filter) {
         if (!this.schemaData) return;
-        const schema = this.schemaData;
+        this.model = this.model && this.model.schema === this.schemaData ? this.model : buildDocsModel(this.schemaData);
+        const newFilter = (filter || '').trim().toLowerCase();
+        if (newFilter !== this.filter) { this.collapsed = new Set(); this.showAllFor = null; }
+        this.filter = newFilter;
+        if (!this.view) this.view = 'queries';
+        if (!this.expanded) this.expanded = new Set();
 
-        this.els.docsTree.innerHTML = '';
-        this.els.docsTree.classList.remove('hidden');
+        const tree = this.els.docsTree;
+        tree.innerHTML = '';
+        tree.classList.remove('hidden');
         this.els.docsEmpty.classList.add('hidden');
 
-        const userTypes = schema.types.filter(t => !t.name.startsWith('__'));
-        const queryTypeName = schema.queryType ? schema.queryType.name : null;
-        const mutationTypeName = schema.mutationType ? schema.mutationType.name : null;
+        // View switch + summary
+        const bar = el('div', 'dx-bar');
+        const tabs = el('div', 'dx-tabs');
+        tabs.setAttribute('role', 'tablist');
+        const queryMatches = this.model.queries.filter(q => queryMatchesFilter(q, this.filter));
+        const typeGroups = this.model.typeGroups.map(g => ({ ...g, types: g.types.filter(t => typeMatchesFilter(t, this.filter)) }));
+        const typeCount = typeGroups.reduce((n, g) => n + g.types.length, 0);
+        [['queries', 'Queries', queryMatches.length], ['types', 'Types', typeCount]].forEach(([key, label, count]) => {
+            const t = el('button', 'dx-tab' + (this.view === key ? ' active' : ''));
+            t.type = 'button';
+            t.setAttribute('role', 'tab');
+            t.setAttribute('aria-selected', String(this.view === key));
+            t.append(label, el('span', 'dx-count', String(count)));
+            t.addEventListener('click', () => { this.view = key; this.backStack = []; this.renderSchema(this.filter); });
+            tabs.appendChild(t);
+        });
+        bar.appendChild(tabs);
 
-        const rootFieldMap = {};
-        const queryType = schema.types.find(t => t.name === queryTypeName);
-        if (queryType && queryType.fields) {
-            queryType.fields.forEach(f => { rootFieldMap[f.name] = f; });
+        const toggleAll = el('button', 'dx-link', this.filter ? '' : 'Expand all');
+        toggleAll.type = 'button';
+        const visibleKeys = this.view === 'queries'
+            ? queryMatches.map(q => 'q:' + q.name)
+            : typeGroups.flatMap(g => g.types.map(t => 't:' + t.name));
+        const allOpen = visibleKeys.length && visibleKeys.every(k => this.expanded.has(k));
+        toggleAll.textContent = allOpen ? 'Collapse all' : 'Expand all';
+        toggleAll.addEventListener('click', () => {
+            visibleKeys.forEach(k => (allOpen ? this.expanded.delete(k) : this.expanded.add(k)));
+            this.renderSchema(this.filter);
+        });
+        if (!this.filter) bar.appendChild(toggleAll);
+        tree.appendChild(bar);
+
+        if (this.backStack && this.backStack.length) {
+            const back = el('button', 'dx-back');
+            back.type = 'button';
+            back.appendChild(icon('arrow-left'));
+            back.append(` Back to ${this.backStack[this.backStack.length - 1].label}`);
+            back.addEventListener('click', () => {
+                const prev = this.backStack.pop();
+                this.view = prev.view;
+                this.renderSchema(this.filter);
+                scrollPaneTo(tree, tree.querySelector(`[data-key="${CSS.escape(prev.key)}"]`));
+            });
+            tree.appendChild(back);
         }
 
-        const rootTypes = userTypes.filter(t => t.name === queryTypeName || t.name === mutationTypeName);
-        const objectTypes = userTypes.filter(t => t.kind === 'OBJECT' && !rootTypes.includes(t) && !t.name.endsWith('Response'));
-        const inputTypes = userTypes.filter(t => t.kind === 'INPUT_OBJECT');
-        const enumTypes = userTypes.filter(t => t.kind === 'ENUM');
-        const scalarTypes = userTypes.filter(t => t.kind === 'SCALAR');
+        if (this.filter) {
+            const fieldHits = this.view === 'queries'
+                ? queryMatches.reduce((n, q) => n + q.fields.filter(f => fieldMatches(f, this.filter)).length, 0)
+                : 0;
+            const summary = el('p', 'dx-summary');
+            summary.textContent = this.view === 'queries'
+                ? `${queryMatches.length} quer${queryMatches.length === 1 ? 'y' : 'ies'}${fieldHits ? ` · ${fieldHits} matching field${fieldHits === 1 ? '' : 's'}` : ''} for “${this.filter}”`
+                : `${typeCount} type${typeCount === 1 ? '' : 's'} for “${this.filter}”`;
+            tree.appendChild(summary);
+        }
 
-        if (objectTypes.length > 0) this.addSection('Object Types', objectTypes, filter, rootFieldMap);
-        if (inputTypes.length > 0) this.addSection('Input Types', inputTypes, filter, rootFieldMap);
-        if (enumTypes.length > 0) this.addSection('Enums', enumTypes, filter, rootFieldMap);
-        if (scalarTypes.length > 0) this.addSection('Scalars', scalarTypes, filter, rootFieldMap);
+        if (this.view === 'queries') {
+            if (!queryMatches.length) tree.appendChild(this._noMatch());
+            queryMatches.forEach(q => tree.appendChild(this._renderQuery(q)));
+        } else {
+            if (!typeCount) tree.appendChild(this._noMatch());
+            typeGroups.forEach(g => {
+                if (!g.types.length) return;
+                const section = el('section', 'dx-group');
+                section.appendChild(el('h4', 'dx-group-title', g.title));
+                g.types.forEach(t => section.appendChild(this._renderType(t)));
+                tree.appendChild(section);
+            });
+        }
+        if (window.feather) window.feather.replace();
     }
 
-    addSection(title, types, filter, rootFieldMap) {
-        const filteredTypes = filter
-            ? types.filter(t => {
-                if (t.name.toLowerCase().includes(filter)) return true;
-                if (t.description && t.description.toLowerCase().includes(filter)) return true;
-                if (t.fields && t.fields.some(f => f.name.toLowerCase().includes(filter))) return true;
-                if (t.inputFields && t.inputFields.some(f => f.name.toLowerCase().includes(filter))) return true;
-                if (t.enumValues && t.enumValues.some(v => v.name.toLowerCase().includes(filter))) return true;
-                return false;
-            })
-            : types;
+    _noMatch() {
+        const p = el('p', 'dx-empty', `Nothing matches “${this.filter}”.`);
+        if (this.view === 'queries' && this.model.typeGroups.some(g => g.types.some(t => typeMatchesFilter(t, this.filter)))) {
+            const link = el('button', 'dx-link', 'Search types instead');
+            link.type = 'button';
+            link.addEventListener('click', () => { this.view = 'types'; this.renderSchema(this.filter); });
+            p.append(' ', link);
+        }
+        return p;
+    }
 
-        if (filteredTypes.length === 0) return;
-
-        const section = document.createElement('div');
-        section.className = 'docs-section';
-
-        const sectionHeader = document.createElement('h4');
-        sectionHeader.className = 'docs-section-title';
-        sectionHeader.textContent = title;
-        section.appendChild(sectionHeader);
-
-        filteredTypes.forEach(type => {
-            const typeBlock = document.createElement('div');
-            typeBlock.className = 'docs-type-block';
-
-            const typeHeader = document.createElement('div');
-            typeHeader.className = 'docs-type-header';
-
-            const headerLeft = document.createElement('span');
-
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'docs-type-name';
-            nameSpan.textContent = type.name;
-            headerLeft.appendChild(nameSpan);
-
-            headerLeft.appendChild(document.createTextNode(' '));
-
-            const kindSpan = document.createElement('span');
-            kindSpan.className = 'docs-type-kind';
-            kindSpan.textContent = type.kind;
-            headerLeft.appendChild(kindSpan);
-
-            typeHeader.appendChild(headerLeft);
-
-            if (rootFieldMap && rootFieldMap[type.name]) {
-                const rootField = rootFieldMap[type.name];
-                const fullBtn = document.createElement('button');
-                fullBtn.className = 'docs-add-btn docs-add-btn-inline';
-                fullBtn.setAttribute('aria-label', 'Add inline query');
-                fullBtn.textContent = '+ Query';
-                fullBtn.title = 'Generate full query for ' + type.name;
-                fullBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (this.options.onSetQuery) {
-                        this.options.onSetQuery(this.generateFullQuery(rootField));
-                    }
-                });
-                typeHeader.appendChild(fullBtn);
-            }
-
-            typeHeader.addEventListener('click', (e) => {
-                if (e.target.closest('.docs-add-btn')) return; 
-                const body = typeBlock.querySelector('.docs-type-body');
-                body.classList.toggle('hidden');
-            });
-            typeBlock.appendChild(typeHeader);
-
-            if (type.description) {
-                const desc = document.createElement('p');
-                desc.className = 'docs-type-desc';
-                desc.textContent = type.description;
-                typeBlock.appendChild(desc);
-            }
-
-            const body = document.createElement('div');
-            body.className = 'docs-type-body hidden';
-
-            const fields = type.fields || type.inputFields || [];
-            fields.forEach(field => {
-                const fieldDiv = document.createElement('div');
-                fieldDiv.className = 'docs-field';
-
-                let argsStr = '';
-                if (field.args && field.args.length > 0) {
-                    argsStr = '(' + field.args.map(a => `${a.name}: ${getTypeName(a.type)}`).join(', ') + ')';
-                }
-
-                const fieldInfo = document.createElement('span');
-
-                const fNameSpan = document.createElement('span');
-                fNameSpan.className = 'docs-field-name';
-                fNameSpan.textContent = field.name;
-                fieldInfo.appendChild(fNameSpan);
-
-                if (argsStr) {
-                    const fArgsSpan = document.createElement('span');
-                    fArgsSpan.className = 'docs-field-args';
-                    fArgsSpan.textContent = argsStr;
-                    fieldInfo.appendChild(fArgsSpan);
-                }
-
-                fieldInfo.appendChild(document.createTextNode(': '));
-
-                const fTypeSpan = document.createElement('span');
-                fTypeSpan.className = 'docs-field-type';
-                fTypeSpan.textContent = getTypeName(field.type);
-                fieldInfo.appendChild(fTypeSpan);
-
-                fieldDiv.appendChild(fieldInfo);
-
-                if (field.description) {
-                    const fdesc = document.createElement('p');
-                    fdesc.className = 'docs-field-desc';
-                    fdesc.textContent = field.description;
-                    fieldDiv.appendChild(fdesc);
-                }
-
-                const actionsDiv = document.createElement('div');
-                actionsDiv.className = 'docs-field-actions-container';
-
-                const addBtn = document.createElement('button');
-                addBtn.className = 'docs-add-btn docs-add-btn-secondary docs-add-btn-sm';
-                addBtn.setAttribute('aria-label', 'Add field to query');
-                addBtn.textContent = '+ Add';
-                addBtn.title = 'Add this field to the current query';
-                addBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (this.options.onInsertField) {
-                        this.options.onInsertField(field.name);
-                    }
-                });
-                actionsDiv.appendChild(addBtn);
-
-                const filterBtn = document.createElement('button');
-                filterBtn.className = 'docs-add-btn docs-add-btn-secondary docs-add-btn-sm';
-                filterBtn.setAttribute('aria-label', 'Add filter for field');
-                filterBtn.textContent = '+ Filter';
-                filterBtn.title = 'Add this field as a filter';
-                filterBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.showFilterDropdown(filterBtn, field.name, type, field);
-                });
-                actionsDiv.appendChild(filterBtn);
-
-                fieldDiv.appendChild(actionsDiv);
-
-                body.appendChild(fieldDiv);
-            });
-
-            if (type.enumValues) {
-                type.enumValues.forEach(ev => {
-                    const evDiv = document.createElement('div');
-                    evDiv.className = 'docs-field';
-
-                    const evNameSpan = document.createElement('span');
-                    evNameSpan.className = 'docs-field-name';
-                    evNameSpan.textContent = ev.name;
-                    evDiv.appendChild(evNameSpan);
-
-                    if (ev.description) {
-                        const edesc = document.createElement('p');
-                        edesc.className = 'docs-field-desc';
-                        edesc.textContent = ev.description;
-                        evDiv.appendChild(edesc);
-                    }
-                    body.appendChild(evDiv);
-                });
-            }
-
-            typeBlock.appendChild(body);
-            section.appendChild(typeBlock);
+    // Collapsible card. Cards opened automatically by a search can still be collapsed by the user.
+    _card(key, head, buildBody, autoOpen) {
+        if (!this.collapsed) this.collapsed = new Set();
+        const open = this.expanded.has(key) || (autoOpen && !this.collapsed.has(key));
+        const card = el('article', 'dx-card' + (open ? ' open' : ''));
+        card.dataset.key = key;
+        const header = el('div', 'dx-card-head');
+        const toggle = el('button', 'dx-toggle');
+        toggle.type = 'button';
+        toggle.setAttribute('aria-expanded', String(open));
+        toggle.appendChild(icon(open ? 'chevron-down' : 'chevron-right'));
+        toggle.appendChild(head.title);
+        toggle.addEventListener('click', () => {
+            if (open) { this.expanded.delete(key); this.collapsed.add(key); }
+            else { this.expanded.add(key); this.collapsed.delete(key); }
+            const scroller = this.els.docsTree.parentElement;
+            const top = scroller ? scroller.scrollTop : 0;
+            this.renderSchema(this.filter);
+            if (scroller) scroller.scrollTop = top;
+            this.els.docsTree.querySelector(`[data-key="${CSS.escape(key)}"] .dx-toggle`)?.focus({ preventScroll: true });
         });
+        header.appendChild(toggle);
+        if (head.actions) header.appendChild(head.actions);
+        card.appendChild(header);
+        if (head.sub) card.appendChild(head.sub);
+        if (open) card.appendChild(buildBody());
+        return card;
+    }
 
-        this.els.docsTree.appendChild(section);
+    _renderQuery(q) {
+        const key = 'q:' + q.name;
+        const title = el('span', 'dx-title');
+        title.appendChild(highlight(q.name, this.filter));
+        title.appendChild(el('span', 'dx-meta', `${q.fields.length} fields${q.filterType ? ' · filter' : ''}${q.sortType ? ' · sort' : ''}`));
+
+        const actions = el('div', 'dx-actions');
+        const insert = this._btn('edit-3', 'Insert', `Put a ${q.name} query with all fields into the editor`);
+        insert.addEventListener('click', () => this.options.onSetQuery?.(this.generateFullQuery(q.rootField)));
+        const run = this._btn('play', 'Run', `Run ${q.name} with all fields`, 'primary');
+        run.addEventListener('click', () => {
+            const query = this.generateFullQuery(q.rootField);
+            if (this.options.onRunQuery) this.options.onRunQuery(query); else this.options.onSetQuery?.(query);
+        });
+        actions.append(insert, run);
+
+        const sub = q.description ? el('p', 'dx-desc') : null;
+        if (sub) sub.appendChild(highlight(q.description, this.filter));
+
+        const matching = this.filter ? q.fields.filter(f => fieldMatches(f, this.filter)) : q.fields;
+        const autoOpen = !!this.filter && matching.length > 0 && !nameMatch(q, this.filter);
+        return this._card(key, { title, actions, sub }, () => {
+            const body = el('div', 'dx-body');
+            const showAll = !this.filter || this.showAllFor === key || !matching.length;
+            const list = showAll ? q.fields : matching;
+            body.appendChild(this._fieldList(list, q.rowType));
+            if (!showAll) {
+                const more = el('button', 'dx-link', `Show all ${q.fields.length} fields`);
+                more.type = 'button';
+                more.addEventListener('click', () => { this.showAllFor = key; this.expanded.add(key); this.renderSchema(this.filter); });
+                body.appendChild(more);
+            }
+            if (q.args.length && showAll) {
+                const argsBox = el('div', 'dx-args');
+                argsBox.appendChild(el('h5', 'dx-sub-title', 'Arguments'));
+                q.args.forEach(a => {
+                    const row = el('div', 'dx-arg');
+                    row.appendChild(el('code', 'dx-arg-name', a.name));
+                    row.appendChild(this._typePill(a.type, key));
+                    if (a.description) row.appendChild(el('span', 'dx-field-desc', a.description));
+                    argsBox.appendChild(row);
+                });
+                if (q.sortFields.length) {
+                    argsBox.appendChild(el('p', 'dx-hint', `Sortable by: ${q.sortFields.join(', ')}`));
+                }
+                if (q.filterType) {
+                    argsBox.appendChild(el('p', 'dx-hint', 'Example: ' + `${q.name}(filter: { Product: { eq: "FESX" } }, sort: { field: ${q.sortFields[0] || 'Product'}, order: ASC })`));
+                }
+                body.appendChild(argsBox);
+            }
+            return body;
+        }, autoOpen);
+    }
+
+    _renderType(t) {
+        const key = 't:' + t.name;
+        const title = el('span', 'dx-title');
+        title.appendChild(highlight(t.name, this.filter));
+        title.appendChild(el('span', 'dx-meta', t.kindLabel + (t.usedBy.length ? ` · used by ${t.usedBy.length}` : '')));
+        const sub = t.description ? el('p', 'dx-desc') : null;
+        if (sub) sub.appendChild(highlight(t.description, this.filter));
+        const hasBody = t.fields.length || t.enumValues.length || t.usedBy.length;
+        const autoOpen = !!this.filter && !String(t.name).toLowerCase().includes(this.filter)
+            && (t.fields.some(f => fieldMatches(f, this.filter)) || t.enumValues.some(v => v.name.toLowerCase().includes(this.filter)));
+        return this._card(key, { title, sub }, () => {
+            const body = el('div', 'dx-body');
+            if (t.fields.length) body.appendChild(this._fieldList(t.fields, t.kind === 'OBJECT' ? t.raw : null));
+            if (t.enumValues.length) {
+                const ul = el('ul', 'dx-enum');
+                t.enumValues.forEach(v => {
+                    const li = el('li');
+                    const code = el('code');
+                    code.appendChild(highlight(v.name, this.filter));
+                    li.appendChild(code);
+                    if (v.description) li.appendChild(el('span', 'dx-field-desc', v.description));
+                    ul.appendChild(li);
+                });
+                body.appendChild(ul);
+            }
+            if (t.usedBy.length) body.appendChild(el('p', 'dx-hint', `Returned by: ${t.usedBy.join(', ')}`));
+            if (!hasBody) body.appendChild(el('p', 'dx-hint', 'Built-in scalar type.'));
+            return body;
+        }, autoOpen);
+    }
+
+    _fieldList(fields, ownerType) {
+        const list = el('div', 'dx-fields');
+        fields.forEach(f => {
+            const row = el('div', 'dx-field');
+            row.tabIndex = 0;
+            const main = el('div', 'dx-field-main');
+            const name = el('code', 'dx-field-name');
+            name.appendChild(highlight(f.name, this.filter));
+            main.appendChild(name);
+            main.appendChild(this._typePill(f.type, null));
+            row.appendChild(main);
+            if (f.description) {
+                const d = el('p', 'dx-field-desc');
+                d.appendChild(highlight(f.description, this.filter));
+                row.appendChild(d);
+            }
+            if (ownerType && (ownerType.kind === 'OBJECT')) {
+                const acts = el('div', 'dx-field-actions');
+                const add = this._btn('plus', 'Add', `Add ${f.name} to the current query`);
+                add.addEventListener('click', (e) => { e.stopPropagation(); this.options.onInsertField?.(f.name); });
+                const filt = this._btn('filter', 'Filter', `Add a filter on ${f.name}`);
+                filt.addEventListener('click', (e) => { e.stopPropagation(); this.showFilterDropdown(filt, f.name, ownerType, f.raw); });
+                acts.append(add, filt);
+                row.appendChild(acts);
+            }
+            list.appendChild(row);
+        });
+        return list;
+    }
+
+    // Type reference; non-scalar types link to their entry in the Types view
+    _typePill(typeObj, fromKey) {
+        const label = getTypeName(typeObj);
+        const base = this.getBaseTypeName(typeObj);
+        const target = this.findTypeByName(base);
+        const linkable = target && target.kind !== 'SCALAR';
+        const pill = el(linkable ? 'button' : 'span', `dx-type ${(target?.kind || 'SCALAR').toLowerCase()}`, label);
+        if (linkable) {
+            pill.type = 'button';
+            pill.title = `Show ${base}`;
+            pill.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!this.backStack) this.backStack = [];
+                const currentKey = e.target.closest('[data-key]')?.dataset.key || fromKey;
+                this.backStack.push({ view: this.view, key: currentKey, label: currentKey ? currentKey.slice(2) : 'list' });
+                this.view = 'types';
+                this.expanded.add('t:' + base);
+                if (this.els.docsSearch) this.els.docsSearch.value = '';
+                this.renderSchema('');
+                const card = this.els.docsTree.querySelector(`[data-key="${CSS.escape('t:' + base)}"]`);
+                scrollPaneTo(this.els.docsTree, card);
+                card?.classList.add('flash');
+            });
+        }
+        return pill;
+    }
+
+    _btn(iconName, label, title, variant = '') {
+        const b = el('button', `dx-btn ${variant}`.trim());
+        b.type = 'button';
+        b.title = title;
+        b.appendChild(icon(iconName));
+        b.append(' ' + label);
+        return b;
     }
 
     getBaseTypeName(typeObj) {

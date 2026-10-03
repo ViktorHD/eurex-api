@@ -1,8 +1,8 @@
 import { GraphQLClient } from './client.js?v=2';
-import { UIManager, downloadText } from './ui.js?v=4';
+import { UIManager, downloadText } from './ui.js?v=5';
 import { TabManager } from './tabs.js';
 import { Autocomplete } from './autocomplete.js';
-import { SchemaExplorer } from './schema.js';
+import { SchemaExplorer } from './schema.js?v=2';
 import { Chatbot } from './chatbot.js';
 import { TimelineManager } from './timeline.js?v=2';
 import { InfoPanel } from './info.js?v=5';
@@ -445,7 +445,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }, {
         onInsertField: insertFieldIntoQuery,
         onInsertFilter: insertFilterIntoQuery,
-        onSetQuery: (query) => { queryInput.value = query; }
+        onSetQuery: (query) => {
+            queryInput.value = query;
+            tabs.updateActiveState({ query });
+        },
+        onRunQuery: (query) => {
+            queryInput.value = query;
+            tabs.updateActiveState({ query });
+            executeGraphQLQuery(query).catch(() => {});
+        }
     });
 
     // Provider selector show/hide logic
