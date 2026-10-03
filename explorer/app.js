@@ -1,13 +1,14 @@
-import { GraphQLClient } from './client.js?v=2';
-import { UIManager, downloadText } from './ui.js?v=5';
+import { GraphQLClient } from './client.js?v=3';
+import { UIManager, downloadText } from './ui.js?v=6';
+import { buildNextPageQuery, canPaginate } from './pagination.js';
 import { TabManager } from './tabs.js';
 import { Autocomplete } from './autocomplete.js?v=2';
 import { QueryEditor, addToHistory, loadHistory, clearHistory, timeAgo } from './editor.js?v=1';
 import { SchemaExplorer } from './schema.js?v=2';
 import { Chatbot } from './chatbot.js';
-import { TimelineManager } from './timeline.js?v=2';
+import { TimelineManager } from './timeline.js?v=3';
 import { InfoPanel } from './info.js?v=5';
-import { OverviewManager } from './overview.js?v=6';
+import { OverviewManager } from './overview.js?v=7';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
 
@@ -275,8 +276,10 @@ document.addEventListener('DOMContentLoaded', () => {
         shareBtn: document.getElementById('actionShareBtn'),
         downloadCsvBtn: document.getElementById('downloadCsvBtn'),
         downloadMdBtn: document.getElementById('downloadMdBtn'),
+        loadPage: (pager) => loadNextPage(pager),
         onStateChange: (state) => {
-            tabs.updateActiveState(state);
+            // `data` too: rows loaded from further pages belong to the tab
+            tabs.updateActiveState({ ...state, data: ui.currentData });
         }
     });
     const tabs = new TabManager(
@@ -729,6 +732,8 @@ ${schemaSDL}
         }
     });
 
+    let currentRun = null; // AbortController of the query being waited for
+
     async function executeGraphQLQuery(query, stateOptions = null, explicitVariables = null) {
         const apiKey = apiKeyInput.value.trim();
         if (!apiKey || !query) {
@@ -775,8 +780,20 @@ ${schemaSDL}
         tabs.updateActiveState(tabUpdate);
         tabs.render();
 
+        // A newer run replaces the one still waiting
+        currentRun?.abort();
+        const run = new AbortController();
+        currentRun = run;
+
         try {
-            const response = await client.request(query, variables);
+            const response = await client.request(query, variables, true, {
+                signal: run.signal,
+                onRetry: ({ attempt, delayMs, status }) => ui.showLoading(
+                    status === 429
+                        ? `Rate limit reached, retrying in ${Math.ceil(delayMs / 1000)} s (attempt ${attempt + 1})…`
+                        : `The API is busy (HTTP ${status}), retrying in ${Math.ceil(delayMs / 1000)} s…`
+                )
+            });
             const data = response.data;
             const date = response.date;
 
@@ -785,23 +802,56 @@ ${schemaSDL}
             if (response.isMultiTable) tableState.isMultiTable = true;
             if (response.name) tableState.name = response.name;
 
+            // Tables with more pages on the server get a "Load next page" control
+            const warnings = [...(response.partialErrors || [])];
+            const pagedTables = response.isMultiTable ? response.data : [{ name: response.name, pageInfo: response.pageInfo }];
+            const pagers = pagedTables.map(t => {
+                if (!t.pageInfo?.hasNextPage || !t.pageInfo.endCursor) return null;
+                if (!canPaginate(query, t.name)) {
+                    warnings.push(`${t.name || 'Result'}: more rows exist on the server. To load them here, give the query a literal page argument, e.g. page: { first: 100 }.`);
+                    return null;
+                }
+                return { key: t.name, query, variables, hasNextPage: true, endCursor: t.pageInfo.endCursor };
+            });
+            delete tableState.pagers;
+            if (pagers.some(Boolean)) tableState.pagers = pagers;
+
             tabs.updateActiveState({ data: data, ...tableState });
             addToHistory(query);
 
             if (data.length === 0) {
-                ui.showEmptyState("Query successful, but no data was returned.");
+                ui.showEmptyState(warnings.length ? `Query returned no data. ${warnings.join(' ')}` : "Query successful, but no data was returned.");
                 if (ui.els.validityDate) {
                     ui.els.validityDate.textContent = '';
                     ui.els.validityDate.classList.add('hidden');
                 }
             } else {
                 ui.renderTable(data, tableState);
+                ui.setWarnings(warnings);
             }
             return data;
         } catch (error) {
+            // Cancelled by the user (or replaced by a newer run): nothing to report
+            if (error.kind === 'aborted') {
+                if (currentRun === run) ui.showEmptyState('Query cancelled.');
+                throw error;
+            }
             ui.showError(error.message);
             throw error;
+        } finally {
+            if (currentRun === run) currentRun = null;
         }
+    }
+
+    // Next page of one result table: the query with the table's cursor, reduced to that table's rows
+    async function loadNextPage(pager) {
+        const next = buildNextPageQuery(pager.query, pager.key, pager.cursor);
+        if (!next) throw new Error('This query cannot load further pages automatically.');
+        const response = await client.request(next, pager.variables || null, true);
+        const table = response.isMultiTable ? response.data.find(t => t.name === pager.key) : response;
+        if (!table) throw new Error(`The next page did not contain ${pager.key}.`);
+        if (response.partialErrors?.length) throw new Error(response.partialErrors.join('; '));
+        return { rows: table.data || [], pageInfo: table.pageInfo || null };
     }
 
     // App Layout Logic
@@ -908,16 +958,27 @@ ${schemaSDL}
     }));
 
     // Run execution
+    const runLabel = runQueryBtn.querySelector('.qe-run-label');
+    const setRunning = (running) => {
+        runQueryBtn.classList.toggle('running', running);
+        const label = running ? 'Cancel' : 'Run';
+        if (runLabel) runLabel.textContent = label;
+        runQueryBtn.title = running ? 'Stop waiting for this query' : 'Run query (Ctrl+Enter)';
+    };
     runQueryBtn.addEventListener('click', async () => {
-        if (runQueryBtn.classList.contains('running')) return;
+        // While a query runs the button cancels it
+        if (runQueryBtn.classList.contains('running')) {
+            currentRun?.abort();
+            return;
+        }
         deactivateTimeline();
-        runQueryBtn.classList.add('running');
+        setRunning(true);
         try {
             await executeGraphQLQuery(queryInput.value.trim());
         } catch (e) {
             // Error already handled in executeGraphQLQuery
         } finally {
-            runQueryBtn.classList.remove('running');
+            setRunning(false);
         }
     });
 

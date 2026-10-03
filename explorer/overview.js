@@ -300,7 +300,7 @@ export class OverviewManager {
     }
 
     bindEvents() {
-        this.els.refreshBtn.addEventListener('click', () => this.fetchAndRender());
+        this.els.refreshBtn.addEventListener('click', () => this.fetchAndRender({ fresh: true }));
         this.els.productInput.addEventListener('change', () => this.fetchAndRender());
         this.els.productInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') this.fetchAndRender();
@@ -604,7 +604,9 @@ export class OverviewManager {
         }
     }
 
-    async fetchAndRender() {
+    // options.fresh: bypass the response cache (the Refresh button)
+    async fetchAndRender(options = {}) {
+        const fresh = options.fresh === true;
         const product = (this.els.productInput.value || '').trim().toUpperCase();
         this.els.productInput.value = product;
         if (!product) {
@@ -671,7 +673,7 @@ export class OverviewManager {
         `;
 
         try {
-            const response = await this.client.request(contractsQuery, null, false);
+            const response = await this.client.request(contractsQuery, null, false, { fresh });
             if (response.errors) throw new Error(response.errors[0].message);
 
             this._existingContractsSet = new Set();
@@ -697,7 +699,7 @@ export class OverviewManager {
             // FlexibleContracts are not offered for every product; a failure here shouldn't break the standard view.
             let flexRows = [];
             try {
-                const flexResponse = await this.client.request(flexQuery, null, false);
+                const flexResponse = await this.client.request(flexQuery, null, false, { fresh });
                 if (!flexResponse.errors) {
                     flexRows = (flexResponse.FlexibleContracts.data || [])
                         .filter(r => r.Strike !== null && r.Strike !== undefined)

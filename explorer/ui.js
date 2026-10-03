@@ -50,6 +50,12 @@ function scrollWithin(scroller, el, { block = 'start', offset = 0 } = {}) {
     scroller.scrollTop += eRect.top - sRect.top - offset;
 }
 
+// Rows drawn at first and per "show more" step. The full result stays in memory for search, sort and export.
+const DEFAULT_RENDER_LIMIT = 200;
+const RENDER_STEP = 500;
+// Safety stop for "Load all pages"
+const MAX_AUTO_PAGES = 50;
+
 const svgIcon = (name) => {
     const i = document.createElement('i');
     i.setAttribute('data-feather', name);
@@ -86,6 +92,20 @@ export class DataTable {
         this.tableBody = null;
         
         this.expandedRows = new Set(); // indices of expanded rows
+
+        // Progressive rendering: only the first rows are in the DOM until the user scrolls or asks for more
+        this.pageSize = options.renderLimit || DEFAULT_RENDER_LIMIT;
+        this.renderLimit = this.pageSize;
+        this._rendered = 0;
+        this._visible = [];
+
+        // Server-side paging: { key, query, variables, hasNextPage, endCursor } and the loader for the next page
+        this.pager = options.pager || null;
+        this.loadPage = options.loadPage || null; // async (pager, cursor) => ({ rows, pageInfo })
+        this.onRowsAppended = options.onRowsAppended || null; // (table) => void
+        this._pagerBusy = false;
+        this._pagerError = '';
+        this._stopLoadingAll = false;
 
         this._prepareData();
         this.render();
@@ -184,6 +204,11 @@ export class DataTable {
         scroll.appendChild(this.tableEl);
         this.container.appendChild(scroll);
 
+        this.pagerEl = document.createElement('div');
+        this.pagerEl.className = 'dt-pager hidden';
+        this.container.appendChild(this.pagerEl);
+        this._renderPager();
+
         if (this.layout === 'record') {
             this._renderRecord();
         } else {
@@ -226,6 +251,7 @@ export class DataTable {
             input.value = this.searchText;
             input.addEventListener('input', () => {
                 this.searchText = input.value;
+                this.renderLimit = this.pageSize;
                 this._notify();
                 this._renderRows();
             });
@@ -250,6 +276,7 @@ export class DataTable {
                 this.columnFilters = {};
                 this.sortCol = null;
                 this.sortAsc = true;
+                this.renderLimit = this.pageSize;
                 this._notify();
                 this.render();
             });
@@ -307,7 +334,9 @@ export class DataTable {
         if (!this.countEl) return;
         const total = this.data.length;
         const noun = total === 1 ? 'row' : 'rows';
-        this.countEl.textContent = visible === total ? `${total.toLocaleString('en-US')} ${noun}` : `${visible.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} ${noun}`;
+        const base = visible === total ? `${total.toLocaleString('en-US')} ${noun}` : `${visible.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} ${noun}`;
+        const moreOnServer = this.pager && this.loadPage && this.pager.hasNextPage;
+        this.countEl.textContent = base + (moreOnServer ? ' loaded' : '');
         const active = this.searchText || this.sortCol || Object.values(this.columnFilters).some(Boolean);
         if (this.clearBtn) this.clearBtn.classList.toggle('hidden', !active);
     }
@@ -346,7 +375,16 @@ export class DataTable {
             tr.removeAttribute('aria-selected');
         });
         if (originalIndex === null) return;
-        const tr = this.tableBody.querySelector(`tr[data-index="${originalIndex}"]`);
+        let tr = this.tableBody.querySelector(`tr[data-index="${originalIndex}"]`);
+        if (!tr && this.layout === 'table') {
+            // The record is further down than the rows drawn so far (record navigation can run past them)
+            const pos = this.visibleIndices().indexOf(originalIndex);
+            if (pos >= this.renderLimit) {
+                this.renderLimit = pos + 1;
+                this._fillRows();
+                tr = this.tableBody.querySelector(`tr[data-index="${originalIndex}"]`);
+            }
+        }
         if (tr) {
             tr.classList.add('dt-row-selected');
             tr.setAttribute('aria-selected', 'true');
@@ -448,6 +486,7 @@ export class DataTable {
                     this.sortCol = h;
                     this.sortAsc = true;
                 }
+                this.renderLimit = this.pageSize;
                 this._notify();
                 this._renderHead();
                 this._renderRows();
@@ -494,6 +533,7 @@ export class DataTable {
             input.value = this.columnFilters[h] || '';
             input.addEventListener('input', () => {
                 this.columnFilters[h] = input.value;
+                this.renderLimit = this.pageSize;
                 this._notify();
                 this._renderRows();
             });
@@ -505,10 +545,11 @@ export class DataTable {
 
     _renderRows() {
         this.tableBody.innerHTML = '';
-        const filtered = this._visibleItems();
-        this._updateCount(filtered.length);
+        this._visible = this._visibleItems();
+        this._rendered = 0;
+        this._updateCount(this._visible.length);
 
-        if (filtered.length === 0) {
+        if (this._visible.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
             td.colSpan = this.headers.length;
@@ -519,49 +560,203 @@ export class DataTable {
             return;
         }
 
-        filtered.forEach(item => {
-            const tr = document.createElement('tr');
-            tr.dataset.index = item.originalIndex;
-            if (this.onOpenRecord) {
-                tr.classList.add('dt-row-clickable');
-                tr.tabIndex = 0;
-                tr.title = 'Open record';
-                if (this.selectedIndex === item.originalIndex) {
-                    tr.classList.add('dt-row-selected');
-                    tr.setAttribute('aria-selected', 'true');
-                }
-                tr.addEventListener('click', (e) => {
-                    // Buttons, inputs and text selections keep their own behaviour
-                    if (e.target.closest('button, a, input')) return;
-                    if (String(window.getSelection?.() || '').length > 0) return;
-                    this.onOpenRecord(this, item.originalIndex);
-                });
-                tr.addEventListener('keydown', (e) => {
-                    if (e.target !== tr) return;
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        this.onOpenRecord(this, item.originalIndex);
-                    }
-                });
-            }
-
-            this.headers.forEach(h => {
-                const td = document.createElement('td');
-                td.setAttribute('data-label', h);
-                if (this.stickyCols.has(h)) td.classList.add('sticky-col');
-                if (this.numericCols && this.numericCols.has(h)) td.classList.add('num');
-                this._fillCell(td, item.row[h], h, item);
-                tr.appendChild(td);
-            });
-            this.tableBody.appendChild(tr);
-
-            if (this.expandedRows.has(item.originalIndex)) {
-                this._renderExpandedRow(item);
-            }
-        });
-
-        if (window.feather) window.feather.replace();
+        this._fillRows();
         if (this.onRowsChanged) this.onRowsChanged(this);
+    }
+
+    // Draws the rows between what is already drawn and `renderLimit`, then a "show more" row if any remain
+    _fillRows() {
+        this._moreObserver?.disconnect();
+        this.tableBody.querySelector('tr.dt-more')?.remove();
+
+        const total = this._visible.length;
+        const upTo = Math.min(this.renderLimit, total);
+        for (const item of this._visible.slice(this._rendered, upTo)) {
+            this._appendRow(item);
+        }
+        this._rendered = upTo;
+        this._updateCount(total);
+
+        if (upTo < total) this._appendMoreRow(total - upTo);
+        if (window.feather) window.feather.replace();
+        // Newly drawn cells of pinned columns need their offsets
+        if (this.stickyCols.size && this.tableHead?.querySelector('tr')) this.autoResizeColumns();
+    }
+
+    _appendRow(item) {
+        const tr = document.createElement('tr');
+        tr.dataset.index = item.originalIndex;
+        if (this.onOpenRecord) {
+            tr.classList.add('dt-row-clickable');
+            tr.tabIndex = 0;
+            tr.title = 'Open record';
+            if (this.selectedIndex === item.originalIndex) {
+                tr.classList.add('dt-row-selected');
+                tr.setAttribute('aria-selected', 'true');
+            }
+            tr.addEventListener('click', (e) => {
+                // Buttons, inputs and text selections keep their own behaviour
+                if (e.target.closest('button, a, input')) return;
+                if (String(window.getSelection?.() || '').length > 0) return;
+                this.onOpenRecord(this, item.originalIndex);
+            });
+            tr.addEventListener('keydown', (e) => {
+                if (e.target !== tr) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.onOpenRecord(this, item.originalIndex);
+                }
+            });
+        }
+
+        this.headers.forEach(h => {
+            const td = document.createElement('td');
+            td.setAttribute('data-label', h);
+            if (this.stickyCols.has(h)) td.classList.add('sticky-col');
+            if (this.numericCols && this.numericCols.has(h)) td.classList.add('num');
+            this._fillCell(td, item.row[h], h, item);
+            tr.appendChild(td);
+        });
+        this.tableBody.appendChild(tr);
+
+        if (this.expandedRows.has(item.originalIndex)) {
+            this._renderExpandedRow(item);
+        }
+    }
+
+    _showMoreRows(all = false) {
+        const total = this._visible.length;
+        this.renderLimit = all ? total : Math.min(total, this.renderLimit + RENDER_STEP);
+        this._fillRows();
+    }
+
+    // Last row while rows are left out: a button, and an observer that draws the next rows when it scrolls into view
+    _appendMoreRow(remaining) {
+        const tr = document.createElement('tr');
+        tr.className = 'dt-more';
+        const td = document.createElement('td');
+        td.colSpan = this.headers.length;
+        const next = Math.min(RENDER_STEP, remaining);
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'dt-more-btn';
+        more.textContent = `Show ${next.toLocaleString('en-US')} more rows`;
+        more.addEventListener('click', () => this._showMoreRows());
+        td.appendChild(more);
+        if (remaining > next) {
+            const all = document.createElement('button');
+            all.type = 'button';
+            all.className = 'dt-more-btn secondary';
+            all.textContent = `Show all ${remaining.toLocaleString('en-US')} remaining`;
+            all.addEventListener('click', () => this._showMoreRows(true));
+            td.appendChild(all);
+        }
+        tr.appendChild(td);
+        this.tableBody.appendChild(tr);
+
+        if (typeof IntersectionObserver !== 'undefined') {
+            this._moreObserver = new IntersectionObserver((entries) => {
+                if (entries.some(e => e.isIntersecting)) this._showMoreRows();
+            }, { rootMargin: '400px' });
+            this._moreObserver.observe(tr);
+        }
+    }
+
+    // ---- Server-side paging ----
+
+    // Adds the next page of rows without disturbing search, sorting or filters
+    appendRows(rows) {
+        if (!rows || !rows.length) return;
+        const hadAllRowsDrawn = this._rendered >= this._visible.length;
+        // A new array: the one passed in may be shared with the response cache
+        this.data = this.data.concat(rows);
+        this._prepareData();
+        if (this.layout === 'record') {
+            this.layout = 'table';
+            this.render();
+        } else {
+            this._visible = this._visibleItems();
+            // Someone looking at every row expects to see the new page, not a "show more" row
+            if (hadAllRowsDrawn) this.renderLimit = Math.max(this.renderLimit, this._visible.length);
+            if (this.sortCol) {
+                // New rows can land anywhere in a sorted list
+                this.tableBody.innerHTML = '';
+                this._rendered = 0;
+            }
+            this._fillRows();
+            if (this.onRowsChanged) this.onRowsChanged(this);
+        }
+        this._notify();
+        if (this.onRowsAppended) this.onRowsAppended(this);
+    }
+
+    // Loads the next page, or keeps loading pages until there are none left (or the safety limit is reached)
+    async loadNextPage(all = false) {
+        if (!this.pager || !this.loadPage || this._pagerBusy || !this.pager.hasNextPage) return;
+        this._pagerBusy = true;
+        this._pagerError = '';
+        this._stopLoadingAll = false;
+        this._renderPager();
+        let pages = 0;
+        try {
+            do {
+                const { rows, pageInfo } = await this.loadPage(this.pager, this.pager.endCursor);
+                pages++;
+                const cursor = pageInfo?.endCursor ?? null;
+                const more = !!pageInfo?.hasNextPage && !!cursor && cursor !== this.pager.endCursor && rows.length > 0;
+                this.pager = { ...this.pager, hasNextPage: more, endCursor: cursor };
+                this.appendRows(rows);
+                this._renderPager();
+            } while (all && this.pager.hasNextPage && pages < MAX_AUTO_PAGES && !this._stopLoadingAll);
+        } catch (err) {
+            this._pagerError = err.message || 'Could not load the next page.';
+        } finally {
+            this._pagerBusy = false;
+            this._renderPager();
+            this._updateCount(this._visible.length);
+            this._notify();
+        }
+    }
+
+    _renderPager() {
+        const box = this.pagerEl;
+        if (!box) return;
+        const pager = this.loadPage ? this.pager : null;
+        const show = !!pager && (pager.hasNextPage || this._pagerBusy || !!this._pagerError);
+        box.classList.toggle('hidden', !show);
+        box.innerHTML = '';
+        if (!show) return;
+
+        const status = document.createElement('span');
+        status.className = 'dt-pager-status';
+        status.textContent = this._pagerBusy
+            ? `Loading… ${this.data.length.toLocaleString('en-US')} rows so far`
+            : `${this.data.length.toLocaleString('en-US')} rows loaded, more available on the server`;
+        box.appendChild(status);
+
+        if (this._pagerError) {
+            const err = document.createElement('span');
+            err.className = 'dt-pager-error';
+            err.setAttribute('role', 'alert');
+            err.textContent = this._pagerError;
+            box.appendChild(err);
+        }
+
+        const mk = (label, onClick, extra = '') => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'dt-pager-btn' + extra;
+            b.textContent = label;
+            b.addEventListener('click', onClick);
+            box.appendChild(b);
+            return b;
+        };
+        if (this._pagerBusy) {
+            mk('Stop', () => { this._stopLoadingAll = true; }, ' secondary');
+        } else if (pager.hasNextPage) {
+            mk(this._pagerError ? 'Try again' : 'Load next page', () => this.loadNextPage(false));
+            mk(`Load all pages (up to ${MAX_AUTO_PAGES})`, () => this.loadNextPage(true), ' secondary');
+        }
     }
 
     _fillCell(td, cellVal, h, item) {
@@ -667,7 +862,8 @@ export class DataTable {
             stickyCols: Array.from(this.stickyCols),
             searchText: this.searchText,
             showFilters: this.showFilters,
-            layout: this.layout
+            layout: this.layout,
+            pager: this.pager ? { ...this.pager } : null
         };
     }
 }
@@ -690,6 +886,8 @@ export class UIManager {
         this.currentData = [];
         this.currentDate = null;
         this.tables = [];
+        this.tableDefs = []; // { name, date } per table, to rebuild currentData after more rows are loaded
+        this.isMulti = false;
         this.detail = null; // { table, index } shown in the record panel
         this.detailEl = null;
         this.detailFilter = '';
@@ -879,8 +1077,18 @@ export class UIManager {
         if (window.feather) window.feather.replace();
     }
 
-    showLoading() {
+    // `note`: optional line under the skeleton, e.g. that a retry is pending
+    showLoading(note = '') {
         this.closeRecord();
+        const box = this.els.loadingIndicator;
+        box.querySelector?.('.loading-note')?.remove();
+        if (note && box.appendChild) {
+            const p = document.createElement('p');
+            p.className = 'loading-note';
+            p.setAttribute('role', 'status');
+            p.textContent = note;
+            box.appendChild(p);
+        }
         this.els.loadingIndicator.classList.remove('hidden');
         this.els.emptyState.classList.add('hidden');
         if (this.els.resultsTable) this.els.resultsTable.classList.add('hidden');
@@ -938,6 +1146,8 @@ export class UIManager {
         this.currentData = data || [];
         this.currentDate = stateOptions.date || null;
         this.tables = [];
+        this.tableDefs = [];
+        this.isMulti = false;
 
         const container = this.els.resultsContainer || this.els.resultsTable.parentElement;
         container.innerHTML = '';
@@ -955,6 +1165,7 @@ export class UIManager {
         let tablesToCreate = [];
         if (stateOptions.isMultiTable && Array.isArray(data)) {
             tablesToCreate = data;
+            this.isMulti = true;
         } else {
             tablesToCreate = [{ name: stateOptions.name || '', data: data, date: stateOptions.date }];
         }
@@ -989,6 +1200,10 @@ export class UIManager {
                 name: t.name,
                 date: t.date,
                 onOpenRecord: (table, index) => this.openRecord(table, index),
+                // Next pages of a paged query (see pagination.js); the app supplies the loader
+                pager: stateOptions.pagers?.[i] || null,
+                loadPage: this.els.loadPage ? (pager, cursor) => this.els.loadPage({ ...pager, cursor }) : null,
+                onRowsAppended: () => this._syncLoadedData(),
                 // Keep the open record's position and prev/next order in step with search, filters and sort
                 onRowsChanged: (table) => { if (this.detail?.table === table) this._renderDetail(); },
                 onStateChange: (tableState) => {
@@ -1010,10 +1225,40 @@ export class UIManager {
 
             const dt = new DataTable(tableDiv, t.data, tableOptions);
             this.tables.push(dt);
+            this.tableDefs.push({ name: t.name, date: t.date });
         });
 
         this.updateHeaderUI();
         this.enableExportBtns();
+    }
+
+    // After a table loaded more rows: keep currentData (saved with the tab) and the counters in step
+    _syncLoadedData() {
+        this.currentData = this.isMulti
+            ? this.tables.map((t, i) => ({ ...this.tableDefs[i], data: t.data }))
+            : (this.tables[0]?.data || []);
+        this.updateHeaderUI();
+    }
+
+    // Notice above the tables when the API answered only part of the query
+    setWarnings(messages) {
+        const container = this.els.resultsContainer;
+        if (!container) return;
+        container.querySelector('.dt-warning')?.remove();
+        if (!messages || !messages.length) return;
+        const box = document.createElement('div');
+        box.className = 'dt-warning';
+        box.setAttribute('role', 'status');
+        const title = document.createElement('strong');
+        title.textContent = 'Some data could not be loaded';
+        const list = document.createElement('ul');
+        messages.slice(0, 5).forEach(m => {
+            const li = document.createElement('li');
+            li.textContent = m;
+            list.appendChild(li);
+        });
+        box.append(title, list);
+        container.insertBefore(box, container.firstChild);
     }
 
     updateHeaderUI() {
