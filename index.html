@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="explorer/styles.css?v=12">
+    <link rel="stylesheet" href="explorer/styles.css?v=13">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -301,7 +301,7 @@
                         <span class="legend-item"><span class="legend-swatch bar-tes"></span>TES (off-book)</span>
                         <span class="legend-item"><span class="legend-swatch legend-ltd"></span>Last trading day close</span>
                         <span class="legend-item"><span class="legend-swatch legend-now"></span>Now</span>
-                        <span class="legend-item legend-status"><span class="timeline-status status-open"></span>Open <span class="timeline-status status-tes"></span>TES only <span class="timeline-status status-closed"></span>Closed</span>
+                        <span class="legend-item legend-status"><span class="timeline-status status-open"></span>Open <span class="timeline-status status-tes"></span>TES only <span class="timeline-status status-closed"></span>Closed <span class="timeline-status status-holiday"></span>Holiday</span>
                     </div>
                     <div id="timelineContainer" class="timeline-container">
                         <div id="timelineLoading" class="loading hidden" style="padding: 24px;">
@@ -319,7 +319,7 @@
                         <div class="qe-toolbar-left">
                             <span>Query</span>
                             <button id="runQueryBtn" class="primary-btn qe-run" title="Run query (Ctrl+Enter)">
-                                <i data-feather="play" style="width: 14px; height: 14px;"></i> Run
+                                <i data-feather="play" style="width: 14px; height: 14px;"></i> <span class="qe-run-label">Run</span>
                             </button>
                         </div>
                         <div class="qe-toolbar-right">
@@ -591,7 +591,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="explorer/app.js?v=12"></script>
+    <script type="module" src="explorer/app.js?v=13"></script>
     <script>
       feather.replace();
     </script>

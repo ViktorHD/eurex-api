@@ -3,6 +3,7 @@ export class TimelineManager {
         this.client = client;
         this.els = els; // { container, content, loading, timezoneSelect, refreshBtn, filterInput }
         this.data = null;
+        this.holidays = new Map(); // Product -> sorted ISO dates on which it does not trade
         this.timezone = 'CET'; // Default
         this.filterText = '';
         this.tooltip = this._createTooltip();
@@ -19,7 +20,7 @@ export class TimelineManager {
             this.timezone = this.els.timezoneSelect.value;
             this.render();
         });
-        this.els.refreshBtn.addEventListener('click', () => this.fetchAndRender());
+        this.els.refreshBtn.addEventListener('click', () => this.fetchAndRender({ fresh: true }));
         if (this.els.filterInput) {
             this.els.filterInput.addEventListener('input', (e) => {
                 this.filterText = e.target.value.trim().toLowerCase();
@@ -44,7 +45,8 @@ export class TimelineManager {
         return div;
     }
 
-    async fetchAndRender() {
+    // options.fresh: bypass the response cache (the Refresh button)
+    async fetchAndRender(options = {}) {
         this.els.loading.classList.remove('hidden');
         this.els.content.innerHTML = '';
 
@@ -52,13 +54,21 @@ export class TimelineManager {
         query {
           ProductInfos {
             data {
+              ProductID
               Product
               ProductType
               Name
             }
           }
+          Holidays {
+            data {
+              Product
+              Holiday
+            }
+          }
           TradingHours {
             data {
+              ProductID
               Product
               StartContinuousTrading
               EndContinuousTrading
@@ -74,20 +84,21 @@ export class TimelineManager {
         `;
 
         try {
-            const response = await this.client.request(query, null, false);
+            const response = await this.client.request(query, null, false, { fresh: options.fresh === true });
             if (response.errors) throw new Error(response.errors[0].message);
 
-            const products = response.ProductInfos.data;
-            const hours = response.TradingHours.data;
+            const products = response.ProductInfos?.data;
+            const hours = response.TradingHours?.data;
+            if (!products || !hours) {
+                // Both are needed; the API reports why in partialErrors
+                throw new Error(`Trading hours could not be loaded${response.partialErrors ? ': ' + response.partialErrors.join('; ') : '.'}`);
+            }
 
-            // Join data
-            const hoursMap = new Map();
-            hours.forEach(h => hoursMap.set(h.Product, h));
+            // Holidays are optional: without them the status simply ignores them
+            this.holidays = this.buildHolidayMap(response.Holidays?.data);
+            this.holidaysUnavailable = !response.Holidays?.data;
 
-            const joined = products.map(p => ({
-                ...p,
-                hours: hoursMap.get(p.Product) || null
-            })).filter(p => p.hours);
+            const joined = this.joinHours(products, hours);
 
             // Group by ProductType
             this.data = joined.reduce((acc, curr) => {
@@ -109,6 +120,42 @@ export class TimelineManager {
         } finally {
             this.els.loading.classList.add('hidden');
         }
+    }
+
+    // Hours per product, joined on ProductID when both sides have it (Product code otherwise).
+    // A product with several hour sets keeps all of them in `allHours`; `hours` is the first one.
+    joinHours(products, hours) {
+        const keyOf = (row, useId) => (useId && row.ProductID != null ? `id:${row.ProductID}` : `code:${row.Product}`);
+        const useId = products.some(p => p.ProductID != null) && hours.some(h => h.ProductID != null);
+        const byKey = new Map();
+        hours.forEach(h => {
+            const key = keyOf(h, useId);
+            if (!byKey.has(key)) byKey.set(key, []);
+            byKey.get(key).push(h);
+        });
+        return products
+            .map(p => {
+                const list = byKey.get(keyOf(p, useId)) || byKey.get(`code:${p.Product}`) || [];
+                return { ...p, hours: list[0] || null, allHours: list };
+            })
+            .filter(p => p.hours);
+    }
+
+    // Product -> sorted ISO dates (YYYY-MM-DD); rows without a usable date are ignored
+    buildHolidayMap(rows) {
+        const map = new Map();
+        (rows || []).forEach(r => {
+            const day = String(r.Holiday ?? '').slice(0, 10);
+            if (!r.Product || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+            if (!map.has(r.Product)) map.set(r.Product, new Set());
+            map.get(r.Product).add(day);
+        });
+        return new Map([...map].map(([product, days]) => [product, [...days].sort()]));
+    }
+
+    // Calendar date (YYYY-MM-DD) in Eurex time
+    _cetDate(now = new Date()) {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
     }
 
     _timeToMinutes(timeStr) {
@@ -231,14 +278,29 @@ export class TimelineManager {
         return s <= e ? (mins >= s && mins < e) : (mins >= s || mins < e);
     }
 
-    // Trading status of a product right now, based on Eurex (CET) hours. Holidays are not considered.
-    getStatus(hours, now = new Date()) {
-        if (!hours) return 'closed';
+    // Trading status of a product right now, based on Eurex (CET) hours: 'open', 'tes', 'closed' or 'holiday'.
+    // `hours` may be one hour set or a list of them (open if any is open); `holidays` the product's holiday dates.
+    getStatus(hours, now = new Date(), holidays = null) {
+        const sets = (Array.isArray(hours) ? hours : [hours]).filter(Boolean);
+        if (!sets.length) return 'closed';
         const { minutes, weekday } = this._nowIn('CET', now);
         if (weekday === 0 || weekday === 6) return 'closed';
-        if (this._inRange(minutes, hours.StartContinuousTrading, hours.EndContinuousTrading)) return 'open';
-        if (this._inRange(minutes, hours.StartTES, hours.EndTES)) return 'tes';
+        if (holidays && holidays.length && holidays.includes(this._cetDate(now))) return 'holiday';
+        if (sets.some(h => this._inRange(minutes, h.StartContinuousTrading, h.EndContinuousTrading))) return 'open';
+        if (sets.some(h => this._inRange(minutes, h.StartTES, h.EndTES))) return 'tes';
         return 'closed';
+    }
+
+    // First holiday of the product after today (YYYY-MM-DD), or null
+    nextHoliday(holidays, now = new Date()) {
+        const today = this._cetDate(now);
+        return (holidays || []).find(d => d > today) || null;
+    }
+
+    _statusFor(product, now = new Date()) {
+        const hours = product?.allHours?.length ? product.allHours : product?.hours;
+        const holidays = this.holidays.get(product?.Product) || null;
+        return { status: this.getStatus(hours, now, holidays), next: this.nextHoliday(holidays, now) };
     }
 
     _formatDuration(startMin, endMin) {
@@ -260,16 +322,16 @@ export class TimelineManager {
         }
         this.els.content.querySelectorAll('[data-status-for]').forEach(dot => {
             const product = dot.getAttribute('data-status-for');
-            const hours = this._hoursByProduct?.get(product);
-            this._applyStatus(dot, this.getStatus(hours));
+            this._applyStatus(dot, this._statusFor(this._productsByCode?.get(product)));
         });
     }
 
-    _applyStatus(dot, status) {
-        const labels = { open: 'Continuous trading now', tes: 'TES only now', closed: 'Closed now' };
+    _applyStatus(dot, { status, next }) {
+        const labels = { open: 'Continuous trading now', tes: 'TES only now', closed: 'Closed now', holiday: 'Holiday today: no trading' };
+        const text = labels[status] + (next ? `. Next holiday: ${next}` : '');
         dot.className = `timeline-status status-${status}`;
-        dot.title = labels[status];
-        dot.setAttribute('aria-label', labels[status]);
+        dot.title = text;
+        dot.setAttribute('aria-label', text);
     }
 
     // On narrow screens the 24h axis overflows: bring the current time into view
@@ -294,10 +356,18 @@ export class TimelineManager {
     render() {
         if (!this.data) return;
 
-        this._hoursByProduct = new Map();
-        Object.values(this.data).flat().forEach(p => this._hoursByProduct.set(p.Product, p.hours));
+        this._productsByCode = new Map();
+        Object.values(this.data).flat().forEach(p => this._productsByCode.set(p.Product, p));
 
         this.els.content.innerHTML = '';
+
+        if (this.holidaysUnavailable) {
+            const notice = document.createElement('div');
+            notice.className = 'timeline-notice';
+            notice.setAttribute('role', 'status');
+            notice.textContent = 'The holiday calendar could not be loaded, so open / closed status ignores exchange holidays.';
+            this.els.content.appendChild(notice);
+        }
 
         // Header row
         const headerRow = document.createElement('div');
@@ -478,7 +548,7 @@ export class TimelineManager {
         const dot = document.createElement('span');
         dot.setAttribute('data-status-for', product.Product);
         dot.setAttribute('role', 'img');
-        this._applyStatus(dot, this.getStatus(product.hours));
+        this._applyStatus(dot, this._statusFor(product));
         label.appendChild(dot);
 
         const code = document.createElement('strong');
