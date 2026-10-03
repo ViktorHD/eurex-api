@@ -1,0 +1,19 @@
+# Dependencies and virtual environments (install with `npm ci` / `pip install -r requirements.txt`)
+node_modules/
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local configuration and secrets
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
