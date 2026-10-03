@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="explorer/styles.css?v=13">
+    <link rel="stylesheet" href="explorer/styles.css?v=14">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -22,6 +22,10 @@
                     <i data-feather="compass"></i>
                     <span class="nav-label">API Overview</span>
                 </button>
+                <button class="nav-btn" id="nav-products" title="Products">
+                    <i data-feather="search"></i>
+                    <span class="nav-label">Products</span>
+                </button>
                 <button class="nav-btn" id="nav-eurex-overview" title="Strike Window">
                     <i data-feather="bar-chart-2"></i>
                     <span class="nav-label">Strike Window</span>
@@ -29,6 +33,10 @@
                 <button class="nav-btn" id="nav-trading-hours" title="Trading Hours">
                     <i data-feather="clock"></i>
                     <span class="nav-label">Trading Hours</span>
+                </button>
+                <button class="nav-btn" id="nav-calendar" title="Calendar">
+                    <i data-feather="calendar"></i>
+                    <span class="nav-label">Calendar</span>
                 </button>
             </div>
 
@@ -94,6 +102,7 @@
                     <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/FAQ_cases.ipynb" target="_blank" rel="noopener" class="menu-item"><i data-feather="help-circle"></i> FAQ cases</a>
                     <button id="mobileShareBtn" class="menu-item"><i data-feather="share-2"></i> Share Results</button>
                     <button id="mobileCsvBtn" class="menu-item"><i data-feather="download"></i> Download CSV</button>
+                    <button id="mobileXlsxBtn" class="menu-item"><i data-feather="file"></i> Download Excel</button>
                     <button id="mobileMdBtn" class="menu-item"><i data-feather="file-text"></i> Download Markdown</button>
                 </div>
             </div>
@@ -239,6 +248,30 @@
                     </div>
                 </section>
                 
+                <!-- Products: search and watchlist -->
+                <section class="pane hidden" id="productsPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span>Products</span>
+                    </div>
+                    <div class="pc-scroll"><div id="productsContent" class="pc-container"></div></div>
+                </section>
+
+                <!-- Product card -->
+                <section class="pane hidden" id="productPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span><button id="productBackBtn" class="icon-btn" aria-label="Back to Products" title="Back to Products"><i data-feather="arrow-left" style="width: 14px; height: 14px;"></i></button> Product card</span>
+                    </div>
+                    <div class="pc-scroll"><div id="productCardContent" class="pc-container"></div></div>
+                </section>
+
+                <!-- Calendar: expirations and holidays -->
+                <section class="pane hidden" id="calendarPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span>Calendar</span>
+                    </div>
+                    <div class="pc-scroll"><div id="calendarContent" class="pc-container"></div></div>
+                </section>
+
                 <!-- Info & Status Pane -->
                 <section class="pane hidden" id="infoPane" style="flex: 1; display: flex; flex-direction: column;">
                     <div class="pane-header">
@@ -291,7 +324,9 @@
                                 <option value="CST">CST/CDT (Chicago)</option>
                                 <option value="LOCAL">Local Time</option>
                             </select>
+                            <button id="timelineWatchBtn" class="timeline-text-btn" type="button" aria-pressed="false" title="Show only the products you follow">★ Watchlist</button>
                             <button id="timelineExpandAllBtn" class="timeline-text-btn" type="button">Expand all</button>
+                            <button id="shareTimelineBtn" class="icon-btn" title="Share this view" aria-label="Share Trading Hours"><i data-feather="share-2" style="width: 14px; height: 14px;"></i></button>
                             <button id="refreshTimelineBtn" class="icon-btn" title="Refresh" aria-label="Refresh Trading Hours"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
                         </div>
                     </div>
@@ -409,7 +444,16 @@ query {
                         <div class="results-actions">
                             <button id="actionShareBtn" class="icon-btn" title="Share Results" aria-label="Share Results" disabled><i data-feather="share-2"></i> Share</button>
                             <button id="downloadCsvBtn" class="icon-btn" title="Download CSV" aria-label="Download CSV" disabled><i data-feather="download"></i> CSV</button>
+                            <button id="downloadXlsxBtn" class="icon-btn" title="Download Excel" aria-label="Download Excel" disabled><i data-feather="file"></i> Excel</button>
                             <button id="downloadMdBtn" class="icon-btn" title="Download MD" aria-label="Download Markdown" disabled><i data-feather="file-text"></i> MD</button>
+                            <div class="display-menu-wrap">
+                                <button id="displayBtn" class="icon-btn" title="How numbers and dates are shown" aria-label="Display settings" aria-haspopup="true" aria-expanded="false"><i data-feather="sliders"></i> Display</button>
+                                <div id="displayMenu" class="display-menu hidden" role="group" aria-label="Display settings">
+                                    <label>Numbers <select id="displayNumbers"></select></label>
+                                    <label>Dates <select id="displayDates"></select></label>
+                                    <p class="qe-hint">Only changes how values are shown. Copy, sorting and exports use the raw values.</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
@@ -523,10 +567,6 @@ query {
             <i data-feather="database"></i>
             <span>Results</span>
         </button>
-        <button class="nav-item" data-pane="hours">
-            <i data-feather="clock"></i>
-            <span>Hours</span>
-        </button>
         <button class="nav-item" data-pane="docs">
             <i data-feather="book"></i>
             <span>Docs</span>
@@ -535,7 +575,23 @@ query {
             <i data-feather="info"></i>
             <span>Info</span>
         </button>
+        <button class="nav-item" data-pane="views" id="mobileViewsBtn" aria-haspopup="true" aria-expanded="false">
+            <i data-feather="grid"></i>
+            <span>Views</span>
+        </button>
     </nav>
+
+    <!-- Views sheet (Mobile): every view of the app -->
+    <div id="viewSheet" class="view-sheet hidden" role="dialog" aria-label="Views">
+        <div class="view-sheet-content">
+            <button class="menu-item" data-view="api-overview"><i data-feather="compass"></i> API Overview</button>
+            <button class="menu-item" data-view="products"><i data-feather="search"></i> Products</button>
+            <button class="menu-item" data-view="eurex-overview"><i data-feather="bar-chart-2"></i> Strike Window</button>
+            <button class="menu-item" data-view="trading-hours"><i data-feather="clock"></i> Trading Hours</button>
+            <button class="menu-item" data-view="calendar"><i data-feather="calendar"></i> Calendar</button>
+            <button class="menu-item" data-view="api-explorer"><i data-feather="terminal"></i> API Explorer</button>
+        </div>
+    </div>
 
     <!-- AI Info Modal -->
     <div id="aiInfoModal" class="modal hidden">
@@ -591,7 +647,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="explorer/app.js?v=13"></script>
+    <script type="module" src="explorer/app.js?v=14"></script>
     <script>
       feather.replace();
     </script>

@@ -45,3 +45,47 @@ describe('Changelog helpers', () => {
         expect(changeKind('Value change')).toBe('change');
     });
 });
+
+// ---- holiday-aware freshness, "My products" and calendar export ----
+import { productsMentioned, changelogEvents, isoOf } from '../info.js';
+import { businessDaysBetween as bdb, datasetState as ds } from '../info.js';
+
+describe('freshness with exchange holidays', () => {
+    const holidays = new Set(['2026-12-25', '2026-12-24']);
+    test('holidays are not business days', () => {
+        // Thu 23 Dec -> Mon 28 Dec: 24th and 25th are holidays, 26/27 weekend, so only the 28th counts
+        expect(bdb('2026-12-23', '2026-12-28', holidays)).toBe(1);
+        expect(bdb('2026-12-23', '2026-12-28')).toBe(3);
+    });
+    test('data from the last business day is current on a holiday', () => {
+        expect(ds('Contracts', '2026-12-23', '2026-12-25', holidays)).toBe('ok');
+        expect(ds('Contracts', '2026-12-23', '2026-12-25')).toBe('stale');
+        expect(ds('Contracts', '2026-12-22', '2026-12-25', holidays)).toBe('stale');
+    });
+    test('today is read in Eurex time', () => {
+        expect(isoOf(new Date('2026-09-29T23:30:00Z'))).toBe('2026-09-30');
+    });
+});
+
+describe('changelog helpers', () => {
+    const entry = { Date: '2026-11-02', Type: 'Change', Description: 'TES lot size for OESX block trades', OldValue: '10', NewValue: '20', Query: 'TESProfiles' };
+    test('productsMentioned matches whole product codes only', () => {
+        expect(productsMentioned(entry, ['OESX', 'FESX'])).toEqual(['OESX']);
+        expect(productsMentioned({ Description: 'OESXX changed' }, ['OESX'])).toEqual([]);
+        expect(productsMentioned({ Description: 'oesx lower case' }, ['OESX'])).toEqual(['OESX']);
+        expect(productsMentioned(entry, [])).toEqual([]);
+    });
+    test('changelogEvents builds all-day events and skips undated entries', () => {
+        const events = changelogEvents([entry, { Date: '', Type: 'New' }]);
+        expect(events).toHaveLength(1);
+        expect(events[0].date).toBe('2026-11-02');
+        expect(events[0].summary).toBe('Eurex API: Change - TES lot size for OESX block trades');
+        expect(events[0].description).toContain('Old: 10');
+        expect(events[0].description).toContain('Affected query: TESProfiles');
+    });
+    test('long descriptions are shortened in the title', () => {
+        const [e] = changelogEvents([{ Date: '2026-11-02', Type: 'Change', Description: 'x'.repeat(200) }]);
+        expect(e.summary.length).toBeLessThan(100);
+        expect(e.summary.endsWith('...')).toBe(true);
+    });
+});

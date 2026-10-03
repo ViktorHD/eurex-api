@@ -1,22 +1,34 @@
+// Suggestions while typing a query. With the schema loaded they depend on the cursor position (root query, row field,
+// argument, filter field, operator, enum value, product code); without it, a flat list of all names is used.
+// Ctrl+Space opens the list without typing anything.
 export class Autocomplete {
     constructor(editorPaneEl, queryInputEl) {
         this.queryInput = queryInputEl;
         this.dropdown = document.createElement('div');
         this.dropdown.className = 'autocomplete-dropdown hidden';
+        this.dropdown.setAttribute('role', 'listbox');
         editorPaneEl.appendChild(this.dropdown);
-        this.items = [];
+        this.items = []; // flat fallback list
+        this.shown = []; // items in the open dropdown
+        this.from = 0; // where the typed part of the word starts
         this.schemaData = null;
+        this.provider = null; // (text, position) => { from, prefix, inString, items }
 
         this.queryInput.addEventListener('input', () => this.handleInput());
         this.queryInput.addEventListener('keydown', (e) => this.handleKey(e));
         this.queryInput.addEventListener('blur', () => {
-            setTimeout(() => this.dropdown.classList.add('hidden'), 200);
+            setTimeout(() => this.hide(), 200);
         });
     }
 
     setSchema(schemaData) {
         this.schemaData = schemaData;
         this.buildItems();
+    }
+
+    // Context-aware suggestions; the provider returns { from, prefix, inString, items: [{ label, kind, detail, insert }] }
+    setProvider(fn) {
+        this.provider = fn;
     }
 
     buildItems() {
@@ -27,7 +39,7 @@ export class Autocomplete {
         const queryType = this.schemaData.types.find(t => t.name === queryTypeName);
         if (queryType && queryType.fields) {
             queryType.fields.forEach(f => {
-                this.items.push({ label: f.name, kind: 'query', desc: f.description || '' });
+                this.items.push({ label: f.name, kind: 'query', detail: f.description || '', insert: f.name });
             });
         }
 
@@ -36,36 +48,53 @@ export class Autocomplete {
             const fields = t.fields || t.inputFields || [];
             fields.forEach(f => {
                 if (!this.items.some(a => a.label === f.name)) {
-                    this.items.push({ label: f.name, kind: 'field', desc: f.description || '' });
+                    this.items.push({ label: f.name, kind: 'field', detail: f.description || '', insert: f.name });
                 }
             });
         });
     }
 
-    handleInput() {
-        if (this.items.length === 0) this.buildItems();
-        if (this.items.length === 0) return;
+    hide() {
+        this.dropdown.classList.add('hidden');
+        this.shown = [];
+    }
 
+    isOpen() {
+        return !this.dropdown.classList.contains('hidden');
+    }
+
+    // Matches for the text before the cursor, or null when nothing should be offered
+    _suggest(force) {
         const pos = this.queryInput.selectionStart;
-        const textBefore = this.queryInput.value.substring(0, pos);
-        const wordMatch = textBefore.match(/(\w+)$/);
-        if (!wordMatch || wordMatch[1].length < 2) {
-            this.dropdown.classList.add('hidden');
-            return;
+        const text = this.queryInput.value;
+        if (this.provider) {
+            const r = this.provider(text, pos);
+            if (r) {
+                const opened = force || r.prefix.length >= 1 || r.inString || text[pos - 1] === '"';
+                return opened && r.items.length ? { from: r.from, items: r.items } : null;
+            }
         }
+        if (this.items.length === 0) this.buildItems();
+        const wordMatch = text.substring(0, pos).match(/(\w+)$/);
+        const word = wordMatch ? wordMatch[1] : '';
+        if (word.length < 2 && !force) return null;
+        const w = word.toLowerCase();
+        const items = this.items.filter(a => a.label.toLowerCase().includes(w)).slice(0, 8);
+        return items.length ? { from: pos - word.length, items } : null;
+    }
 
-        const word = wordMatch[1].toLowerCase();
-        const matches = this.items.filter(a => a.label.toLowerCase().includes(word)).slice(0, 8);
+    handleInput(force = false) {
+        const found = this._suggest(force);
+        if (!found) { this.hide(); return; }
 
-        if (matches.length === 0) {
-            this.dropdown.classList.add('hidden');
-            return;
-        }
-
+        this.from = found.from;
+        this.shown = found.items.slice(0, 12);
         this.dropdown.innerHTML = '';
-        matches.forEach((m, idx) => {
+        this.shown.forEach((m, idx) => {
             const item = document.createElement('div');
             item.className = 'autocomplete-item' + (idx === 0 ? ' active' : '');
+            item.setAttribute('role', 'option');
+            item.dataset.index = String(idx);
 
             const acLabel = document.createElement('span');
             acLabel.className = 'ac-label';
@@ -79,9 +108,16 @@ export class Autocomplete {
             acKind.textContent = m.kind;
             item.appendChild(acKind);
 
+            if (m.detail) {
+                const acDetail = document.createElement('span');
+                acDetail.className = 'ac-detail';
+                acDetail.textContent = String(m.detail).slice(0, 40);
+                item.appendChild(acDetail);
+            }
+
             item.addEventListener('mousedown', (e) => {
                 e.preventDefault();
-                this.applyAutocomplete(m.label, word);
+                this.apply(m);
             });
             this.dropdown.appendChild(item);
         });
@@ -93,47 +129,44 @@ export class Autocomplete {
     }
 
     handleKey(e) {
-        if (this.dropdown.classList.contains('hidden')) return;
+        if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+            e.preventDefault();
+            this.handleInput(true);
+            return;
+        }
+        if (!this.isOpen()) return;
 
         const items = this.dropdown.querySelectorAll('.autocomplete-item');
         let activeIdx = [...items].findIndex(i => i.classList.contains('active'));
 
-        if (e.key === 'ArrowDown') {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
             if (items[activeIdx]) items[activeIdx].classList.remove('active');
-            activeIdx = (activeIdx + 1) % items.length;
-            if (items[activeIdx]) items[activeIdx].classList.add('active');
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            if (items[activeIdx]) items[activeIdx].classList.remove('active');
-            activeIdx = (activeIdx - 1 + items.length) % items.length;
-            if (items[activeIdx]) items[activeIdx].classList.add('active');
+            activeIdx = (activeIdx + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+            if (items[activeIdx]) {
+                items[activeIdx].classList.add('active');
+                items[activeIdx].scrollIntoView?.({ block: 'nearest' });
+            }
         } else if (e.key === 'Enter' || e.key === 'Tab') {
-            if (items.length > 0) {
+            const chosen = this.shown[Math.max(0, activeIdx)];
+            if (chosen) {
                 e.preventDefault();
-                const activeItem = items[activeIdx];
-                const label = activeItem?.querySelector('.ac-label')?.textContent;
-                if (label) {
-                    const pos = this.queryInput.selectionStart;
-                    const textBefore = this.queryInput.value.substring(0, pos);
-                    const wordMatch = textBefore.match(/(\w+)$/);
-                    this.applyAutocomplete(label, wordMatch ? wordMatch[1] : '');
-                }
+                this.apply(chosen);
             }
         } else if (e.key === 'Escape') {
-            this.dropdown.classList.add('hidden');
+            this.hide();
         }
     }
 
-    applyAutocomplete(label, currentWord) {
+    apply(item) {
         const pos = this.queryInput.selectionStart;
-        const before = this.queryInput.value.substring(0, pos - currentWord.length);
-        const after = this.queryInput.value.substring(pos);
-        this.queryInput.value = before + label + after;
-        const newPos = pos - currentWord.length + label.length;
+        const value = this.queryInput.value;
+        const insert = item.insert ?? item.label;
+        this.queryInput.value = value.substring(0, this.from) + insert + value.substring(pos);
+        const newPos = this.from + insert.length;
         this.queryInput.setSelectionRange(newPos, newPos);
         this.queryInput.focus();
-        this.dropdown.classList.add('hidden');
+        this.hide();
         if (this.onSelect) this.onSelect(); // Fire optional callback
     }
 

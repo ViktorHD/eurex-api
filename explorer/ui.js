@@ -1,3 +1,6 @@
+import { formatNumber, formatDateString, getDisplay } from './displayformat.js';
+import { buildXlsx, XLSX_MIME } from './xlsx.js';
+
 export function getTypeName(typeObj) {
     if (!typeObj) return 'Unknown';
     if (typeObj.name) return typeObj.name;
@@ -78,6 +81,7 @@ export class DataTable {
         this.sortAsc = options.sortAsc !== undefined ? options.sortAsc : true;
         this.columnFilters = options.columnFilters || {};
         this.stickyCols = new Set(options.stickyCols || []);
+        this.hiddenCols = new Set(options.hiddenCols || []);
         this.searchText = options.searchText || '';
         this.showFilters = options.showFilters ?? Object.values(this.columnFilters).some(Boolean);
         // A single wide record reads better as a field/value list than as one very wide row
@@ -150,6 +154,11 @@ export class DataTable {
         }
     }
 
+    // Columns shown in the table, in API order (hidden ones are left out of the view, copy and exports)
+    get columns() {
+        return this.hiddenCols.size ? this.headers.filter(h => !this.hiddenCols.has(h)) : this.headers;
+    }
+
     _getNestedData(v) {
         if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') return v;
         if (typeof v === 'object' && v !== null && Array.isArray(v.data) && v.data.length > 0 && typeof v.data[0] === 'object') return v.data;
@@ -168,9 +177,9 @@ export class DataTable {
             if (colName && colName.toLowerCase().includes('id')) {
                 return String(val);
             }
-            return new Intl.NumberFormat().format(val);
+            return formatNumber(val);
         }
-        return String(val);
+        return formatDateString(String(val));
     }
 
     render() {
@@ -270,6 +279,8 @@ export class DataTable {
             });
             tools.appendChild(filterBtn);
 
+            tools.appendChild(this._columnsControl());
+
             this.clearBtn = this._toolButton('x-circle', 'Clear', 'Clear search, filters and sorting');
             this.clearBtn.addEventListener('click', () => {
                 this.searchText = '';
@@ -299,7 +310,7 @@ export class DataTable {
         copyBtn.addEventListener('click', async () => {
             const label = copyBtn.querySelector('span');
             try {
-                await navigator.clipboard.writeText(toTsv(this.headers, this.getVisibleRows()));
+                await navigator.clipboard.writeText(toTsv(this.columns, this.getVisibleRows()));
                 label.textContent = 'Copied';
             } catch (e) {
                 label.textContent = 'Copy failed';
@@ -310,12 +321,103 @@ export class DataTable {
 
         const csvBtn = this._toolButton('download', 'CSV', 'Download visible rows of this table as CSV');
         csvBtn.addEventListener('click', () => {
-            downloadText(toCsv(this.headers, this.getVisibleRows()), `${this.name || 'result'}${this.date ? '_' + this.date : ''}.csv`, 'text/csv');
+            downloadText(toCsv(this.columns, this.getVisibleRows()), `${this.name || 'result'}${this.date ? '_' + this.date : ''}.csv`, 'text/csv');
         });
         tools.appendChild(csvBtn);
 
+        const xlsxBtn = this._toolButton('file', 'Excel', 'Download visible rows of this table as an Excel file');
+        xlsxBtn.addEventListener('click', () => {
+            downloadText(buildXlsx([{ name: this.name || 'Result', headers: this.columns, rows: this.getVisibleRows() }]),
+                `${this.name || 'result'}${this.date ? '_' + this.date : ''}.xlsx`, XLSX_MIME);
+        });
+        tools.appendChild(xlsxBtn);
+
         bar.appendChild(tools);
         this.container.appendChild(bar);
+    }
+
+    // "Columns" button with a checklist to hide or show columns
+    _columnsControl() {
+        const wrap = document.createElement('div');
+        wrap.className = 'dt-columns';
+        const btn = this._toolButton('columns', this._columnsLabel(), 'Choose which columns are shown');
+        btn.setAttribute('aria-haspopup', 'true');
+        btn.setAttribute('aria-expanded', 'false');
+        this.columnsBtn = btn;
+        const menu = document.createElement('div');
+        menu.className = 'dt-columns-menu hidden';
+        menu.setAttribute('role', 'group');
+        menu.setAttribute('aria-label', 'Columns');
+        wrap.append(btn, menu);
+
+        const close = () => {
+            menu.classList.add('hidden');
+            btn.setAttribute('aria-expanded', 'false');
+            document.removeEventListener('click', onOutside, true);
+        };
+        const onOutside = (e) => { if (!wrap.contains(e.target)) close(); };
+        const build = () => {
+            menu.innerHTML = '';
+            const head = document.createElement('div');
+            head.className = 'dt-columns-head';
+            const all = document.createElement('button');
+            all.type = 'button';
+            all.className = 'dt-link';
+            all.textContent = 'Show all';
+            all.disabled = this.hiddenCols.size === 0;
+            all.addEventListener('click', () => { this._setHiddenColumns(new Set()); build(); });
+            head.appendChild(all);
+            menu.appendChild(head);
+            const list = document.createElement('div');
+            list.className = 'dt-columns-list';
+            this.headers.forEach(h => {
+                const row = document.createElement('label');
+                row.className = 'dt-columns-item';
+                const box = document.createElement('input');
+                box.type = 'checkbox';
+                box.checked = !this.hiddenCols.has(h);
+                // The last visible column cannot be hidden
+                box.disabled = box.checked && this.columns.length === 1;
+                box.addEventListener('change', () => {
+                    const next = new Set(this.hiddenCols);
+                    if (box.checked) next.delete(h); else next.add(h);
+                    this._setHiddenColumns(next);
+                    build();
+                });
+                const text = document.createElement('span');
+                text.textContent = h;
+                row.append(box, text);
+                list.appendChild(row);
+            });
+            menu.appendChild(list);
+        };
+        btn.addEventListener('click', () => {
+            if (menu.classList.contains('hidden')) {
+                build();
+                menu.classList.remove('hidden');
+                btn.setAttribute('aria-expanded', 'true');
+                document.addEventListener('click', onOutside, true);
+            } else {
+                close();
+            }
+        });
+        menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close(); btn.focus(); } });
+        return wrap;
+    }
+
+    _columnsLabel() {
+        return this.hiddenCols.size ? `Columns (${this.hiddenCols.size} hidden)` : 'Columns';
+    }
+
+    _setHiddenColumns(set) {
+        this.hiddenCols = set;
+        const span = this.columnsBtn?.querySelector('span');
+        if (span) span.textContent = this._columnsLabel();
+        this._notify();
+        this._renderHead();
+        this._renderRows();
+        this.autoResizeColumns();
+        if (window.feather) window.feather.replace();
     }
 
     _toolButton(icon, label, title) {
@@ -459,7 +561,7 @@ export class DataTable {
 
         // Header row
         const trHead = document.createElement('tr');
-        this.headers.forEach((h) => {
+        this.columns.forEach((h) => {
             const th = document.createElement('th');
             th.className = 'sortable-th';
             if (this.stickyCols.has(h)) th.classList.add('sticky-col');
@@ -522,7 +624,7 @@ export class DataTable {
         // Filter row
         const trFilter = document.createElement('tr');
         trFilter.className = 'filter-row' + (this.showFilters ? '' : ' hidden');
-        this.headers.forEach(h => {
+        this.columns.forEach(h => {
             const th = document.createElement('th');
             if (this.numericCols.has(h)) th.classList.add('num');
             const input = document.createElement('input');
@@ -552,7 +654,7 @@ export class DataTable {
         if (this._visible.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = this.headers.length;
+            td.colSpan = this.columns.length;
             td.className = 'dt-no-match';
             td.textContent = 'No rows match the current search or filters.';
             tr.appendChild(td);
@@ -609,7 +711,7 @@ export class DataTable {
             });
         }
 
-        this.headers.forEach(h => {
+        this.columns.forEach(h => {
             const td = document.createElement('td');
             td.setAttribute('data-label', h);
             if (this.stickyCols.has(h)) td.classList.add('sticky-col');
@@ -635,7 +737,7 @@ export class DataTable {
         const tr = document.createElement('tr');
         tr.className = 'dt-more';
         const td = document.createElement('td');
-        td.colSpan = this.headers.length;
+        td.colSpan = this.columns.length;
         const next = Math.min(RENDER_STEP, remaining);
         const more = document.createElement('button');
         more.type = 'button';
@@ -795,13 +897,13 @@ export class DataTable {
         const tr = document.createElement('tr');
         tr.className = 'expanded-row';
         const td = document.createElement('td');
-        td.colSpan = this.layout === 'record' ? 2 : this.headers.length;
+        td.colSpan = this.layout === 'record' ? 2 : this.columns.length;
 
         const nestedWrapper = document.createElement('div');
         nestedWrapper.className = 'nested-wrapper';
 
         // Find all nested fields
-        this.headers.forEach(h => {
+        this.columns.forEach(h => {
             const nestedData = this._getNestedData(item.row[h]);
             if (nestedData) {
                 const nestedContainer = document.createElement('div');
@@ -860,6 +962,7 @@ export class DataTable {
             sortAsc: this.sortAsc,
             columnFilters: { ...this.columnFilters },
             stickyCols: Array.from(this.stickyCols),
+            hiddenCols: Array.from(this.hiddenCols),
             searchText: this.searchText,
             showFilters: this.showFilters,
             layout: this.layout,
@@ -1132,12 +1235,14 @@ export class UIManager {
     enableExportBtns() {
         this.els.downloadCsvBtn.disabled = false;
         this.els.downloadMdBtn.disabled = false;
+        if (this.els.downloadXlsxBtn) this.els.downloadXlsxBtn.disabled = false;
         if (this.els.shareBtn) this.els.shareBtn.disabled = false;
     }
 
     disableExportBtns() {
         this.els.downloadCsvBtn.disabled = true;
         this.els.downloadMdBtn.disabled = true;
+        if (this.els.downloadXlsxBtn) this.els.downloadXlsxBtn.disabled = true;
         if (this.els.shareBtn) this.els.shareBtn.disabled = true;
     }
 
@@ -1285,15 +1390,26 @@ export class UIManager {
 
     // Exports cover every table, using the rows currently visible (search, filters and sort applied).
     exportCsv() {
-        if (this.tables.length === 1) return toCsv(this.tables[0].headers, this.tables[0].getVisibleRows());
-        return this.tables.map(t => `${t.name}\r\n${toCsv(t.headers, t.getVisibleRows())}`).join('\r\n\r\n');
+        if (this.tables.length === 1) return toCsv(this.tables[0].columns, this.tables[0].getVisibleRows());
+        return this.tables.map(t => `${t.name}\r\n${toCsv(t.columns, t.getVisibleRows())}`).join('\r\n\r\n');
     }
 
     exportMarkdown() {
         return this.tables.map(t => {
-            const md = toMarkdown(t.headers, t.getVisibleRows());
+            const md = toMarkdown(t.columns, t.getVisibleRows());
             return this.tables.length > 1 || t.name ? `## ${t.name || 'Result'}\n\n${md}` : md;
         }).join('\n\n');
+    }
+
+    // One sheet per table, visible rows and columns
+    exportXlsx() {
+        return buildXlsx(this.tables.map((t, i) => ({ name: t.name || `Result ${i + 1}`, headers: t.columns, rows: t.getVisibleRows() })));
+    }
+
+    // After the number or date display setting changed
+    refreshDisplay() {
+        this.tables.forEach(t => t.render());
+        if (this.detail) this._renderDetail();
     }
 
     exportFileBase() {

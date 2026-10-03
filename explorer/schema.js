@@ -607,3 +607,34 @@ export class SchemaExplorer {
         return ['eq']; // Default
     }
 }
+
+const sdlType = (t) => {
+    if (!t) return 'Unknown';
+    if (t.kind === 'NON_NULL') return sdlType(t.ofType) + '!';
+    if (t.kind === 'LIST') return '[' + sdlType(t.ofType) + ']';
+    return t.name || 'Unknown';
+};
+
+// Compact SDL text of the schema (objects, inputs, enums), for AI assistants
+export function schemaToSdl(schema) {
+    let sdl = '';
+    (schema?.types || []).filter(t => !t.name.startsWith('__')).forEach(type => {
+        if (type.kind === 'OBJECT') {
+            sdl += `type ${type.name} {\n`;
+            (type.fields || []).forEach(f => {
+                const args = f.args && f.args.length ? '(' + f.args.map(a => `${a.name}: ${sdlType(a.type)}`).join(', ') + ')' : '';
+                sdl += `  ${f.name}${args}: ${sdlType(f.type)}\n`;
+            });
+            sdl += '}\n\n';
+        } else if (type.kind === 'INPUT_OBJECT') {
+            sdl += `input ${type.name} {\n`;
+            (type.inputFields || []).forEach(f => { sdl += `  ${f.name}: ${sdlType(f.type)}\n`; });
+            sdl += '}\n\n';
+        } else if (type.kind === 'ENUM') {
+            sdl += `enum ${type.name} {\n`;
+            (type.enumValues || []).forEach(v => { sdl += `  ${v.name}\n`; });
+            sdl += '}\n\n';
+        }
+    });
+    return sdl.trim();
+}
