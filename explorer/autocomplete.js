@@ -48,7 +48,7 @@ export class Autocomplete {
 
         const pos = this.queryInput.selectionStart;
         const textBefore = this.queryInput.value.substring(0, pos);
-        const wordMatch = textBefore.match(/(\\w+)$/);
+        const wordMatch = textBefore.match(/(\w+)$/);
         if (!wordMatch || wordMatch[1].length < 2) {
             this.dropdown.classList.add('hidden');
             return;
@@ -116,7 +116,7 @@ export class Autocomplete {
                 if (label) {
                     const pos = this.queryInput.selectionStart;
                     const textBefore = this.queryInput.value.substring(0, pos);
-                    const wordMatch = textBefore.match(/(\\w+)$/);
+                    const wordMatch = textBefore.match(/(\w+)$/);
                     this.applyAutocomplete(label, wordMatch ? wordMatch[1] : '');
                 }
             }
@@ -138,21 +138,30 @@ export class Autocomplete {
     }
 
     getCaretCoordinates() {
-        const pane = this.queryInput.closest('.editor-pane');
-        const rect = this.queryInput.getBoundingClientRect();
+        const ta = this.queryInput;
+        const pane = ta.closest('.editor-pane');
+        const rect = ta.getBoundingClientRect();
         const paneRect = pane.getBoundingClientRect();
+        const cs = getComputedStyle(ta);
 
-        const text = this.queryInput.value.substring(0, this.queryInput.selectionStart);
-        const lines = text.split('\\n');
+        const text = ta.value.substring(0, ta.selectionStart);
+        const lines = text.split('\n');
         const lineNum = lines.length;
         const colNum = lines[lines.length - 1].length;
 
-        const lineHeight = 22; 
-        const charWidth = 8.5; 
-
+        const fontSize = parseFloat(cs.fontSize) || 14;
+        const lineHeight = parseFloat(cs.lineHeight) || fontSize * 1.5;
+        if (!this._charWidth || this._charFont !== cs.font) {
+            const ctx = (this._canvas ||= document.createElement('canvas')).getContext('2d');
+            ctx.font = cs.font || `${fontSize}px monospace`;
+            this._charWidth = ctx.measureText('M').width || fontSize * 0.6;
+            this._charFont = cs.font;
+        }
+        const top = rect.top - paneRect.top + parseFloat(cs.paddingTop || 0) + lineNum * lineHeight - ta.scrollTop + 4;
+        const left = rect.left - paneRect.left + parseFloat(cs.paddingLeft || 0) + colNum * this._charWidth - ta.scrollLeft;
         return {
-            top: (rect.top - paneRect.top) + (lineNum * lineHeight) + 4,
-            left: (rect.left - paneRect.left) + (colNum * charWidth) + 16
+            top: Math.min(top, paneRect.height - 40),
+            left: Math.max(8, Math.min(left, paneRect.width - 260))
         };
     }
 }

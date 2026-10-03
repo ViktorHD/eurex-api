@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="explorer/styles.css?v=11">
+    <link rel="stylesheet" href="explorer/styles.css?v=12">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -315,14 +315,23 @@
 
                 <!-- Left Pane: Query Editor & Drawer -->
                 <section class="pane editor-pane" id="queryPane">
-                    <div class="pane-header">
-                        <div style="display: flex; align-items: center; gap: 16px;">
+                    <div class="pane-header qe-toolbar">
+                        <div class="qe-toolbar-left">
                             <span>Query</span>
-                            <button id="runQueryBtn" class="primary-btn" style="height: 28px; padding: 0 16px; font-size: 0.75rem;">
+                            <button id="runQueryBtn" class="primary-btn qe-run" title="Run query (Ctrl+Enter)">
                                 <i data-feather="play" style="width: 14px; height: 14px;"></i> Run
                             </button>
                         </div>
-                        <button id="closeQueryBtn" class="icon-btn" aria-label="Close Query pane" title="Close Query pane"><i data-feather="x"></i></button>
+                        <div class="qe-toolbar-right">
+                            <button id="formatQueryBtn" class="qe-tool" title="Format query (Shift+Alt+F)" aria-label="Format query"><i data-feather="align-left"></i></button>
+                            <button id="copyQueryBtn" class="qe-tool" title="Copy query" aria-label="Copy query"><i data-feather="copy"></i></button>
+                            <div class="qe-history">
+                                <button id="historyBtn" class="qe-tool" title="Query history" aria-label="Query history" aria-haspopup="true" aria-expanded="false"><i data-feather="clock"></i></button>
+                                <div id="historyMenu" class="qe-history-menu hidden" role="menu"></div>
+                            </div>
+                            <button id="clearQueryBtn" class="qe-tool" title="Clear editor" aria-label="Clear editor"><i data-feather="trash-2"></i></button>
+                            <button id="closeQueryBtn" class="icon-btn" aria-label="Close Query pane" title="Close Query pane"><i data-feather="x"></i></button>
+                        </div>
                     </div>
                     <textarea id="queryInput" class="code-editor" spellcheck="false">
 query {
@@ -334,44 +343,57 @@ query {
       ExpirationDate
     }
   }
-}
-                    </textarea>
-                    
-                    <!-- Bottom Drawer for Headers -->
+}</textarea>
+
+                    <!-- Bottom drawer: variables, headers, AI settings -->
                     <div class="editor-drawer">
                         <div class="drawer-header" id="drawerToggle">
-                            <span>Headers & Variables</span>
+                            <div class="qe-drawer-tabs" role="tablist">
+                                <button type="button" class="qe-drawer-tab active" data-tab="vars" role="tab">Variables <span id="varsBadge" class="qe-badge hidden"></span></button>
+                                <button type="button" class="qe-drawer-tab" data-tab="headers" role="tab">Headers</button>
+                                <button type="button" class="qe-drawer-tab" data-tab="ai" role="tab">AI assistant</button>
+                            </div>
                             <i data-feather="chevron-up" id="drawerIcon"></i>
                         </div>
                         <div class="drawer-content" id="drawerContent">
-                            <div class="control-group">
-                                <label>X-DBP-APIKEY</label>
-                                <input type="password" id="apiKey" value="68cdafd2-c5c1-49be-8558-37244ab4f513" placeholder="Enter your API key...">
-                            </div>
-                            <div class="control-group" style="margin-top: 16px;">
-                                <label>Variables (JSON)</label>
-                                <textarea id="variablesInput" class="variables-editor" spellcheck="false" placeholder='{ "product": "UNI" }'></textarea>
-                            </div>
-                            <div class="control-group" style="margin-top: 16px;">
-                                <label>AI Chatbot Provider</label>
-                                <select id="aiProvider" style="width: 100%; background: #1a1a2e; color: #e2e8f0; border: 1px solid #2d3748; border-radius: 6px; padding: 8px 10px; font-size: 0.875rem;">
-                                    <option value="databricks">Eurex Agent (Databricks)</option>
-                                    <option value="claude">Claude (Anthropic)</option>
-                                    <option value="gemini">Google Gemini</option>
-                                </select>
-                            </div>
-                            <div class="control-group" style="margin-top: 16px; display: none;" id="claudeKeyGroup">
-                                <label>Claude API Key</label>
-                                <input type="password" id="claudeApiKey" placeholder="Enter Claude API key...">
-                                <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;">
-                                    Get a key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none;">Anthropic Console</a>.
+                            <div class="qe-drawer-panel" data-panel="vars">
+                                <div class="control-group">
+                                    <div class="qe-label-row">
+                                        <label for="variablesInput">Variables (JSON)</label>
+                                        <button type="button" id="formatVarsBtn" class="qe-link">Format JSON</button>
+                                    </div>
+                                    <textarea id="variablesInput" class="variables-editor" spellcheck="false" placeholder='{ "product": "FESX" }'></textarea>
+                                    <p id="varsStatus" class="qe-hint">Use <code>$name</code> in the query, e.g. <code>query ($product: String) { … eq: $product … }</code></p>
                                 </div>
                             </div>
-                            <div class="control-group" style="margin-top: 16px; display: none;" id="geminiKeyGroup">
-                                <label>Google Gemini API Key</label>
-                                <input type="password" id="geminiApiKey" placeholder="Enter Gemini API key...">
-                                <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 4px;">
-                                    Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color: #00ce7d; text-decoration: none;">Google AI Studio</a>.
+                            <div class="qe-drawer-panel hidden" data-panel="headers">
+                                <div class="control-group">
+                                    <label for="apiKey">X-DBP-APIKEY</label>
+                                    <div class="qe-secret">
+                                        <input type="password" id="apiKey" value="68cdafd2-c5c1-49be-8558-37244ab4f513" placeholder="Enter your API key..." autocomplete="off">
+                                        <button type="button" id="toggleApiKeyBtn" class="qe-tool" title="Show key" aria-label="Show API key"><i data-feather="eye"></i></button>
+                                    </div>
+                                    <p id="apiKeyHint" class="qe-hint"></p>
+                                </div>
+                            </div>
+                            <div class="qe-drawer-panel hidden" data-panel="ai">
+                                <div class="control-group">
+                                    <label for="aiProvider">AI Chatbot Provider</label>
+                                    <select id="aiProvider" class="qe-select">
+                                        <option value="databricks">Eurex Agent (Databricks)</option>
+                                        <option value="claude">Claude (Anthropic)</option>
+                                        <option value="gemini">Google Gemini</option>
+                                    </select>
+                                </div>
+                                <div class="control-group" style="margin-top: 16px; display: none;" id="claudeKeyGroup">
+                                    <label for="claudeApiKey">Claude API Key</label>
+                                    <input type="password" id="claudeApiKey" placeholder="Enter Claude API key...">
+                                    <p class="qe-hint">Get a key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Anthropic Console</a>.</p>
+                                </div>
+                                <div class="control-group" style="margin-top: 16px; display: none;" id="geminiKeyGroup">
+                                    <label for="geminiApiKey">Google Gemini API Key</label>
+                                    <input type="password" id="geminiApiKey" placeholder="Enter Gemini API key...">
+                                    <p class="qe-hint">Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.</p>
                                 </div>
                             </div>
                         </div>
@@ -569,7 +591,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="explorer/app.js?v=11"></script>
+    <script type="module" src="explorer/app.js?v=12"></script>
     <script>
       feather.replace();
     </script>

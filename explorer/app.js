@@ -1,7 +1,8 @@
 import { GraphQLClient } from './client.js?v=2';
 import { UIManager, downloadText } from './ui.js?v=5';
 import { TabManager } from './tabs.js';
-import { Autocomplete } from './autocomplete.js';
+import { Autocomplete } from './autocomplete.js?v=2';
+import { QueryEditor, addToHistory, loadHistory, clearHistory, timeAgo } from './editor.js?v=1';
 import { SchemaExplorer } from './schema.js?v=2';
 import { Chatbot } from './chatbot.js';
 import { TimelineManager } from './timeline.js?v=2';
@@ -314,6 +315,26 @@ document.addEventListener('DOMContentLoaded', () => {
     tabs.render();
 
     const autocomplete = new Autocomplete(document.querySelector('.editor-pane'), queryInput);
+
+    // Editor (created after autocomplete so its key handling runs second and respects open suggestions)
+    let schemaRootNames = null;
+    const queryEditor = new QueryEditor(queryInput, { getRootNames: () => schemaRootNames });
+
+    // Load the schema in the background the first time the editor is used: feeds autocomplete and
+    // the "unknown query" check without having to open the Docs pane first.
+    let schemaRequested = false;
+    const ensureSchema = () => {
+        if (schemaRequested) return;
+        schemaRequested = true;
+        schemaExplorer.fetchSchema().then(schema => {
+            if (!schema) { schemaRequested = false; return; }
+            autocomplete.setSchema(schema);
+            const queryType = schema.types.find(t => t.name === (schema.queryType?.name || 'Query'));
+            schemaRootNames = new Set((queryType?.fields || []).map(f => f.name));
+            queryEditor.refresh();
+        }).catch(() => { schemaRequested = false; });
+    };
+    queryInput.addEventListener('focus', ensureSchema);
 
     // Helpers
     function insertFieldIntoQuery(fieldName) {
@@ -765,6 +786,7 @@ ${schemaSDL}
             if (response.name) tableState.name = response.name;
 
             tabs.updateActiveState({ data: data, ...tableState });
+            addToHistory(query);
 
             if (data.length === 0) {
                 ui.showEmptyState("Query successful, but no data was returned.");
@@ -813,7 +835,21 @@ ${schemaSDL}
     drawerToggle.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        drawerContent.classList.toggle('open');
+        const tab = e.target.closest('.qe-drawer-tab');
+        const wasOpen = drawerContent.classList.contains('open');
+        if (tab) {
+            const already = tab.classList.contains('active');
+            drawerToggle.querySelectorAll('.qe-drawer-tab').forEach(t => {
+                t.classList.toggle('active', t === tab);
+                t.setAttribute('aria-selected', String(t === tab));
+            });
+            drawerContent.querySelectorAll('.qe-drawer-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== tab.dataset.tab));
+            // Clicking the active tab of an open drawer closes it; any other tab opens it
+            if (wasOpen && already) drawerContent.classList.remove('open');
+            else drawerContent.classList.add('open');
+        } else {
+            drawerContent.classList.toggle('open');
+        }
         const isOpen = drawerContent.classList.contains('open');
         drawerIcon.setAttribute('data-feather', isOpen ? 'chevron-down' : 'chevron-up');
         if (window.feather) window.feather.replace(); 
@@ -873,12 +909,145 @@ ${schemaSDL}
 
     // Run execution
     runQueryBtn.addEventListener('click', async () => {
+        if (runQueryBtn.classList.contains('running')) return;
         deactivateTimeline();
+        runQueryBtn.classList.add('running');
         try {
             await executeGraphQLQuery(queryInput.value.trim());
         } catch (e) {
             // Error already handled in executeGraphQLQuery
+        } finally {
+            runQueryBtn.classList.remove('running');
         }
+    });
+
+    // Editor toolbar
+    const flash = (btn, text) => {
+        btn.dataset.flash = text;
+        btn.classList.add('flashed');
+        setTimeout(() => btn.classList.remove('flashed'), 1200);
+    };
+    document.getElementById('formatQueryBtn').addEventListener('click', (e) => {
+        if (!queryEditor.format()) flash(e.currentTarget, 'Fix errors first');
+        else tabs.updateActiveState({ query: queryInput.value });
+    });
+    document.getElementById('copyQueryBtn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        try { await navigator.clipboard.writeText(queryInput.value); flash(btn, 'Copied'); }
+        catch (err) { flash(btn, 'Copy failed'); }
+    });
+    document.getElementById('clearQueryBtn').addEventListener('click', () => {
+        // Through the editor so Ctrl+Z can bring the query back
+        queryEditor._replace('', 0, 0);
+        tabs.updateActiveState({ query: '' });
+    });
+
+    // Query history (stored per browser)
+    const historyBtn = document.getElementById('historyBtn');
+    const historyMenu = document.getElementById('historyMenu');
+    const closeHistory = () => {
+        historyMenu.classList.add('hidden');
+        historyBtn.setAttribute('aria-expanded', 'false');
+    };
+    const renderHistory = () => {
+        historyMenu.innerHTML = '';
+        const list = loadHistory();
+        const head = document.createElement('div');
+        head.className = 'qe-history-head';
+        head.textContent = list.length ? 'Recently run' : 'No queries run yet';
+        historyMenu.appendChild(head);
+        list.forEach(h => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'qe-history-item';
+            item.setAttribute('role', 'menuitem');
+            const name = document.createElement('strong');
+            name.textContent = (h.roots && h.roots.length ? h.roots.join(', ') : 'Query');
+            const when = document.createElement('span');
+            when.textContent = timeAgo(h.at);
+            const preview = document.createElement('code');
+            preview.textContent = h.query.replace(/\s+/g, ' ').trim().slice(0, 90);
+            item.append(name, when, preview);
+            item.addEventListener('click', () => {
+                queryInput.value = h.query;
+                tabs.updateActiveState({ query: h.query });
+                closeHistory();
+                queryInput.focus();
+            });
+            historyMenu.appendChild(item);
+        });
+        if (list.length) {
+            const clear = document.createElement('button');
+            clear.type = 'button';
+            clear.className = 'qe-history-clear';
+            clear.textContent = 'Clear history';
+            clear.addEventListener('click', () => { clearHistory(); renderHistory(); });
+            historyMenu.appendChild(clear);
+        }
+    };
+    historyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = historyMenu.classList.contains('hidden');
+        if (open) { renderHistory(); historyMenu.classList.remove('hidden'); historyBtn.setAttribute('aria-expanded', 'true'); }
+        else closeHistory();
+    });
+    document.addEventListener('click', (e) => { if (!e.target.closest('.qe-history')) closeHistory(); });
+    historyMenu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeHistory(); historyBtn.focus(); } });
+
+    // Variables: live JSON check
+    const varsStatus = document.getElementById('varsStatus');
+    const varsBadge = document.getElementById('varsBadge');
+    const varsHintHtml = varsStatus.innerHTML;
+    const checkVariables = () => {
+        const raw = variablesInput.value.trim();
+        varsStatus.classList.remove('error', 'ok');
+        varsBadge.classList.add('hidden');
+        if (!raw) { varsStatus.innerHTML = varsHintHtml; return; }
+        try {
+            const obj = JSON.parse(raw);
+            const used = [...new Set((queryInput.value.match(/\$\w+/g) || []).map(v => v.slice(1)))];
+            const missing = used.filter(v => !(v in obj));
+            varsStatus.classList.add(missing.length ? 'error' : 'ok');
+            varsStatus.textContent = missing.length
+                ? `Valid JSON, but the query also uses: ${missing.map(m => '$' + m).join(', ')}`
+                : `Valid JSON · ${Object.keys(obj).length} variable${Object.keys(obj).length === 1 ? '' : 's'}`;
+            varsBadge.textContent = String(Object.keys(obj).length);
+            varsBadge.classList.remove('hidden');
+        } catch (err) {
+            varsStatus.classList.add('error');
+            varsStatus.textContent = 'Invalid JSON: ' + err.message;
+            varsBadge.textContent = '!';
+            varsBadge.classList.remove('hidden');
+        }
+    };
+    variablesInput.addEventListener('input', checkVariables);
+    queryInput.addEventListener('input', () => { if (variablesInput.value.trim()) checkVariables(); });
+    document.getElementById('formatVarsBtn').addEventListener('click', () => {
+        try { variablesInput.value = JSON.stringify(JSON.parse(variablesInput.value || '{}'), null, 2); } catch (err) { /* status shows the error */ }
+        checkVariables();
+    });
+
+    // Headers: show/hide key, demo-key notice
+    const apiKeyHint = document.getElementById('apiKeyHint');
+    const toggleApiKeyBtn = document.getElementById('toggleApiKeyBtn');
+    const updateKeyHint = () => {
+        const key = apiKeyInput.value.trim();
+        apiKeyHint.textContent = !key
+            ? 'No key set: requests will fail.'
+            : key === DEMO_API_KEY
+                ? 'Shared demo key: rate-limited. Create your own key in the Deutsche Börse Developer Portal for higher throughput.'
+                : 'Personal key in use. It is sent only to the endpoint above.';
+        apiKeyHint.classList.toggle('error', !key);
+    };
+    apiKeyInput.addEventListener('input', updateKeyHint);
+    updateKeyHint();
+    toggleApiKeyBtn.addEventListener('click', () => {
+        const show = apiKeyInput.type === 'password';
+        apiKeyInput.type = show ? 'text' : 'password';
+        toggleApiKeyBtn.setAttribute('aria-label', show ? 'Hide API key' : 'Show API key');
+        toggleApiKeyBtn.title = show ? 'Hide key' : 'Show key';
+        toggleApiKeyBtn.innerHTML = `<i data-feather="${show ? 'eye-off' : 'eye'}"></i>`;
+        if (window.feather) window.feather.replace();
     });
 
     // Export Logic
