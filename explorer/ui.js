@@ -1180,6 +1180,15 @@ export class UIManager {
         if (window.feather) window.feather.replace();
     }
 
+    // Forgets the displayed results (an empty or failed tab shows none), so that they are not saved into another tab
+    clearResults() {
+        this.closeRecord();
+        this.currentData = [];
+        this.currentDate = null;
+        this.tables = [];
+        this.tableDefs = [];
+    }
+
     // `note`: optional line under the skeleton, e.g. that a retry is pending
     showLoading(note = '') {
         this.closeRecord();

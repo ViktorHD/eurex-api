@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="explorer/styles.css?v=17">
+    <link rel="stylesheet" href="explorer/styles.css?v=18">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -83,12 +83,14 @@
                 </div>
 
                 <div class="action-right">
-                    <button id="toggleQueryBtn" class="secondary-btn query-btn hide-mobile">
-                        <i data-feather="edit-3"></i> Query
-                    </button>
-                    <button id="toggleDocsBtn" class="secondary-btn docs-btn hide-mobile">
-                        <i data-feather="book"></i> Docs
-                    </button>
+                    <div class="pane-toggles hide-mobile" role="group" aria-label="Show or hide panes">
+                        <button id="toggleQueryBtn" class="pane-toggle active" type="button" aria-pressed="true" title="Show or hide the query editor">
+                            <i data-feather="edit-3"></i> Query
+                        </button>
+                        <button id="toggleDocsBtn" class="pane-toggle" type="button" aria-pressed="false" title="Show or hide the schema documentation">
+                            <i data-feather="book"></i> Docs
+                        </button>
+                    </div>
                     <button id="moreMenuBtn" class="icon-btn show-mobile-flex hidden" aria-label="More options" title="More options"><i data-feather="more-vertical"></i></button>
                 </div>
             </header>
@@ -647,7 +649,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="explorer/app.js?v=16"></script>
+    <script type="module" src="explorer/app.js?v=17"></script>
     <script>
       feather.replace();
     </script>

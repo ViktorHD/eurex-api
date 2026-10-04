@@ -13,7 +13,7 @@ views for products, trading hours, strikes, expirations and API changes.
 | Strike Window | Listed strikes per contract date, delta coverage, request for additional strikes |
 | Trading Hours | 24 h timeline per product, open / TES / closed / holiday status, timezones, watchlist filter |
 | Calendar | Expirations and exchange holidays of followed products by month, `.ics` export |
-| API Explorer | Query editor with schema validation and context-aware suggestions, tabs, history and saved queries, results with search, filters, column chooser, paging, CSV / Excel / Markdown export |
+| API Explorer | Query editor with schema validation and context-aware suggestions, tabs (one running query per tab, drag to reorder, duplicate, context menu), history and saved queries, results with search, filters, column chooser, paging, CSV / Excel / Markdown export |
 | Info | Data freshness per dataset (Eurex calendar aware) and the API changelog, filterable by followed products, `.ics` export |
 
 Everything personal (watchlist, tabs, history, saved queries, display settings) is stored in the browser only.

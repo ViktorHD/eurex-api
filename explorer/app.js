@@ -1,7 +1,7 @@
 import { GraphQLClient } from './client.js?v=3';
-import { UIManager, downloadText } from './ui.js?v=7';
+import { UIManager, downloadText } from './ui.js?v=8';
 import { buildNextPageQuery, canPaginate } from './pagination.js';
-import { TabManager, loadTabsSnapshot, saveTabsSnapshot } from './tabs.js?v=2';
+import { TabManager, loadTabsSnapshot, saveTabsSnapshot } from './tabs.js?v=3';
 import { Autocomplete } from './autocomplete.js?v=3';
 import { QueryEditor, addToHistory, loadHistory, clearHistory, timeAgo, rootFieldsOf, loadSaved, saveQuery, deleteSaved } from './editor.js?v=2';
 import { SchemaExplorer, schemaToSdl } from './schema.js?v=3';
@@ -209,6 +209,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Query / Docs buttons show whether their pane is open (the panes are also opened and closed from elsewhere)
+    function syncPaneToggles() {
+        const inExplorer = currentView === 'api-explorer';
+        [[toggleQueryBtn, queryPane], [document.getElementById('toggleDocsBtn'), docsPane]].forEach(([btn, pane]) => {
+            if (!btn) return;
+            const open = inExplorer && !pane.classList.contains('hidden');
+            btn.classList.toggle('active', open);
+            btn.setAttribute('aria-pressed', String(open));
+        });
+    }
+    if (typeof MutationObserver !== 'undefined') {
+        const paneObserver = new MutationObserver(syncPaneToggles);
+        [queryPane, docsPane].forEach(p => paneObserver.observe(p, { attributes: true, attributeFilter: ['class'] }));
+    }
+    syncPaneToggles();
+
     // Submodules Setup
     const client = new GraphQLClient(apiUrlInput.value.trim(), apiKeyInput.value.trim());
     apiKeyInput.addEventListener('input', () => client.setApiKey(apiKeyInput.value.trim()));
@@ -249,24 +265,36 @@ document.addEventListener('DOMContentLoaded', () => {
             onTabSave: (id, state) => {
                 state.query = queryInput.value;
                 state.variables = variablesInput.value;
+                // A tab whose query is still running shows no results yet: keep what it has
+                if (state.status === 'running') return;
                 state.data = ui.currentData;
                 Object.assign(state, ui.exportState());
             },
             onTabsChanged: () => persistTabs(),
+            onTabClose: (id) => { runs.get(id)?.abort(); runs.delete(id); },
             onTabLoad: (state) => {
                 deactivateTimeline();
                 queryInput.value = state.query || '';
                 variablesInput.value = state.variables || '';
                 ui.hideError();
+                syncRunButton();
                 const resultLabel = document.getElementById('resultLabel');
                 if (resultLabel) {
                     const isDefaultName = /^Query \d+$/.test(state.name);
                     resultLabel.textContent = isDefaultName ? 'Result' : state.name;
                 }
 
-                if (state.data && state.data.length > 0) {
+                if (state.status === 'running') {
+                    // The query of this tab is still on its way
+                    ui.clearResults();
+                    ui.showLoading();
+                } else if (state.status === 'error' && state.error) {
+                    ui.clearResults();
+                    ui.showError(state.error);
+                } else if (state.data && state.data.length > 0) {
                     ui.renderTable(state.data, state);
                 } else {
+                    ui.clearResults();
                     ui.showEmptyState();
                     if (ui.els.validityDate) {
                         ui.els.validityDate.textContent = '';
@@ -675,7 +703,9 @@ ${schemaSDL}
         }
     });
 
-    let currentRun = null; // AbortController of the query being waited for
+    // One query can run per tab; switching tabs does not stop it, and its result goes to the tab it was started in
+    const runs = new Map(); // tab id -> AbortController
+    const rowTotal = (data, multi) => (multi ? data.reduce((n, t) => n + (t.data || []).length, 0) : data.length);
 
     async function executeGraphQLQuery(query, stateOptions = null, explicitVariables = null) {
         const apiKey = apiKeyInput.value.trim();
@@ -711,27 +741,29 @@ ${schemaSDL}
         const newName = rootFields.length > 0 ? rootFields.join(', ') : '';
         const resultLabel = document.getElementById('resultLabel');
 
-        const activeTab = tabs.getActiveState();
-        const tabUpdate = {};
+        const runTab = tabs.activeTabId;
+        const isActive = () => tabs.activeTabId === runTab;
+        const tabUpdate = { status: 'running', error: null };
         if (newName) {
             tabUpdate.name = newName;
             if (resultLabel) resultLabel.textContent = newName;
         } else {
-            tabUpdate.name = 'Query ' + activeTab.id;
+            tabUpdate.name = 'Query ' + runTab;
             if (resultLabel) resultLabel.textContent = 'Result';
         }
-        tabs.updateActiveState(tabUpdate);
-        tabs.render();
+        tabs.updateTab(runTab, tabUpdate);
 
-        // A newer run replaces the one still waiting
-        currentRun?.abort();
+        // A newer run in the same tab replaces the one still waiting
+        runs.get(runTab)?.abort();
         const run = new AbortController();
-        currentRun = run;
+        runs.set(runTab, run);
+        tabs.render();
+        syncRunButton();
 
         try {
             const response = await client.request(query, variables, true, {
                 signal: run.signal,
-                onRetry: ({ attempt, delayMs, status }) => ui.showLoading(
+                onRetry: ({ attempt, delayMs, status }) => isActive() && ui.showLoading(
                     status === 429
                         ? `Rate limit reached, retrying in ${Math.ceil(delayMs / 1000)} s (attempt ${attempt + 1})…`
                         : `The API is busy (HTTP ${status}), retrying in ${Math.ceil(delayMs / 1000)} s…`
@@ -759,10 +791,13 @@ ${schemaSDL}
             delete tableState.pagers;
             if (pagers.some(Boolean)) tableState.pagers = pagers;
 
-            tabs.updateActiveState({ data: data, ...tableState });
+            // The result belongs to the tab the query was started in, which may not be the open one any more
+            tabs.updateTab(runTab, { data, ...tableState, status: 'ok', error: null, rowCount: rowTotal(data, !!tableState.isMultiTable) });
             addToHistory(query, globalThis.localStorage, Date.now(), variablesInput.value);
+            if (!isActive()) return data; // shown when the tab is opened
 
             if (data.length === 0) {
+                ui.clearResults();
                 ui.showEmptyState(warnings.length ? `Query returned no data. ${warnings.join(' ')}` : "Query successful, but no data was returned.");
                 if (ui.els.validityDate) {
                     ui.els.validityDate.textContent = '';
@@ -776,13 +811,19 @@ ${schemaSDL}
         } catch (error) {
             // Cancelled by the user (or replaced by a newer run): nothing to report
             if (error.kind === 'aborted') {
-                if (currentRun === run) ui.showEmptyState('Query cancelled.');
+                if (runs.get(runTab) === run) {
+                    tabs.updateTab(runTab, { status: null });
+                    if (isActive()) ui.showEmptyState('Query cancelled.');
+                }
                 throw error;
             }
-            ui.showError(error.message);
+            tabs.updateTab(runTab, { status: 'error', error: error.message });
+            if (isActive()) { ui.clearResults(); ui.showError(error.message); }
             throw error;
         } finally {
-            if (currentRun === run) currentRun = null;
+            if (runs.get(runTab) === run) runs.delete(runTab);
+            tabs.render();
+            syncRunButton();
         }
     }
 
@@ -908,20 +949,19 @@ ${schemaSDL}
         if (runLabel) runLabel.textContent = label;
         runQueryBtn.title = running ? 'Stop waiting for this query' : 'Run query (Ctrl+Enter)';
     };
+    // The button shows the state of the open tab: Run, or Cancel while that tab's query runs
+    function syncRunButton() { setRunning(runs.has(tabs.activeTabId)); }
     runQueryBtn.addEventListener('click', async () => {
         // While a query runs the button cancels it
-        if (runQueryBtn.classList.contains('running')) {
-            currentRun?.abort();
+        if (runs.has(tabs.activeTabId)) {
+            runs.get(tabs.activeTabId).abort();
             return;
         }
         deactivateTimeline();
-        setRunning(true);
         try {
             await executeGraphQLQuery(queryInput.value.trim());
         } catch (e) {
             // Error already handled in executeGraphQLQuery
-        } finally {
-            setRunning(false);
         }
     });
 
