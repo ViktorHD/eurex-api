@@ -4242,3 +4242,9 @@ button.close-tab { background: none; border: 0; color: inherit; font: inherit; c
     .cal-dots { display: flex; }
     .cal-nav-title { min-width: 0; flex: 1; }
 }
+
+/* The Display menu opens downwards from the results header over the table toolbar (z-index 50): the header must sit above it */
+.results-pane .pane-header { position: relative; z-index: 60; }
+.display-menu { text-transform: none; letter-spacing: normal; font-weight: 400; }
+.display-menu label { font-weight: 600; color: var(--navy-blue); }
+.display-menu .qe-hint { color: var(--eurex-grey); margin-top: 4px; }
