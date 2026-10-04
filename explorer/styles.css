@@ -4081,7 +4081,8 @@ button.close-tab { background: none; border: 0; color: inherit; font: inherit; c
 .pc-btn.active, .pc-star.active { background: #fff7e6; border-color: #f5a623; color: #7a4d00; }
 .pc-btn:disabled { opacity: 0.45; cursor: default; }
 .pc-btn svg { width: 14px; height: 14px; }
-.pc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; align-items: start; }
+.pc-grid { display: flex; gap: 16px; align-items: flex-start; }
+.pc-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .pc-card { background: #fff; border: 1px solid var(--border-color); border-top: 3px solid var(--navy-blue); border-radius: 6px; padding: 14px 16px; box-shadow: var(--elevation-1); min-width: 0; }
 .pc-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
 .pc-card-head h3 { font-size: 0.95rem; color: var(--navy-blue); }
@@ -4169,7 +4170,6 @@ button.close-tab { background: none; border: 0; color: inherit; font: inherit; c
 @media (max-width: 768px) {
     .view-sheet:not(.hidden) { display: block; }
     .pc-container { padding: 14px 12px 32px; }
-    .pc-grid { grid-template-columns: 1fr; }
     .pc-two { grid-template-columns: 1fr; }
     .bottom-nav .nav-item { min-width: 0; }
     .results-actions { display: none; }
@@ -4181,10 +4181,20 @@ button.close-tab { background: none; border: 0; color: inherit; font: inherit; c
     body, .app-layout, .app-main, .workspace-grid { display: block !important; height: auto !important; overflow: visible !important; background: #fff !important; }
     #productPane { display: block !important; }
     .pc-scroll { overflow: visible !important; background: #fff; }
-    .pc-grid { display: block; }
+    .pc-grid, .pc-col { display: block; }
     .pc-card { break-inside: avoid; box-shadow: none; margin-bottom: 12px; }
     .pc-header { margin-bottom: 8px; }
 }
 
 /* The toolbar's popovers (columns) must sit above sticky headers and pinned columns of the table below */
 .dt-toolbar { z-index: 50; }
+
+/* API keys: masked like a password without being a password field (see secretinput.js) */
+.secret-input:not(.revealed) { -webkit-text-security: disc; }
+
+.pc-note { background: #fff8e8; border-left: 3px solid #f5a623; padding: 6px 10px; font-size: 0.8rem; color: #5b4300; border-radius: 3px; margin: 0 0 8px; }
+.pc-field { display: inline-flex; flex-direction: column; gap: 2px; margin-right: 8px; }
+.pc-field .pc-select { margin: 0; }
+
+/* The product card uses the full width (columns are added as the window grows); the list views stay narrow */
+#productCardContent.pc-container { max-width: 1680px; }

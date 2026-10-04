@@ -9,7 +9,7 @@ views for products, trading hours, strikes, expirations and API changes.
 |---|---|
 | API Overview | Entry point with example queries per data domain |
 | Products | Search by code, name, ISIN or vendor code; follow products (watchlist) |
-| Product card | Master data, trading hours with live status, tick sizes with a price checker, TES lot sizes per expiration, upcoming expirations and holidays (`.ics`), settlement price history, vendor codes. Printable. |
+| Product card | Master data, trading hours with live status, tick rules with a price checker, TES lot sizes per expiration, upcoming expirations and holidays (`.ics`), settlement price history, vendor codes. Printable. |
 | Strike Window | Listed strikes per contract date, delta coverage, request for additional strikes |
 | Trading Hours | 24 h timeline per product, open / TES / closed / holiday status, timezones, watchlist filter |
 | Calendar | Expirations and exchange holidays of followed products by month, `.ics` export |

@@ -17,6 +17,7 @@ import { ProductsView } from './productsview.js';
 import { CalendarView } from './calendarview.js';
 import { loadDisplay, setDisplay, getDisplay, NUMBER_MODES, DATE_MODES } from './displayformat.js';
 import { XLSX_MIME } from './xlsx.js';
+import { hardenSecretInput, isRevealed, setRevealed } from './secretinput.js';
 import { OverviewManager } from './overview.js?v=7';
 
 const DEMO_API_KEY = '68cdafd2-c5c1-49be-8558-37244ab4f513';
@@ -971,6 +972,7 @@ ${schemaSDL}
         nameInput.type = 'text';
         nameInput.placeholder = 'Name this query to save it';
         nameInput.maxLength = 60;
+        nameInput.autocomplete = 'off';
         nameInput.setAttribute('aria-label', 'Name for the saved query');
         const saveBtn = document.createElement('button');
         saveBtn.type = 'submit';
@@ -1104,9 +1106,11 @@ ${schemaSDL}
     };
     apiKeyInput.addEventListener('input', updateKeyHint);
     updateKeyHint();
+    // Keys are masked text inputs, not password fields, so browsers do not offer to save them as passwords
+    [apiKeyInput, document.getElementById('claudeApiKey'), document.getElementById('geminiApiKey')].forEach(hardenSecretInput);
     toggleApiKeyBtn.addEventListener('click', () => {
-        const show = apiKeyInput.type === 'password';
-        apiKeyInput.type = show ? 'text' : 'password';
+        const show = !isRevealed(apiKeyInput);
+        setRevealed(apiKeyInput, show);
         toggleApiKeyBtn.setAttribute('aria-label', show ? 'Hide API key' : 'Show API key');
         toggleApiKeyBtn.title = show ? 'Hide key' : 'Show key';
         toggleApiKeyBtn.innerHTML = `<i data-feather="${show ? 'eye-off' : 'eye'}"></i>`;

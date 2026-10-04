@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eurex API Explorer</title>
     <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
-    <link rel="stylesheet" href="explorer/styles.css?v=14">
+    <link rel="stylesheet" href="explorer/styles.css?v=15">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -405,7 +405,7 @@ query {
                                 <div class="control-group">
                                     <label for="apiKey">X-DBP-APIKEY</label>
                                     <div class="qe-secret">
-                                        <input type="password" id="apiKey" value="68cdafd2-c5c1-49be-8558-37244ab4f513" placeholder="Enter your API key..." autocomplete="off">
+                                        <input type="text" class="secret-input" id="apiKey" value="68cdafd2-c5c1-49be-8558-37244ab4f513" placeholder="Enter your API key..." autocomplete="off">
                                         <button type="button" id="toggleApiKeyBtn" class="qe-tool" title="Show key" aria-label="Show API key"><i data-feather="eye"></i></button>
                                     </div>
                                     <p id="apiKeyHint" class="qe-hint"></p>
@@ -422,12 +422,12 @@ query {
                                 </div>
                                 <div class="control-group" style="margin-top: 16px; display: none;" id="claudeKeyGroup">
                                     <label for="claudeApiKey">Claude API Key</label>
-                                    <input type="password" id="claudeApiKey" placeholder="Enter Claude API key...">
+                                    <input type="text" class="secret-input" id="claudeApiKey" placeholder="Enter Claude API key...">
                                     <p class="qe-hint">Get a key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Anthropic Console</a>.</p>
                                 </div>
                                 <div class="control-group" style="margin-top: 16px; display: none;" id="geminiKeyGroup">
                                     <label for="geminiApiKey">Google Gemini API Key</label>
-                                    <input type="password" id="geminiApiKey" placeholder="Enter Gemini API key...">
+                                    <input type="text" class="secret-input" id="geminiApiKey" placeholder="Enter Gemini API key...">
                                     <p class="qe-hint">Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.</p>
                                 </div>
                             </div>
@@ -647,7 +647,7 @@ query {
         </button>
     </div>
 
-    <script type="module" src="explorer/app.js?v=14"></script>
+    <script type="module" src="explorer/app.js?v=15"></script>
     <script>
       feather.replace();
     </script>

@@ -65,3 +65,52 @@ describe('tick rules', () => {
         expect([decimals(5), decimals(0.0005), decimals(12.345), decimals(1e-7), decimals(1.5e-7)]).toEqual([0, 4, 3, 7, 8]);
     });
 });
+
+import { defaultSelection, instrumentTypesOf, normKey, resolveRules, tradeTypesOf } from '../ticks.js';
+
+describe('choosing tick rules', () => {
+    const rows = [
+        { TradeType: 'EFP', InstrumentType: 'SIMPLE_INSTRUMENT', StartPrice: 0, EndPrice: null, PriceStep: 0.1 },
+        { TradeType: 'ORDER_BOOK', InstrumentType: 'STRATEGY', StartPrice: 0, EndPrice: null, PriceStep: 0.5 },
+        { TradeType: 'ORDER_BOOK', InstrumentType: 'SIMPLE_INSTRUMENT', StartPrice: 0, EndPrice: 10, PriceStep: 0.5 },
+        { TradeType: 'ORDER_BOOK', InstrumentType: 'SIMPLE_INSTRUMENT', StartPrice: 10, EndPrice: null, PriceStep: 1 }
+    ];
+
+    test('keys ignore case and separators', () => {
+        expect(normKey('ORDER_BOOK')).toBe(normKey('Order book'));
+        expect(normKey(null)).toBe('');
+    });
+
+    test('order book and simple instrument come first, BLOCK is always offered', () => {
+        expect(tradeTypesOf(rows)).toEqual(['ORDER_BOOK', 'BLOCK', 'EFP']);
+        expect(instrumentTypesOf(rows)).toEqual(['SIMPLE_INSTRUMENT', 'STRATEGY']);
+        expect(defaultSelection(rows)).toEqual({ tradeType: 'ORDER_BOOK', instrumentType: 'SIMPLE_INSTRUMENT' });
+    });
+
+    test('BLOCK stays a single entry when the data has it', () => {
+        expect(tradeTypesOf([{ TradeType: 'block' }, { TradeType: 'ORDER_BOOK' }])).toEqual(['ORDER_BOOK', 'block']);
+    });
+
+    test('a pair with its own rules uses them', () => {
+        const r = resolveRules(rows, { tradeType: 'EFP', instrumentType: 'SIMPLE_INSTRUMENT' });
+        expect(r.fallback).toBe(false);
+        expect(r.rules.map(x => x.step)).toEqual([0.1]);
+    });
+
+    test('BLOCK without rules of its own falls back to the order book rules of the instrument type', () => {
+        const simple = resolveRules(rows, { tradeType: 'BLOCK', instrumentType: 'SIMPLE_INSTRUMENT' });
+        expect(simple).toMatchObject({ fallback: true, tradeType: 'ORDER_BOOK', instrumentType: 'SIMPLE_INSTRUMENT' });
+        expect(simple.rules.map(x => x.step)).toEqual([0.5, 1]);
+        const strategy = resolveRules(rows, { tradeType: 'BLOCK', instrumentType: 'STRATEGY' });
+        expect(strategy.rules.map(x => x.step)).toEqual([0.5]);
+    });
+
+    test('with no order book rules for the instrument type, the simple instrument order book rules apply', () => {
+        const r = resolveRules(rows, { tradeType: 'EFP', instrumentType: 'STRATEGY_X' });
+        expect(r).toMatchObject({ fallback: true, tradeType: 'ORDER_BOOK', instrumentType: 'SIMPLE_INSTRUMENT' });
+    });
+
+    test('nothing to fall back to', () => {
+        expect(resolveRules([], { tradeType: 'BLOCK', instrumentType: 'X' })).toMatchObject({ rules: [], fallback: false });
+    });
+});
