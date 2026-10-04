@@ -170,3 +170,115 @@ describe('CalendarView', () => {
         expect(getWatchlist()).toEqual(['FESX']);
     });
 });
+
+describe('CalendarView month grid', () => {
+    const month = cetDate().slice(0, 7);
+    // Four followed products expire on the 15th; two of them also have a holiday on the 20th
+    const response = {
+        e0: { data: [{ ExpirationIndex: 1, ExpirationDate: `${month}-15` }] }, h0: { data: [{ Holiday: `${month}-20` }] },
+        e1: { data: [{ ExpirationIndex: 2, ExpirationDate: `${month}-15` }] }, h1: { data: [{ Holiday: `${month}-20` }] },
+        e2: { data: [{ ExpirationIndex: 3, ExpirationDate: `${month}-15` }] }, h2: { data: [] },
+        e3: { data: [{ ExpirationIndex: 4, ExpirationDate: `${month}-15` }] }, h3: { data: [] }
+    };
+    const make = async (mode = 'month') => {
+        localStorage.setItem('eurexExplorer.calendarMode', mode);
+        setWatchlist(['FESX', 'FDAX', 'OESX', 'SAPG']);
+        const client = { request: jest.fn(async () => response), endpoint: 'e', apiKey: 'k' };
+        const onOpenProduct = jest.fn();
+        const view = new CalendarView(client, { content: document.getElementById('c') }, { onOpenProduct });
+        view.show();
+        await wait();
+        await wait();
+        return { view, box: document.getElementById('c'), onOpenProduct };
+    };
+    const cell = (box, day) => [...box.querySelectorAll('.cal-cell:not(.out)')].find(td => td.querySelector('.cal-daynum').textContent === String(day));
+
+    test('the layout toggle switches between agenda and month grid and is remembered', async () => {
+        const { box } = await make('agenda');
+        expect(box.querySelector('.cal-table')).toBeNull();
+        expect(box.querySelectorAll('.cal-mode')).toHaveLength(2);
+        box.querySelectorAll('.cal-mode')[1].click();
+        expect(box.querySelector('.cal-table')).not.toBeNull();
+        expect(box.querySelectorAll('.cal-mode')[1].getAttribute('aria-pressed')).toBe('true');
+        expect(localStorage.getItem('eurexExplorer.calendarMode')).toBe('month');
+        box.querySelectorAll('.cal-mode')[0].click();
+        expect(box.querySelector('.cal-table')).toBeNull();
+        expect(box.querySelector('.cal-days')).not.toBeNull();
+    });
+
+    test('draws the month with weekday headers and puts events on their day', async () => {
+        const { box } = await make();
+        expect([...box.querySelectorAll('.cal-table th')].map(th => th.textContent)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+        expect(box.querySelectorAll('.cal-table tbody tr').length).toBeGreaterThanOrEqual(4);
+        const c15 = cell(box, 15);
+        expect(c15.classList.contains('has-events')).toBe(true);
+        // four expirations: three tags and "+1"
+        expect(c15.querySelectorAll('.cal-tag')).toHaveLength(3);
+        expect(c15.querySelector('.cal-more').textContent).toBe('+1');
+        expect(c15.querySelector('.cal-dot.exp').textContent).toBe('4');
+        const c20 = cell(box, 20);
+        expect([...c20.querySelectorAll('.cal-tag')].map(t => [t.textContent, t.classList.contains('hol')])).toEqual([['FDAX', true], ['FESX', true]]); // alphabetical within a day
+        expect(cell(box, 10).classList.contains('has-events')).toBe(false);
+    });
+
+    test('a day button announces its events', async () => {
+        const { box } = await make();
+        expect(cell(box, 15).querySelector('.cal-daynum').getAttribute('aria-label')).toMatch(/^15 \w+ \d{4}, 4 expirations$/);
+        expect(cell(box, 20).querySelector('.cal-daynum').getAttribute('aria-label')).toMatch(/2 holidays$/);
+    });
+
+    test('selecting a day lists all its events, a tag opens the product', async () => {
+        const { box, onOpenProduct } = await make();
+        cell(box, 15).click();
+        const detail = box.querySelector('.cal-detail');
+        expect(detail.querySelectorAll('.cal-chip')).toHaveLength(4);
+        expect(cell(box, 15).classList.contains('selected')).toBe(true);
+        cell(box, 15).click(); // selecting again clears it
+        expect(box.querySelector('.cal-detail')).toBeNull();
+        cell(box, 20).querySelector('.cal-tag').click();
+        expect(onOpenProduct).toHaveBeenCalledWith('FDAX');
+        expect(box.querySelector('.cal-detail')).toBeNull(); // a tag click does not also select the day
+    });
+
+    test('an empty day can be selected', async () => {
+        const { box } = await make();
+        cell(box, 10).click();
+        expect(box.querySelector('.cal-detail').textContent).toContain('No expirations or holidays');
+    });
+
+    test('navigates months and returns to today', async () => {
+        const { box } = await make();
+        const title = () => box.querySelector('.cal-nav-title').textContent;
+        const start = title();
+        box.querySelector('.cal-nav-btn[aria-label="Next month"]').click();
+        expect(title()).not.toBe(start);
+        expect(box.querySelectorAll('.cal-tag')).toHaveLength(0); // events are in the starting month only
+        expect(box.textContent).toContain('Nothing in this month');
+        box.querySelector('.cal-nav-btn[aria-label="Previous month"]').click();
+        expect(title()).toBe(start);
+        box.querySelector('.cal-nav-btn[aria-label="Next month"]').click();
+        [...box.querySelectorAll('.cal-nav .pc-btn')].find(b => b.textContent === 'Today').click();
+        expect(title()).toBe(start);
+        expect(box.querySelector('.cal-cell.today')).not.toBeNull();
+        expect(box.querySelector('.cal-cell.selected')).not.toBeNull();
+    });
+
+    test('the kind toggles apply to the grid and the export follows the month shown', async () => {
+        const { box } = await make();
+        expect(box.querySelector('.cal-ics').disabled).toBe(false);
+        const [exp] = box.querySelectorAll('.cal-toggle input');
+        exp.checked = false;
+        exp.dispatchEvent(new Event('change'));
+        expect(cell(box, 15).classList.contains('has-events')).toBe(false);
+        expect(cell(box, 20).classList.contains('has-events')).toBe(true);
+        box.querySelector('.cal-nav-btn[aria-label="Next month"]').click();
+        expect(box.querySelector('.cal-ics').disabled).toBe(true);
+    });
+
+    test('the time range select belongs to the agenda only', async () => {
+        const { box } = await make();
+        expect(box.querySelector('.cal-options select').hidden).toBe(true);
+        box.querySelectorAll('.cal-mode')[0].click();
+        expect(box.querySelector('.cal-options select').hidden).toBe(false);
+    });
+});
