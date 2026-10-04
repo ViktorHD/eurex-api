@@ -119,3 +119,42 @@ export function resolveRules(rows, { tradeType, instrumentType }) {
     const base = pick(orderBook, simple);
     return { rules: base, tradeType: orderBook, instrumentType: simple, fallback: base.length > 0 };
 }
+
+// ---- Valid combinations ----
+// A tick rule always belongs to a trade type AND an instrument type. The combinations that exist are those of
+// TESProfiles (TESType x InstrumentType); the order book exists for every instrument type.
+
+/**
+ * Choices for the selects and the set of valid pairs.
+ * Returns { tradeTypes, instrumentTypes, valid } where valid is a Set of "trade|instrument" keys (see pairKey),
+ * or null when TESProfiles are not available (then every combination is accepted).
+ */
+export function selectionOptions(tickRows, tesProfiles) {
+    const tick = tickRows || [];
+    const tes = tesProfiles || [];
+    const hasTes = tes.length > 0;
+    const pick = (list, field) => list.map(r => r[field] ?? '').filter(Boolean);
+    const unique = (list) => { const seen = new Set(); return list.filter(v => !seen.has(normKey(v)) && seen.add(normKey(v))); };
+
+    const orderBook = tick.find(r => isOrderBook(r.TradeType))?.TradeType ?? 'ORDER_BOOK';
+    const tradeTypes = unique([orderBook, ...pick(tick, 'TradeType'), ...pick(tes, 'TESType'), ...(hasTes ? [] : ['BLOCK'])])
+        .sort((a, b) => Number(isOrderBook(b)) - Number(isOrderBook(a)) || a.localeCompare(b));
+    const instrumentTypes = unique([...pick(tick, 'InstrumentType'), ...pick(tes, 'InstrumentType')])
+        .sort((a, b) => Number(isSimpleInstrument(b)) - Number(isSimpleInstrument(a)) || a.localeCompare(b));
+
+    let valid = null;
+    if (hasTes) {
+        valid = new Set(tes.filter(p => p.TESType && p.InstrumentType).map(p => pairKey(p.TESType, p.InstrumentType)));
+        instrumentTypes.forEach(i => valid.add(pairKey(orderBook, i)));
+    }
+    return { tradeTypes, instrumentTypes, valid };
+}
+
+export const pairKey = (tradeType, instrumentType) => `${normKey(tradeType)}|${normKey(instrumentType)}`;
+
+export const isValidPair = (valid, tradeType, instrumentType) => !valid || valid.has(pairKey(tradeType, instrumentType));
+
+// Instrument types that exist for a trade type
+export function instrumentsFor(valid, instrumentTypes, tradeType) {
+    return valid ? instrumentTypes.filter(i => valid.has(pairKey(tradeType, i))) : instrumentTypes;
+}

@@ -4198,3 +4198,6 @@ button.close-tab { background: none; border: 0; color: inherit; font: inherit; c
 
 /* The product card uses the full width (columns are added as the window grows); the list views stay narrow */
 #productCardContent.pc-container { max-width: 1680px; }
+
+.pc-note.bad { background: #fdecec; border-left-color: var(--error); color: #8a1c1c; }
+.pc-field.invalid .pc-select { border-color: var(--error); background: #fdecec; box-shadow: 0 0 0 2px rgba(211,47,47,0.18); }

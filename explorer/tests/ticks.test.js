@@ -114,3 +114,45 @@ describe('choosing tick rules', () => {
         expect(resolveRules([], { tradeType: 'BLOCK', instrumentType: 'X' })).toMatchObject({ rules: [], fallback: false });
     });
 });
+
+import { selectionOptions, isValidPair, instrumentsFor } from '../ticks.js';
+
+describe('valid trade type / instrument type combinations', () => {
+    const ticks = [
+        { TradeType: 'ORDER_BOOK', InstrumentType: 'SIMPLE_INSTRUMENT', StartPrice: 0, EndPrice: null, PriceStep: 1 },
+        { TradeType: 'ORDER_BOOK', InstrumentType: 'STRATEGY', StartPrice: 0, EndPrice: null, PriceStep: 0.5 }
+    ];
+    const tes = [
+        { TESType: 'BLOCK', InstrumentType: 'SIMPLE_INSTRUMENT' },
+        { TESType: 'BLOCK', InstrumentType: 'STRATEGY' },
+        { TESType: 'EFP-IDX', InstrumentType: 'STRATEGY' },
+        { TESType: 'EFP-IDX', InstrumentType: 'FLEX_SIMPLE' }
+    ];
+    const o = selectionOptions(ticks, tes);
+
+    test('trade types come from the order book, the tick rules and TESProfiles', () => {
+        expect(o.tradeTypes).toEqual(['ORDER_BOOK', 'BLOCK', 'EFP-IDX']);
+        expect(o.instrumentTypes).toEqual(['SIMPLE_INSTRUMENT', 'FLEX_SIMPLE', 'STRATEGY']);
+    });
+
+    test('TESProfiles define the valid pairs, the order book is valid for every instrument type', () => {
+        expect(isValidPair(o.valid, 'BLOCK', 'SIMPLE_INSTRUMENT')).toBe(true);
+        expect(isValidPair(o.valid, 'EFP-IDX', 'STRATEGY')).toBe(true);
+        expect(isValidPair(o.valid, 'ORDER_BOOK', 'FLEX_SIMPLE')).toBe(true);
+        expect(isValidPair(o.valid, 'EFP-IDX', 'SIMPLE_INSTRUMENT')).toBe(false);
+        expect(isValidPair(o.valid, 'block', 'simple instrument')).toBe(true);
+    });
+
+    test('lists the instrument types that exist for a trade type', () => {
+        expect(instrumentsFor(o.valid, o.instrumentTypes, 'EFP-IDX')).toEqual(['FLEX_SIMPLE', 'STRATEGY']);
+        expect(instrumentsFor(o.valid, o.instrumentTypes, 'ORDER_BOOK')).toEqual(o.instrumentTypes);
+    });
+
+    test('without TESProfiles nothing can be judged invalid and BLOCK is still offered', () => {
+        const none = selectionOptions(ticks, null);
+        expect(none.valid).toBeNull();
+        expect(none.tradeTypes).toEqual(['ORDER_BOOK', 'BLOCK']);
+        expect(isValidPair(none.valid, 'EFP-IDX', 'SIMPLE_INSTRUMENT')).toBe(true);
+        expect(instrumentsFor(null, ['A'], 'X')).toEqual(['A']);
+    });
+});
