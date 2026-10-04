@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentView = 'api-explorer';
 
     function switchAppView(view, options = {}) {
+        document.documentElement.classList.remove('boot-overview');
         VIEWS[currentView]?.onHide?.();
         currentView = VIEWS[view] ? view : 'api-explorer';
 

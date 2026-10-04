@@ -4307,3 +4307,9 @@ button.close-tab { background: none; border: 0; color: inherit; font: inherit; c
 .tab-menu-item:disabled { color: #aab2b8; cursor: default; }
 .tab-menu-item kbd { font: inherit; font-size: 0.7rem; color: var(--eurex-grey); }
 @media (max-width: 768px) { .tabs-bar .tab { min-width: 90px; } }
+
+/* First paint before app.js runs: show the API Overview, not the Explorer (class removed by app.js) */
+html.boot-overview #apiOverviewPane.hidden { display: flex !important; }
+html.boot-overview #queryPane, html.boot-overview .results-pane, html.boot-overview #docsPane,
+html.boot-overview .action-bar, html.boot-overview .tabs-bar, html.boot-overview .workspace-grid .resize-handle { display: none !important; }
+html.boot-overview #nav-api-explorer.active { background: transparent; color: inherit; box-shadow: none; }
