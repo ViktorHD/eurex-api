@@ -65,3 +65,51 @@ describe('rangeEnd', () => {
         expect(rangeEnd('2026-10-03', 12)).toBe('2027-10-03');
     });
 });
+
+import { monthGrid, shiftMonth, eventsByDate, isoDate } from '../calendar.js';
+
+describe('monthGrid', () => {
+    test('weeks start on Monday and include the days of the neighbouring months', () => {
+        const weeks = monthGrid(2026, 10); // 1 October 2026 is a Thursday
+        expect(weeks).toHaveLength(5);
+        expect(weeks[0][0]).toMatchObject({ date: '2026-09-28', day: 28, inMonth: false });
+        expect(weeks[0][3]).toMatchObject({ date: '2026-10-01', inMonth: true });
+        expect(weeks[4][6]).toMatchObject({ date: '2026-11-01', inMonth: false });
+        expect(weeks.every(w => w.length === 7)).toBe(true);
+    });
+
+    test('weekends are flagged', () => {
+        const week = monthGrid(2026, 10)[0];
+        expect(week.map(d => d.weekend)).toEqual([false, false, false, false, false, true, true]);
+    });
+
+    test('a month that starts on Monday and has 28 days fits four weeks', () => {
+        const weeks = monthGrid(2027, 2); // 1 February 2027 is a Monday
+        expect(weeks).toHaveLength(4);
+        expect(weeks[0][0].date).toBe('2027-02-01');
+        expect(weeks[3][6].date).toBe('2027-02-28');
+    });
+
+    test('a month can need six weeks', () => {
+        expect(monthGrid(2026, 8)).toHaveLength(6); // 1 August 2026 is a Saturday, 31 days
+    });
+
+    test('leap day', () => {
+        const days = monthGrid(2028, 2).flat().filter(d => d.inMonth);
+        expect(days).toHaveLength(29);
+    });
+
+    test('shiftMonth wraps the year', () => {
+        expect(shiftMonth({ y: 2026, m: 12 }, 1)).toEqual({ y: 2027, m: 1 });
+        expect(shiftMonth({ y: 2026, m: 1 }, -1)).toEqual({ y: 2025, m: 12 });
+        expect(shiftMonth({ y: 2026, m: 5 }, 0)).toEqual({ y: 2026, m: 5 });
+        expect(shiftMonth({ y: 2026, m: 5 }, 14)).toEqual({ y: 2027, m: 7 });
+    });
+
+    test('eventsByDate and isoDate', () => {
+        const map = eventsByDate([{ date: '2026-10-23', kind: 'expiration', product: 'FESX', index: 1 }, { date: '2026-10-23', kind: 'holiday', product: 'FDAX', index: null }]);
+        expect(map.get('2026-10-23')).toEqual({ date: '2026-10-23', expirations: [{ product: 'FESX', index: 1 }], holidays: ['FDAX'] });
+        expect(map.get('2026-10-24')).toBeUndefined();
+        expect(isoDate(2026, 3, 7)).toBe('2026-03-07');
+    });
+});

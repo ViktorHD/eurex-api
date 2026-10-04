@@ -1,6 +1,6 @@
 // Calendar view: expirations and exchange holidays of the products you follow, by month, with .ics export.
 import { el, button, refreshIcons } from './dom.js';
-import { buildCalendarQuery, collectEvents, groupByDate, toIcs, rangeEnd, monthOf, MAX_PRODUCTS } from './calendar.js';
+import { buildCalendarQuery, collectEvents, groupByDate, toIcs, rangeEnd, monthOf, monthGrid, shiftMonth, eventsByDate, MAX_PRODUCTS } from './calendar.js';
 import { cetDate } from './tradingstatus.js';
 import { getWatchlist, toggleWatched, onWatchlistChange, normalizeProduct, isProductCode } from './watchlist.js';
 import { fetchProductCatalog } from './catalog.js';
@@ -10,6 +10,11 @@ import { downloadText } from './ui.js';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const MAX_CHIPS = 6;
+const MAX_TAGS = 3; // product tags shown inside a month cell
+const MODE_KEY = 'eurexExplorer.calendarMode';
+
+const loadMode = () => { try { return localStorage.getItem(MODE_KEY) === 'month' ? 'month' : 'agenda'; } catch (e) { return 'agenda'; } };
+const saveMode = (mode) => { try { localStorage.setItem(MODE_KEY, mode); } catch (e) { /* storage unavailable */ } };
 
 export class CalendarView {
     /** els: { content }; options: { onOpenProduct(code) } */
@@ -17,6 +22,10 @@ export class CalendarView {
         this.client = client;
         this.els = els;
         this.options = options;
+        this.mode = loadMode(); // 'agenda' (list by month) or 'month' (month grid)
+        const today = cetDate();
+        this.cursor = { y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) }; // month shown in the grid
+        this.selected = null; // day selected in the grid
         this.months = 6;
         this.showExpirations = true;
         this.showHolidays = true;
@@ -59,11 +68,23 @@ export class CalendarView {
         }
     }
 
-    _groups() {
+    _kindFilter(e) {
+        return e.kind === 'expiration' ? this.showExpirations : this.showHolidays;
+    }
+
+    // Agenda: the next N months from today. Month grid: any month, so every event of the response is available.
+    _events() {
+        if (this.mode === 'month') return collectEvents(this.response, this.products, '0000-01-01', '9999-12-31').filter(e => this._kindFilter(e));
         const from = cetDate();
-        const events = collectEvents(this.response, this.products, from, rangeEnd(from, this.months))
-            .filter(e => (e.kind === 'expiration' ? this.showExpirations : this.showHolidays));
-        return groupByDate(events);
+        return collectEvents(this.response, this.products, from, rangeEnd(from, this.months)).filter(e => this._kindFilter(e));
+    }
+
+    // Days listed in the current view (what the calendar export contains)
+    _groups() {
+        const groups = groupByDate(this._events());
+        if (this.mode !== 'month') return groups;
+        const prefix = `${this.cursor.y}-${String(this.cursor.m).padStart(2, '0')}`;
+        return groups.filter(g => monthOf(g.date) === prefix);
     }
 
     // ---------- Rendering ----------
@@ -110,7 +131,22 @@ export class CalendarView {
         bar.appendChild(chips);
 
         const opts = el('div', 'cal-options');
+        const modes = el('div', 'cal-modes');
+        modes.setAttribute('role', 'group');
+        modes.setAttribute('aria-label', 'Calendar layout');
+        [['agenda', 'Agenda', 'list'], ['month', 'Month', 'calendar']].forEach(([mode, label, iconName]) => {
+            const b = button(label, { className: 'cal-mode' + (this.mode === mode ? ' active' : ''), iconName, onClick: () => {
+                if (this.mode === mode) return;
+                this.mode = mode;
+                saveMode(mode);
+                this.render();
+            } });
+            b.setAttribute('aria-pressed', String(this.mode === mode));
+            modes.appendChild(b);
+        });
+        opts.appendChild(modes);
         const range = el('select', 'pc-select');
+        range.hidden = this.mode === 'month'; // the grid is browsed month by month
         range.setAttribute('aria-label', 'Time range');
         [[3, 'Next 3 months'], [6, 'Next 6 months'], [12, 'Next 12 months'], [24, 'Next 24 months']].forEach(([m, label]) => {
             const o = el('option', '', label);
@@ -153,11 +189,20 @@ export class CalendarView {
             return;
         }
         if (!this.response) return;
+        if (this.mode === 'month') {
+            this._renderMonth(box);
+            refreshIcons();
+            return;
+        }
+        this._renderAgenda(box);
+        refreshIcons();
+    }
+
+    _renderAgenda(box) {
         const groups = this._groups();
         box.querySelector('.cal-ics').disabled = groups.length === 0;
         if (!groups.length) {
             box.appendChild(el('p', 'pc-empty', 'Nothing in this time range for your products.'));
-            refreshIcons();
             return;
         }
         const today = cetDate();
@@ -179,13 +224,108 @@ export class CalendarView {
             label.appendChild(el('span', '', WEEKDAYS[d.getUTCDay()]));
             label.title = formatDateString(g.date);
             li.appendChild(label);
-            const items = el('div', 'cal-items');
-            if (g.expirations.length) items.appendChild(this._row('exp', 'Expiration', g.expirations.map(e => ({ product: e.product, note: e.index != null ? `index ${e.index}` : '' }))));
-            if (g.holidays.length) items.appendChild(this._row('hol', 'Holiday', g.holidays.map(p => ({ product: p, note: '' }))));
-            li.appendChild(items);
+            li.appendChild(this._dayItems(g));
             list.appendChild(li);
         });
-        refreshIcons();
+    }
+
+    // The expiration and holiday rows of one day
+    _dayItems(g) {
+        const items = el('div', 'cal-items');
+        if (g.expirations.length) items.appendChild(this._row('exp', 'Expiration', g.expirations.map(e => ({ product: e.product, note: e.index != null ? `index ${e.index}` : '' }))));
+        if (g.holidays.length) items.appendChild(this._row('hol', 'Holiday', g.holidays.map(p => ({ product: p, note: '' }))));
+        return items;
+    }
+
+    // ---------- Month grid ----------
+
+    _renderMonth(box) {
+        const { y, m } = this.cursor;
+        const today = cetDate();
+        const byDate = eventsByDate(this._events());
+        const inMonthCount = this._groups().length;
+        box.querySelector('.cal-ics').disabled = inMonthCount === 0;
+
+        const nav = el('div', 'cal-nav');
+        const step = (delta) => { this.cursor = shiftMonth(this.cursor, delta); this.selected = null; this.render(); };
+        const prev = button('‹', { className: 'cal-nav-btn', title: 'Previous month', onClick: () => step(-1) });
+        prev.setAttribute('aria-label', 'Previous month');
+        const next = button('›', { className: 'cal-nav-btn', title: 'Next month', onClick: () => step(1) });
+        next.setAttribute('aria-label', 'Next month');
+        const title = el('h3', 'cal-nav-title', `${MONTHS[m - 1]} ${y}`);
+        title.setAttribute('aria-live', 'polite');
+        const todayBtn = button('Today', { className: 'pc-btn', onClick: () => {
+            this.cursor = { y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) };
+            this.selected = today;
+            this.render();
+        } });
+        nav.append(prev, title, next, todayBtn);
+        box.appendChild(nav);
+
+        const table = el('table', 'cal-table');
+        const head = el('thead');
+        const hr = el('tr');
+        ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach((d, i) => { const th = el('th', i >= 5 ? 'weekend' : '', d); th.scope = 'col'; hr.appendChild(th); });
+        head.appendChild(hr);
+        table.appendChild(head);
+        const body = el('tbody');
+        monthGrid(y, m).forEach(week => {
+            const tr = el('tr');
+            week.forEach(day => {
+                const g = byDate.get(day.date);
+                const exp = g?.expirations.length || 0;
+                const hol = g?.holidays.length || 0;
+                const td = el('td', ['cal-cell', day.inMonth ? '' : 'out', day.weekend ? 'weekend' : '', day.date === today ? 'today' : '', day.date === this.selected ? 'selected' : '', exp || hol ? 'has-events' : ''].filter(Boolean).join(' '));
+                td.addEventListener('click', (e) => {
+                    if (e.target.closest('.cal-tag')) return; // a product tag opens the product
+                    this.selected = day.date === this.selected ? null : day.date;
+                    this.render();
+                });
+                const num = el('button', 'cal-daynum', String(day.day));
+                num.type = 'button';
+                const parts = [`${day.day} ${MONTHS[Number(day.date.slice(5, 7)) - 1]} ${day.date.slice(0, 4)}`];
+                if (exp) parts.push(`${exp} expiration${exp === 1 ? '' : 's'}`);
+                if (hol) parts.push(`${hol} holiday${hol === 1 ? '' : 's'}`);
+                num.setAttribute('aria-label', parts.join(', '));
+                num.setAttribute('aria-pressed', String(day.date === this.selected));
+                td.appendChild(num);
+
+                if (g) {
+                    const tags = el('div', 'cal-tags');
+                    const all = [...g.expirations.map(e => ({ kind: 'exp', product: e.product, note: e.index != null ? `index ${e.index}` : '' })), ...g.holidays.map(p => ({ kind: 'hol', product: p, note: '' }))];
+                    all.slice(0, MAX_TAGS).forEach(t => {
+                        tags.appendChild(button(t.product, { className: `cal-tag ${t.kind}`, title: `${t.kind === 'exp' ? 'Expiration' : 'Holiday'} ${t.product}${t.note ? ' · ' + t.note : ''}: open product card`, onClick: () => this.options.onOpenProduct?.(t.product) }));
+                    });
+                    if (all.length > MAX_TAGS) tags.appendChild(el('span', 'cal-more', `+${all.length - MAX_TAGS}`));
+                    td.appendChild(tags);
+                    // Narrow screens: counts instead of names
+                    const dots = el('div', 'cal-dots');
+                    if (exp) dots.appendChild(el('span', 'cal-dot exp', String(exp)));
+                    if (hol) dots.appendChild(el('span', 'cal-dot hol', String(hol)));
+                    td.appendChild(dots);
+                }
+                tr.appendChild(td);
+            });
+            body.appendChild(tr);
+        });
+        table.appendChild(body);
+        box.appendChild(table);
+
+        const legend = el('p', 'cal-legend');
+        legend.append(el('span', 'cal-key exp'), ' Expiration  ', el('span', 'cal-key hol'), ' Holiday');
+        box.appendChild(legend);
+
+        if (this.selected) {
+            const g = byDate.get(this.selected);
+            const d = new Date(`${this.selected}T12:00:00Z`);
+            const detail = el('section', 'cal-detail');
+            detail.appendChild(el('h4', '', `${WEEKDAYS[d.getUTCDay()]}, ${formatDateString(this.selected)}`));
+            if (g) detail.appendChild(this._dayItems(g));
+            else detail.appendChild(el('p', 'pc-empty', 'No expirations or holidays on this day.'));
+            box.appendChild(detail);
+        } else if (!inMonthCount) {
+            box.appendChild(el('p', 'pc-empty', 'Nothing in this month for your products.'));
+        }
     }
 
     _row(kind, label, entries) {
