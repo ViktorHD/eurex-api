@@ -10,13 +10,15 @@ const DATA = {
     TradingHours: { data: [{ StartContinuousTrading: '01:10:00', EndContinuousTrading: '22:00:00', EndOpeningAuction: null, EndClosingAuction: null, StartTES: '07:30:00', EndTES: '22:30:00', LTDBook: '12:00:00', LTDTES: '12:30:00' }] },
     Holidays: { data: [{ Holiday: '2099-12-24' }, { Holiday: '2020-01-01' }] },
     TickRules: { date: '2026-10-02', data: [
-        { TradeType: 'ORDERBOOK', InstrumentType: 'SIMPLE', StartPrice: 0, EndPrice: 10, PriceStep: 0.5 },
-        { TradeType: 'ORDERBOOK', InstrumentType: 'SIMPLE', StartPrice: 10, EndPrice: null, PriceStep: 1 },
-        { TradeType: 'TES', InstrumentType: 'SIMPLE', StartPrice: 0, EndPrice: null, PriceStep: 0.01 }
+        { TradeType: 'ORDER_BOOK', InstrumentType: 'SIMPLE_INSTRUMENT', StartPrice: 0, EndPrice: 10, PriceStep: 0.5 },
+        { TradeType: 'ORDER_BOOK', InstrumentType: 'SIMPLE_INSTRUMENT', StartPrice: 10, EndPrice: null, PriceStep: 1 },
+        { TradeType: 'EFP', InstrumentType: 'SIMPLE_INSTRUMENT', StartPrice: 0, EndPrice: null, PriceStep: 0.01 }
     ] },
     TESProfiles: { data: [
         { TESType: 'BLOCK', InstrumentType: 'SIMPLE_INSTRUMENT', MinLotSize: 100, NonDisclosureLimit: 1000, MinExpiryRange: 1, AllowBroker: true },
-        { TESType: 'BLOCK', InstrumentType: 'SIMPLE_INSTRUMENT', MinLotSize: 50, NonDisclosureLimit: 500, MinExpiryRange: 3 }
+        { TESType: 'BLOCK', InstrumentType: 'SIMPLE_INSTRUMENT', MinLotSize: 50, NonDisclosureLimit: 500, MinExpiryRange: 3 },
+        { TESType: 'EFP', InstrumentType: 'SIMPLE_INSTRUMENT', MinLotSize: 1, MinExpiryRange: 1 },
+        { TESType: 'EFP-IDX', InstrumentType: 'STRATEGY', MinLotSize: 1, MinExpiryRange: 1 }
     ] },
     Expirations: { data: [
         { ExpirationIndex: 1, ExpirationDate: '2099-03-19', MasterContract: 'M1' },
@@ -88,19 +90,54 @@ describe('ProductCard', () => {
         expect(out.textContent).toBe('Enter a number.');
         // other trade types have their own bands
         const trade = card3.querySelector('select');
-        expect([...trade.options].map(o => o.value)).toEqual(['ORDERBOOK', 'BLOCK', 'TES']);
-        trade.value = 'TES';
+        expect([...trade.options].map(o => o.value)).toEqual(['ORDER_BOOK', 'BLOCK', 'EFP', 'EFP-IDX']);
+        trade.value = 'EFP';
         trade.dispatchEvent(new Event('change'));
         expect([...card3.querySelectorAll('tbody tr')].map(tr => tr.lastChild.textContent)).toEqual(['0.01']);
         expect(card3.querySelector('.pc-note')).toBeNull();
         // BLOCK has no rules of its own: the order book rules apply, and the card says so
         trade.value = 'BLOCK';
         trade.dispatchEvent(new Event('change'));
-        expect(card3.querySelector('.pc-note').textContent).toBe('No tick rules for BLOCK · SIMPLE: the ORDERBOOK · SIMPLE tick rules apply.');
+        expect(card3.querySelector('.pc-note').textContent).toBe('No separate tick rules for BLOCK · SIMPLE_INSTRUMENT: the ORDER_BOOK · SIMPLE_INSTRUMENT tick rules apply.');
         expect([...card3.querySelectorAll('tbody tr')].map(tr => tr.lastChild.textContent)).toEqual(['0.5', '1']);
         card3.querySelector('input').value = '5.25';
         card3.querySelector('input').dispatchEvent(new Event('input'));
         expect(card3.querySelector('output').textContent).toContain('Nearest valid prices: 5 and 5.5');
+    });
+
+    test('a combination that does not exist in TESProfiles is highlighted and shows no rules', async () => {
+        const { card, box } = make();
+        await card.open('FESX');
+        const tick = [...box.querySelectorAll('.pc-card')].find(c => c.querySelector('h3').textContent === 'Tick rules');
+        const [trade, instrument] = tick.querySelectorAll('select');
+        trade.value = 'EFP-IDX';
+        trade.dispatchEvent(new Event('change'));
+        // EFP-IDX exists only for STRATEGY, the selected SIMPLE_INSTRUMENT is invalid
+        expect(tick.querySelectorAll('.pc-field.invalid')).toHaveLength(2);
+        expect(tick.querySelector('.pc-note.bad').textContent).toBe('EFP-IDX · SIMPLE_INSTRUMENT is not a valid combination. EFP-IDX exists for: STRATEGY.');
+        expect(tick.querySelector('table')).toBeNull();
+        expect(tick.querySelector('input')).toBeNull();
+        expect([...instrument.options].map(o => o.textContent)).toEqual(['SIMPLE_INSTRUMENT (not available)', 'STRATEGY']);
+        // choosing the instrument type that exists clears the warning; no tick rules of its own, so the order book applies
+        instrument.value = 'STRATEGY';
+        instrument.dispatchEvent(new Event('change'));
+        expect(tick.querySelectorAll('.pc-field.invalid')).toHaveLength(0);
+        expect(tick.querySelector('.pc-note.bad')).toBeNull();
+        expect(tick.querySelector('.pc-note').textContent).toContain('the ORDER_BOOK · SIMPLE_INSTRUMENT tick rules apply');
+        // the order book is valid for every instrument type
+        trade.value = 'ORDER_BOOK';
+        trade.dispatchEvent(new Event('change'));
+        expect(tick.querySelectorAll('.pc-field.invalid')).toHaveLength(0);
+    });
+
+    test('without TESProfiles no combination is judged invalid', async () => {
+        const { card, box } = make({ ...DATA, TESProfiles: null });
+        await card.open('FESX');
+        const tick = [...box.querySelectorAll('.pc-card')].find(c => c.querySelector('h3').textContent === 'Tick rules');
+        const trade = tick.querySelector('select');
+        trade.value = 'BLOCK';
+        trade.dispatchEvent(new Event('change'));
+        expect(tick.querySelector('.pc-note.bad')).toBeNull();
     });
 
     test('TES: tiers and the threshold allocated to each expiration', async () => {

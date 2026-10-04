@@ -5,7 +5,7 @@ import { el, icon, button, labelOf, hhmm, refreshIcons } from './dom.js';
 import { buildProductQuery } from './productquery.js';
 import { buildSchemaIndex } from './schemacheck.js';
 import { getStatus, nextHoliday, buildHolidayMap, STATUS_LABELS, cetDate } from './tradingstatus.js';
-import { tradeTypesOf, instrumentTypesOf, defaultSelection, resolveRules, checkPrice, normKey } from './ticks.js';
+import { selectionOptions, isValidPair, instrumentsFor, defaultSelection, resolveRules, checkPrice, normKey } from './ticks.js';
 import { profileGroups, tiers, allocate } from './tes.js';
 import { renderLineChart } from './linechart.js';
 import { groupSettlement, seriesFor, seriesStats } from './settlement.js';
@@ -247,16 +247,33 @@ export class ProductCard {
         const rows = this.data.TickRules;
         const title = 'Tick rules';
         if (!rows || !rows.length) return this._section(title, '', this._unavailable('TickRules'));
-        const tradeTypes = tradeTypesOf(rows);
-        const instrumentTypes = instrumentTypesOf(rows);
+        // A tick rule belongs to a trade type AND an instrument type; TESProfiles say which combinations exist
+        const { tradeTypes, instrumentTypes, valid } = selectionOptions(rows, this.data.TESProfiles);
         let sel = defaultSelection(rows);
         const holder = el('div', 'pc-tick');
+        const fields = {};
+        const pairLabel = (t, i) => [t, i].filter(Boolean).join(' · ');
         const draw = () => {
             holder.innerHTML = '';
+            const ok = isValidPair(valid, sel.tradeType, sel.instrumentType);
+            // Highlight both selects of a combination that does not exist, and mark the instrument types that do not
+            // exist for the chosen trade type
+            fields.trade?.classList.toggle('invalid', !ok);
+            fields.instrument?.wrap.classList.toggle('invalid', !ok);
+            fields.instrument?.select.querySelectorAll('option').forEach(o => {
+                const exists = isValidPair(valid, sel.tradeType, o.value);
+                o.textContent = exists ? o.value : `${o.value} (not available)`;
+            });
+            if (!ok) {
+                const existing = instrumentsFor(valid, instrumentTypes, sel.tradeType);
+                const warn = el('p', 'pc-note bad', `${pairLabel(sel.tradeType, sel.instrumentType)} is not a valid combination.${existing.length ? ` ${sel.tradeType} exists for: ${existing.join(', ')}.` : ''}`);
+                warn.setAttribute('role', 'alert');
+                holder.appendChild(warn);
+                return;
+            }
             const { rules, tradeType, instrumentType, fallback } = resolveRules(rows, sel);
             if (fallback) {
-                const label = (t, i) => [t, i].filter(Boolean).join(' · ');
-                holder.appendChild(el('p', 'pc-note', `No tick rules for ${label(sel.tradeType, sel.instrumentType)}: the ${label(tradeType, instrumentType)} tick rules apply.`));
+                holder.appendChild(el('p', 'pc-note', `No separate tick rules for ${pairLabel(sel.tradeType, sel.instrumentType)}: the ${pairLabel(tradeType, instrumentType)} tick rules apply.`));
             }
             if (!rules.length) {
                 holder.appendChild(el('p', 'pc-empty', 'No tick rules listed for this selection.'));
@@ -321,11 +338,16 @@ export class ProductCard {
             });
             s.addEventListener('change', () => onChange(s.value));
             wrap.appendChild(s);
-            return wrap;
+            return { wrap, select: s };
         };
         const controls = el('div', 'pc-controls');
-        controls.appendChild(select('Trade type', tradeTypes, sel.tradeType, (v) => { sel = { ...sel, tradeType: v }; draw(); }));
-        if (instrumentTypes.length > 1) controls.appendChild(select('Instrument type', instrumentTypes, sel.instrumentType, (v) => { sel = { ...sel, instrumentType: v }; draw(); }));
+        const trade = select('Trade type', tradeTypes, sel.tradeType, (v) => { sel = { ...sel, tradeType: v }; draw(); });
+        fields.trade = trade.wrap;
+        controls.appendChild(trade.wrap);
+        if (instrumentTypes.length > 1) {
+            fields.instrument = select('Instrument type', instrumentTypes, sel.instrumentType, (v) => { sel = { ...sel, instrumentType: v }; draw(); });
+            controls.appendChild(fields.instrument.wrap);
+        }
         draw();
         return this._section(title, this.dates.TickRules ? `valid ${formatDateString(this.dates.TickRules)}` : '', controls, holder);
     }
