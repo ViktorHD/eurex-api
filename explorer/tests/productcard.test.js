@@ -45,7 +45,7 @@ describe('ProductCard', () => {
         expect(query).toContain('ProductInfos(filter: { Product: { eq: "FESX" } })');
         expect(box.querySelector('.pc-title h2').textContent).toBe('FESX');
         expect(box.querySelector('.pc-name').textContent).toBe('Euro STOXX 50 Index Futures');
-        expect(titles(box)).toEqual(['Product data', 'Trading hours', 'Tick sizes', 'TES (block trades)', 'Expirations and holidays', 'Settlement prices']);
+        expect(titles(box)).toEqual(['Product data', 'Trading hours', 'Tick rules', 'TES (block trades)', 'Expirations and holidays', 'Settlement prices']);
     });
 
     test('product data skips empty values and splits camel case labels', async () => {
@@ -69,10 +69,10 @@ describe('ProductCard', () => {
         expect(hours.textContent).toContain('Next holiday 2099-12-24');
     });
 
-    test('tick sizes: bands per group and the price checker', async () => {
+    test('tick rules: order book by default, other trade types, BLOCK falls back, price checker', async () => {
         const { card, box } = make();
         await card.open('FESX');
-        const card3 = [...box.querySelectorAll('.pc-card')].find(c => c.querySelector('h3').textContent === 'Tick sizes');
+        const card3 = [...box.querySelectorAll('.pc-card')].find(c => c.querySelector('h3').textContent === 'Tick rules');
         expect([...card3.querySelectorAll('tbody tr')].map(tr => [...tr.children].map(td => td.textContent))).toEqual([['0', '10', '0.5'], ['10', 'and above', '1']]);
         const input = card3.querySelector('input');
         const out = card3.querySelector('output');
@@ -86,11 +86,21 @@ describe('ProductCard', () => {
         input.value = 'abc';
         input.dispatchEvent(new Event('input'));
         expect(out.textContent).toBe('Enter a number.');
-        // switching the group changes the bands
-        const sel = card3.querySelector('select');
-        sel.value = '1';
-        sel.dispatchEvent(new Event('change'));
-        expect([...card3.querySelectorAll('tbody tr')]).toHaveLength(1);
+        // other trade types have their own bands
+        const trade = card3.querySelector('select');
+        expect([...trade.options].map(o => o.value)).toEqual(['ORDERBOOK', 'BLOCK', 'TES']);
+        trade.value = 'TES';
+        trade.dispatchEvent(new Event('change'));
+        expect([...card3.querySelectorAll('tbody tr')].map(tr => tr.lastChild.textContent)).toEqual(['0.01']);
+        expect(card3.querySelector('.pc-note')).toBeNull();
+        // BLOCK has no rules of its own: the order book rules apply, and the card says so
+        trade.value = 'BLOCK';
+        trade.dispatchEvent(new Event('change'));
+        expect(card3.querySelector('.pc-note').textContent).toBe('No tick rules for BLOCK · SIMPLE: the ORDERBOOK · SIMPLE tick rules apply.');
+        expect([...card3.querySelectorAll('tbody tr')].map(tr => tr.lastChild.textContent)).toEqual(['0.5', '1']);
+        card3.querySelector('input').value = '5.25';
+        card3.querySelector('input').dispatchEvent(new Event('input'));
+        expect(card3.querySelector('output').textContent).toContain('Nearest valid prices: 5 and 5.5');
     });
 
     test('TES: tiers and the threshold allocated to each expiration', async () => {
@@ -162,7 +172,7 @@ describe('ProductCard', () => {
     test('missing sections say why, partial errors are listed', async () => {
         const { card, box } = make({ ...DATA, TickRules: null, partialErrors: ['TickRules: upstream timeout'] });
         await card.open('FESX');
-        const ticks = [...box.querySelectorAll('.pc-card')].find(c => c.querySelector('h3').textContent === 'Tick sizes');
+        const ticks = [...box.querySelectorAll('.pc-card')].find(c => c.querySelector('h3').textContent === 'Tick rules');
         expect(ticks.textContent).toContain('TickRules could not be loaded.');
         expect(box.querySelector('.dt-warning').textContent).toContain('TickRules: upstream timeout');
     });
@@ -196,5 +206,33 @@ describe('ProductCard', () => {
         release();
         await first;
         expect(box.querySelector('.pc-title h2').textContent).toBe('FESX');
+    });
+});
+
+describe('ProductCard layout', () => {
+    test('cards are packed into columns, in order, and keep their place when content changes', async () => {
+        const { card, box } = make();
+        await card.open('FESX');
+        const grid = box.querySelector('.pc-grid');
+        expect(grid.querySelectorAll('.pc-col').length).toBeGreaterThanOrEqual(1);
+        expect(grid.querySelectorAll('.pc-card')).toHaveLength(6);
+    });
+
+    test('with several columns each card goes to the shortest one', () => {
+        const { card, box } = make();
+        const grid = document.createElement('div');
+        Object.defineProperty(grid, 'clientWidth', { value: 1300 }); // room for three columns
+        box.appendChild(grid);
+        const heights = [300, 100, 100, 100, 100, 100];
+        const cards = heights.map((h, i) => {
+            const c = document.createElement('section');
+            c.className = 'pc-card';
+            c.id = `c${i}`;
+            Object.defineProperty(c, 'offsetHeight', { value: h });
+            return c;
+        });
+        card._pack(grid, cards);
+        const cols = [...grid.querySelectorAll('.pc-col')].map(col => [...col.children].map(c => c.id));
+        expect(cols).toEqual([['c0'], ['c1', 'c3', 'c5'], ['c2', 'c4']]); // the tall card stays alone, the others fill the shorter columns
     });
 });

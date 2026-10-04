@@ -28,7 +28,7 @@ const DATASET_INFO = {
     Enlight: 'Eurex EnLight RFQ configuration',
     ProductInfos: 'Product master data',
     Contracts: 'Listed contracts (checked for FESX)',
-    TickRules: 'Tick sizes and price steps',
+    TickRules: 'Tick rules: price steps per price band',
     EnlightResponders: 'Eurex EnLight responders',
     FlexibleContracts: 'Flexible contracts (checked for FESX)',
     Changelog: 'Announced and past API changes',

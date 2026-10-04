@@ -1,11 +1,11 @@
 // Product card: everything the API knows about one product on one page, for the daily "what are the rules for X"
-// lookup: master data, trading hours with live status, tick sizes (with a price checker), TES lot sizes per
+// lookup: master data, trading hours with live status, tick rules (with a price checker), TES lot sizes per
 // expiration, upcoming expirations and holidays (calendar export), settlement price history and vendor codes.
 import { el, icon, button, labelOf, hhmm, refreshIcons } from './dom.js';
 import { buildProductQuery } from './productquery.js';
 import { buildSchemaIndex } from './schemacheck.js';
 import { getStatus, nextHoliday, buildHolidayMap, STATUS_LABELS, cetDate } from './tradingstatus.js';
-import { ruleGroups, rulesFor, checkPrice } from './ticks.js';
+import { tradeTypesOf, instrumentTypesOf, defaultSelection, resolveRules, checkPrice, normKey } from './ticks.js';
 import { profileGroups, tiers, allocate } from './tes.js';
 import { renderLineChart } from './linechart.js';
 import { groupSettlement, seriesFor, seriesStats } from './settlement.js';
@@ -98,11 +98,39 @@ export class ProductCard {
             warn.appendChild(ul);
             box.appendChild(warn);
         }
+        const cards = [this._overview(info), this._hours(), this._ticks(), this._tes(), this._calendar(), this._settlementSection(), this._vendor()].filter(Boolean);
         const grid = el('div', 'pc-grid');
-        [this._overview(info), this._hours(), this._ticks(), this._tes(), this._calendar(), this._settlementSection(), this._vendor()]
-            .filter(Boolean).forEach(s => grid.appendChild(s));
         box.appendChild(grid);
+        this._pack(grid, cards);
         refreshIcons();
+    }
+
+    // Cards differ a lot in height, so a plain grid leaves gaps. Each card goes into the column that is currently
+    // shortest (masonry). Cards are placed once and keep their column when their content grows later (settlement chart);
+    // the number of columns follows the width of the page.
+    _pack(grid, cards) {
+        this.packed = { grid, cards };
+        const place = () => {
+            const width = grid.clientWidth || this.els.content.clientWidth || 0;
+            const count = Math.max(1, Math.min(3, Math.floor((width + 16) / 436)));
+            if (grid.dataset.cols === String(count)) return;
+            grid.dataset.cols = String(count);
+            grid.innerHTML = '';
+            const cols = Array.from({ length: count }, () => { const c = el('div', 'pc-col'); grid.appendChild(c); return c; });
+            const heights = cols.map(() => 0);
+            cards.forEach(card => {
+                const at = heights.indexOf(Math.min(...heights));
+                cols[at].appendChild(card);
+                // Real height when laid out; otherwise (no layout) an estimate from the amount of text
+                heights[at] += card.offsetHeight || Math.max(80, card.textContent.length / 3);
+            });
+        };
+        place();
+        this._resizeObserver?.disconnect();
+        if (typeof ResizeObserver !== 'undefined') {
+            this._resizeObserver = new ResizeObserver(() => { if (grid.isConnected) place(); });
+            this._resizeObserver.observe(grid);
+        }
     }
 
     _section(title, hint, ...children) {
@@ -213,17 +241,27 @@ export class ProductCard {
         return this._section('Trading hours', 'CET / CEST', badge, table, note);
     }
 
-    // ---------- Tick sizes ----------
+    // ---------- Tick rules ----------
 
     _ticks() {
         const rows = this.data.TickRules;
-        if (!rows || !rows.length) return this._section('Tick sizes', '', this._unavailable('TickRules'));
-        const groups = ruleGroups(rows);
+        const title = 'Tick rules';
+        if (!rows || !rows.length) return this._section(title, '', this._unavailable('TickRules'));
+        const tradeTypes = tradeTypesOf(rows);
+        const instrumentTypes = instrumentTypesOf(rows);
+        let sel = defaultSelection(rows);
         const holder = el('div', 'pc-tick');
-        let current = groups[0];
         const draw = () => {
             holder.innerHTML = '';
-            const rules = rulesFor(rows, current);
+            const { rules, tradeType, instrumentType, fallback } = resolveRules(rows, sel);
+            if (fallback) {
+                const label = (t, i) => [t, i].filter(Boolean).join(' · ');
+                holder.appendChild(el('p', 'pc-note', `No tick rules for ${label(sel.tradeType, sel.instrumentType)}: the ${label(tradeType, instrumentType)} tick rules apply.`));
+            }
+            if (!rules.length) {
+                holder.appendChild(el('p', 'pc-empty', 'No tick rules listed for this selection.'));
+                return;
+            }
             const table = el('table', 'pc-table pc-num');
             const head = el('thead');
             const hr = el('tr');
@@ -243,10 +281,12 @@ export class ProductCard {
 
             // Price checker
             const form = el('form', 'pc-check');
+            form.setAttribute('autocomplete', 'off');
             const label = el('label', '', 'Check a price');
             const input = el('input');
             input.type = 'text';
             input.inputMode = 'decimal';
+            input.autocomplete = 'off';
             input.placeholder = 'e.g. 5512.5';
             input.setAttribute('aria-label', 'Price to check');
             label.appendChild(input);
@@ -269,20 +309,25 @@ export class ProductCard {
             holder.appendChild(form);
             holder.appendChild(el('p', 'pc-hint', 'Prices are checked as multiples of the tick size from zero within the band that contains them.'));
         };
-        const controls = [];
-        if (groups.length > 1) {
-            const sel = el('select', 'pc-select');
-            sel.setAttribute('aria-label', 'Trade type and instrument type');
-            groups.forEach((g, i) => {
-                const o = el('option', '', [g.tradeType, g.instrumentType].filter(Boolean).join(' · ') || 'All');
-                o.value = String(i);
-                sel.appendChild(o);
+        const select = (labelText, values, current, onChange) => {
+            const wrap = el('label', 'pc-field');
+            wrap.appendChild(el('span', 'pc-hint', labelText));
+            const s = el('select', 'pc-select');
+            values.forEach(v => {
+                const o = el('option', '', v);
+                o.value = v;
+                if (normKey(v) === normKey(current)) o.selected = true;
+                s.appendChild(o);
             });
-            sel.addEventListener('change', () => { current = groups[Number(sel.value)]; draw(); });
-            controls.push(sel);
-        }
+            s.addEventListener('change', () => onChange(s.value));
+            wrap.appendChild(s);
+            return wrap;
+        };
+        const controls = el('div', 'pc-controls');
+        controls.appendChild(select('Trade type', tradeTypes, sel.tradeType, (v) => { sel = { ...sel, tradeType: v }; draw(); }));
+        if (instrumentTypes.length > 1) controls.appendChild(select('Instrument type', instrumentTypes, sel.instrumentType, (v) => { sel = { ...sel, instrumentType: v }; draw(); }));
         draw();
-        return this._section('Tick sizes', this.dates.TickRules ? `valid ${formatDateString(this.dates.TickRules)}` : '', ...controls, holder);
+        return this._section(title, this.dates.TickRules ? `valid ${formatDateString(this.dates.TickRules)}` : '', controls, holder);
     }
 
     // ---------- TES ----------

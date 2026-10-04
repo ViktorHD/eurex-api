@@ -25,12 +25,14 @@ export function ruleGroups(rules) {
     return [...seen.values()];
 }
 
+// Bands (start, end, step) of the given rows, lowest first; rows without a usable step are ignored
+const toBands = (list) => list
+    .map(r => ({ start: num(r.StartPrice) ?? -Infinity, end: num(r.EndPrice), step: num(r.PriceStep) }))
+    .filter(r => r.step !== null && r.step > 0)
+    .sort((a, b) => a.start - b.start);
+
 export function rulesFor(rules, { tradeType, instrumentType }) {
-    return (rules || [])
-        .filter(r => (r.TradeType ?? '') === tradeType && (r.InstrumentType ?? '') === instrumentType)
-        .map(r => ({ start: num(r.StartPrice) ?? -Infinity, end: num(r.EndPrice), step: num(r.PriceStep) }))
-        .filter(r => r.step !== null && r.step > 0)
-        .sort((a, b) => a.start - b.start);
+    return toBands((rules || []).filter(r => (r.TradeType ?? '') === tradeType && (r.InstrumentType ?? '') === instrumentType));
 }
 
 export function ruleFor(sorted, price) {
@@ -65,4 +67,55 @@ export function checkPrice(sorted, price) {
     const above = (valid ? p : p - rem + s) / f;
     const round = (n) => Number(n.toFixed(Math.max(decimals(price), decimals(rule.step))));
     return { rule, step: rule.step, valid, below: round(below), above: round(above) };
+}
+
+// ---- Choosing which tick rules apply ----
+
+// 'ORDER_BOOK', 'Order book' and 'ORDERBOOK' are the same key
+export const normKey = (v) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const isOrderBook = (v) => normKey(v) === 'orderbook';
+const isSimpleInstrument = (v) => normKey(v) === 'simpleinstrument';
+
+// Trade types in the data, order book first; BLOCK is always offered (block trades follow the order book rules when
+// the product has none of their own)
+export function tradeTypesOf(rows) {
+    const types = [...new Set((rows || []).map(r => r.TradeType ?? '').filter(Boolean))];
+    if (!types.some(t => normKey(t) === 'block')) types.push('BLOCK');
+    return types.sort((a, b) => Number(isOrderBook(b)) - Number(isOrderBook(a)) || a.localeCompare(b));
+}
+
+// Instrument types in the data, simple instruments first
+export function instrumentTypesOf(rows) {
+    const types = [...new Set((rows || []).map(r => r.InstrumentType ?? '').filter(Boolean))];
+    return types.sort((a, b) => Number(isSimpleInstrument(b)) - Number(isSimpleInstrument(a)) || a.localeCompare(b));
+}
+
+// The rules to start with: order book, simple instrument
+export function defaultSelection(rows) {
+    const trade = tradeTypesOf(rows);
+    const instr = instrumentTypesOf(rows);
+    return { tradeType: trade[0] ?? '', instrumentType: instr[0] ?? '' };
+}
+
+const sameKey = (a, b) => normKey(a) === normKey(b);
+
+/**
+ * Tick rules for a trade type and instrument type. When there are none for that pair (typically BLOCK), the order
+ * book rules of the same instrument type apply, then the order book rules of the simple instrument.
+ * Returns { rules, tradeType, instrumentType, fallback } where tradeType / instrumentType name the rules actually used.
+ */
+export function resolveRules(rows, { tradeType, instrumentType }) {
+    const list = rows || [];
+    const pick = (t, i) => toBands(list.filter(r => sameKey(r.TradeType, t) && sameKey(r.InstrumentType, i)));
+    const own = pick(tradeType, instrumentType);
+    if (own.length) return { rules: own, tradeType, instrumentType, fallback: false };
+
+    const orderBook = list.find(r => isOrderBook(r.TradeType))?.TradeType ?? 'ORDER_BOOK';
+    const sameInstrument = pick(orderBook, instrumentType);
+    if (sameInstrument.length) return { rules: sameInstrument, tradeType: orderBook, instrumentType, fallback: true };
+
+    const simple = list.find(r => isSimpleInstrument(r.InstrumentType))?.InstrumentType ?? '';
+    const base = pick(orderBook, simple);
+    return { rules: base, tradeType: orderBook, instrumentType: simple, fallback: base.length > 0 };
 }
