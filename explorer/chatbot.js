@@ -86,6 +86,8 @@ export class Chatbot {
                 response = await this.callClaudeAPI(text, apiKey);
             } else if (provider === 'databricks') {
                 response = await this.callDatabricksAPI(text);
+            } else if (provider === 'builtin') {
+                response = await this.callDatabricksAPI(text, '/api/llm', 'Built-in assistant');
             } else {
                 response = await this.callGeminiAPI(text, apiKey);
             }
@@ -250,7 +252,7 @@ query {
         throw new Error("Maximum tool execution turns exceeded.");
     }
 
-    async callDatabricksAPI(message) {
+    async callDatabricksAPI(message, endpoint = '/api/databricks', label = 'Databricks Agent') {
         if (this.databricksHistory.length === 0) {
             let schemaSummary = "No schema data available.";
             try {
@@ -317,7 +319,7 @@ Guidelines:
         }];
 
         for (let turn = 0; turn < 5; turn++) {
-            const response = await fetch('/api/databricks', {
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ messages: this.databricksHistory, tools })
@@ -329,7 +331,7 @@ Guidelines:
                     throw new Error('Rate limit exceeded. Please wait and try again.');
                 }
                 const detail = errorData.error?.detail || '';
-                const msg = errorData.error?.message || `Databricks Agent error (${response.status})`;
+                const msg = errorData.error?.message || `${label} error (${response.status})`;
                 throw new Error(detail ? `${msg} — ${detail}` : msg);
             }
 

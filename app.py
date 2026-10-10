@@ -19,6 +19,10 @@ ENDPOINT_URL = os.environ.get(
     'https://dbc-f43533dd-29e2.cloud.databricks.com/serving-endpoints/Eurex_agent/invocations',
 )
 
+# Built-in assistant: any OpenAI-compatible chat API; OpenRouter's free models by default.
+LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'https://openrouter.ai/api/v1').rstrip('/')
+LLM_MODEL = os.environ.get('LLM_MODEL', 'openai/gpt-oss-120b:free')
+
 # The agent endpoint is paid for with the server's token, so it is protected against use by other sites and bursts.
 RATE_LIMIT_PER_MINUTE = int(os.environ.get('AGENT_RATE_LIMIT_PER_MINUTE', '20'))  # per client
 GLOBAL_LIMIT_PER_MINUTE = int(os.environ.get('AGENT_GLOBAL_LIMIT_PER_MINUTE', '120'))  # all clients together
@@ -55,9 +59,18 @@ def explorer_files(path):
     return send_from_directory(*target)
 
 
+def llm_key():
+    return os.environ.get('LLM_API_KEY') or os.environ.get('OPENROUTER_API_KEY', '')
+
+
 @app.route('/api/status')
 def status():
-    return jsonify({'status': 'Flask is running'})
+    # Only whether the assistants are configured, never the keys
+    return jsonify({
+        'status': 'Flask is running',
+        'builtinAssistant': bool(llm_key()),
+        'databricksAgent': bool(os.environ.get('DATABRICKS_TOKEN')),
+    })
 
 
 # ---------- Agent proxy protection ----------
@@ -144,24 +157,29 @@ def error_response(message, status):
     return resp
 
 
-@app.route('/api/databricks', methods=['POST'])
-def proxy_databricks():
+def guard(token):
+    """(messages, tools, error response). Origin check, configuration check, rate limit and body validation."""
     if not same_origin():
-        return error_response('Requests must come from this application.', 403)
-
-    token = os.environ.get('DATABRICKS_TOKEN', '')
+        return None, None, error_response('Requests must come from this application.', 403)
     if not token:
-        return error_response('The AI agent is not configured on this server.', 503)
-
+        return None, None, error_response('The AI agent is not configured on this server.', 503)
     wait = rate_limited(client_key())
     if wait:
         resp = error_response('Rate limit exceeded. Please wait and try again.', 429)
         resp.headers['Retry-After'] = str(wait)
-        return resp
-
+        return None, None, resp
     messages, tools, problem = validate_body(request.get_json(silent=True))
     if problem:
-        return error_response(problem, 400)
+        return None, None, error_response(problem, 400)
+    return messages, tools, None
+
+
+@app.route('/api/databricks', methods=['POST'])
+def proxy_databricks():
+    token = os.environ.get('DATABRICKS_TOKEN', '')
+    messages, tools, rejected = guard(token)
+    if rejected:
+        return rejected
 
     headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
     last_status = 502
@@ -185,6 +203,43 @@ def proxy_databricks():
 
     # Details stay in the server log; the browser only learns that the agent refused the request
     return error_response(f'The AI agent rejected the request (HTTP {last_status}).', last_status)
+
+
+@app.route('/api/llm', methods=['POST'])
+def proxy_llm():
+    """Built-in assistant: forwards the chat to an OpenAI-compatible API with the server's key."""
+    key = llm_key()
+    messages, tools, rejected = guard(key)
+    if rejected:
+        return rejected
+
+    payload = {'model': LLM_MODEL, 'messages': messages}
+    if tools:
+        payload['tools'] = tools
+    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {key}'}
+    try:
+        resp = requests.post(f'{LLM_BASE_URL}/chat/completions', json=payload, headers=headers, timeout=UPSTREAM_TIMEOUT_SECONDS)
+    except requests.RequestException as exc:
+        app.logger.warning('Assistant endpoint unreachable: %s', exc)
+        return error_response('The AI assistant could not be reached.', 502)
+
+    if resp.status_code == 429:
+        out = error_response('The free assistant is busy (shared quota reached). Please try again in a minute.', 429)
+        out.headers['Retry-After'] = '60'
+        return out
+    if resp.status_code != 200:
+        app.logger.warning('Assistant endpoint returned HTTP %s: %.300s', resp.status_code, resp.text)
+        return error_response(f'The AI assistant rejected the request (HTTP {resp.status_code}).', resp.status_code)
+    try:
+        body = resp.json()
+    except ValueError:
+        app.logger.warning('Assistant endpoint returned non-JSON: %.300s', resp.text)
+        return error_response('Unexpected response from the AI assistant.', 502)
+    if not body.get('choices'):
+        # OpenRouter reports some upstream failures as HTTP 200 with an error object
+        app.logger.warning('Assistant endpoint returned no choices: %.300s', resp.text)
+        return error_response('The AI assistant returned no answer. Please try again.', 502)
+    return jsonify(body)
 
 
 @app.after_request

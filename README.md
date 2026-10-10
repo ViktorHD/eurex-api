@@ -22,7 +22,8 @@ Everything personal (watchlist, tabs, history, saved queries, display settings) 
 
 ```bash
 pip install -r requirements.txt
-export DATABRICKS_TOKEN=...        # optional: only for the AI agent chat
+export OPENROUTER_API_KEY=...      # optional: enables the free built-in assistant (no key needed by users)
+export DATABRICKS_TOKEN=...        # optional: enables the Databricks agent
 python app.py                      # http://localhost:8080
 ```
 
@@ -31,6 +32,10 @@ Environment variables of the server (`app.py`):
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABRICKS_APP_PORT` | `8080` | Port |
+| `OPENROUTER_API_KEY` | none | Server-side key for the built-in assistant (`/api/llm`); users type no key. Without it the option is hidden. Create a free key at openrouter.ai |
+| `LLM_API_KEY` | none | Same, for any other OpenAI-compatible provider (takes precedence over `OPENROUTER_API_KEY`) |
+| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | Base URL of the OpenAI-compatible API (e.g. Groq: `https://api.groq.com/openai/v1`) |
+| `LLM_MODEL` | `openai/gpt-oss-120b:free` | Model; it must support tool calling. Free model names on OpenRouter change, see openrouter.ai/models?supported_parameters=tools&max_price=0 |
 | `DATABRICKS_TOKEN` | none | Token for the agent endpoint; without it the agent chat answers 503 |
 | `DATABRICKS_ENDPOINT_URL` | built-in | Agent serving endpoint |
 | `ALLOWED_ORIGINS` | none | Extra host names allowed to call `/api/databricks` (when a proxy rewrites the host) |
