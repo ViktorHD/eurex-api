@@ -14,16 +14,11 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=None)
 app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024  # chat history plus GraphQL results sent back as tool output
 
-ENDPOINT_URL = os.environ.get(
-    'DATABRICKS_ENDPOINT_URL',
-    'https://dbc-f43533dd-29e2.cloud.databricks.com/serving-endpoints/Eurex_agent/invocations',
-)
-
 # Built-in assistant: any OpenAI-compatible chat API; OpenRouter's free models by default.
 LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'https://openrouter.ai/api/v1').rstrip('/')
 LLM_MODEL = os.environ.get('LLM_MODEL', 'openai/gpt-oss-120b:free')
 
-# The agent endpoint is paid for with the server's token, so it is protected against use by other sites and bursts.
+# The assistant is paid for with the server's key, so it is protected against use by other sites and bursts.
 RATE_LIMIT_PER_MINUTE = int(os.environ.get('AGENT_RATE_LIMIT_PER_MINUTE', '20'))  # per client
 GLOBAL_LIMIT_PER_MINUTE = int(os.environ.get('AGENT_GLOBAL_LIMIT_PER_MINUTE', '120'))  # all clients together
 MAX_MESSAGES = 80
@@ -69,7 +64,6 @@ def status():
     return jsonify({
         'status': 'Flask is running',
         'builtinAssistant': bool(llm_key()),
-        'databricksAgent': bool(os.environ.get('DATABRICKS_TOKEN')),
     })
 
 
@@ -140,17 +134,6 @@ def validate_body(body):
     return messages, tools, None
 
 
-def payload_variants(messages, tools):
-    """Request bodies in the formats a Databricks serving endpoint may expect, most likely first."""
-    variants = [
-        {'messages': messages, 'tools': tools} if tools else {'messages': messages},
-        {'dataframe_records': [{'messages': messages, 'tools': tools} if tools else {'messages': messages}]},
-    ]
-    if tools:
-        variants.append({'messages': messages})
-    return variants
-
-
 def error_response(message, status):
     resp = jsonify({'error': {'message': message}})
     resp.status_code = status
@@ -162,7 +145,7 @@ def guard(token):
     if not same_origin():
         return None, None, error_response('Requests must come from this application.', 403)
     if not token:
-        return None, None, error_response('The AI agent is not configured on this server.', 503)
+        return None, None, error_response('The AI assistant is not configured on this server.', 503)
     wait = rate_limited(client_key())
     if wait:
         resp = error_response('Rate limit exceeded. Please wait and try again.', 429)
@@ -172,37 +155,6 @@ def guard(token):
     if problem:
         return None, None, error_response(problem, 400)
     return messages, tools, None
-
-
-@app.route('/api/databricks', methods=['POST'])
-def proxy_databricks():
-    token = os.environ.get('DATABRICKS_TOKEN', '')
-    messages, tools, rejected = guard(token)
-    if rejected:
-        return rejected
-
-    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
-    last_status = 502
-    for payload in payload_variants(messages, tools):
-        try:
-            resp = requests.post(ENDPOINT_URL, json=payload, headers=headers, timeout=UPSTREAM_TIMEOUT_SECONDS)
-        except requests.RequestException as exc:
-            app.logger.warning('Agent endpoint unreachable: %s', exc)
-            return error_response('The AI agent could not be reached.', 502)
-
-        last_status = resp.status_code
-        # A format the endpoint does not understand: try the next one
-        if resp.status_code in (400, 405, 422):
-            app.logger.info('Agent endpoint rejected a payload format (HTTP %s): %.300s', resp.status_code, resp.text)
-            continue
-        try:
-            return jsonify(resp.json()), resp.status_code
-        except ValueError:
-            app.logger.warning('Agent endpoint returned non-JSON (HTTP %s): %.300s', resp.status_code, resp.text)
-            return error_response(f'Unexpected response from the AI agent (HTTP {resp.status_code}).', 502)
-
-    # Details stay in the server log; the browser only learns that the agent refused the request
-    return error_response(f'The AI agent rejected the request (HTTP {last_status}).', last_status)
 
 
 @app.route('/api/llm', methods=['POST'])
