@@ -6,7 +6,6 @@ import requests
 @pytest.fixture(autouse=True)
 def reset(monkeypatch):
     server._hits.clear()
-    monkeypatch.setenv('DATABRICKS_TOKEN', 'secret-token')
     monkeypatch.setenv('OPENROUTER_API_KEY', 'or-key')
     monkeypatch.delenv('LLM_API_KEY', raising=False)
     monkeypatch.setattr(server, 'RATE_LIMIT_PER_MINUTE', 20)
@@ -36,7 +35,7 @@ class FakeResponse:
 
 
 def post(client, body=None, headers=SAME_ORIGIN, **kwargs):
-    return client.post('/api/databricks', json={'messages': MESSAGES} if body is None else body, headers=headers, **kwargs)
+    return client.post('/api/llm', json={'messages': MESSAGES} if body is None else body, headers=headers, **kwargs)
 
 
 # ---------- Static files ----------
@@ -57,73 +56,16 @@ class TestStaticFiles:
 
     def test_status_does_not_reveal_secrets(self, client):
         body = client.get('/api/status').get_json()
-        assert body == {'status': 'Flask is running', 'builtinAssistant': True, 'databricksAgent': True}
-        assert 'secret-token' not in str(body) and 'or-key' not in str(body)
+        assert body == {'status': 'Flask is running', 'builtinAssistant': True}
+        assert 'or-key' not in str(body)
 
     def test_status_reports_unconfigured_assistants(self, client, monkeypatch):
         monkeypatch.delenv('OPENROUTER_API_KEY')
-        monkeypatch.delenv('DATABRICKS_TOKEN')
         body = client.get('/api/status').get_json()
-        assert body['builtinAssistant'] is False and body['databricksAgent'] is False
+        assert body['builtinAssistant'] is False
 
 
-# ---------- Agent proxy ----------
-
-class TestProxy:
-    def test_forwards_messages_and_tools_with_the_server_token(self, client, monkeypatch):
-        calls = []
-
-        def fake_post(url, json, headers, timeout):
-            calls.append((url, json, headers, timeout))
-            return FakeResponse(200, {'choices': [{'message': {'content': 'hi'}}]})
-
-        monkeypatch.setattr(server.requests, 'post', fake_post)
-        tools = [{'type': 'function', 'function': {'name': 'eurex_graphql'}}]
-        resp = post(client, {'messages': MESSAGES, 'tools': tools})
-
-        assert resp.status_code == 200
-        assert resp.get_json()['choices'][0]['message']['content'] == 'hi'
-        url, payload, headers, timeout = calls[0]
-        assert payload == {'messages': MESSAGES, 'tools': tools}
-        assert headers['Authorization'] == 'Bearer secret-token'
-        assert timeout == server.UPSTREAM_TIMEOUT_SECONDS
-
-    def test_tries_the_next_payload_format_when_one_is_rejected(self, client, monkeypatch):
-        seen = []
-
-        def fake_post(url, json, headers, timeout):
-            seen.append(json)
-            return FakeResponse(422, text='bad format') if len(seen) == 1 else FakeResponse(200, {'predictions': ['ok']})
-
-        monkeypatch.setattr(server.requests, 'post', fake_post)
-        resp = post(client)
-        assert resp.status_code == 200
-        assert 'dataframe_records' in seen[1]
-
-    def test_upstream_details_do_not_reach_the_browser(self, client, monkeypatch):
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(400, text='internal stack trace https://dbc-secret'))
-        resp = post(client)
-        assert resp.status_code == 400
-        assert 'dbc-secret' not in resp.get_data(as_text=True)
-        assert 'stack trace' not in resp.get_data(as_text=True)
-
-    def test_unreachable_upstream_is_a_502(self, client, monkeypatch):
-        def boom(*a, **k):
-            raise requests.ConnectionError('dns failure for dbc-secret')
-        monkeypatch.setattr(server.requests, 'post', boom)
-        resp = post(client)
-        assert resp.status_code == 502
-        assert 'dbc-secret' not in resp.get_data(as_text=True)
-
-    def test_non_json_upstream_answer(self, client, monkeypatch):
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(200, None, text='<html>'))
-        assert post(client).status_code == 502
-
-    def test_missing_token_is_reported_instead_of_calling_upstream(self, client, monkeypatch):
-        monkeypatch.delenv('DATABRICKS_TOKEN')
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: pytest.fail('upstream must not be called'))
-        assert post(client).status_code == 503
-
+# ---------- Built-in assistant ----------
 
 class TestBuiltinAssistant:
     def llm_post(self, client, body=None):
@@ -194,7 +136,7 @@ class TestBuiltinAssistant:
 class TestProxyProtection:
     @pytest.fixture(autouse=True)
     def upstream(self, monkeypatch):
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(200, {'ok': True}))
+        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(200, {'choices': [{'message': {'content': 'ok'}}]}))
 
     def test_rejects_other_origins(self, client):
         assert post(client, headers={'Origin': 'https://evil.example'}).status_code == 403

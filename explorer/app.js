@@ -526,11 +526,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Provider selector show/hide logic
     const aiProviderSelect = document.getElementById('aiProvider');
+    const openrouterKeyGroup = document.getElementById('openrouterKeyGroup');
     const claudeKeyGroup = document.getElementById('claudeKeyGroup');
     const geminiKeyGroup = document.getElementById('geminiKeyGroup');
 
     function updateProviderFields() {
         const val = aiProviderSelect.value;
+        openrouterKeyGroup.style.display = val === 'openrouter' ? '' : 'none';
         claudeKeyGroup.style.display = val === 'claude' ? '' : 'none';
         geminiKeyGroup.style.display = val === 'gemini' ? '' : 'none';
     }
@@ -538,13 +540,16 @@ document.addEventListener('DOMContentLoaded', () => {
     updateProviderFields();
 
     // The built-in assistant is the default when the server has a key for it; otherwise offer only the other providers
-    fetch('/api/status').then(r => r.json()).then(status => {
-        if (!status.builtinAssistant) {
-            document.getElementById('aiBuiltinOption')?.remove();
-            if (!aiProviderSelect.value) aiProviderSelect.value = 'databricks';
-            updateProviderFields();
-        }
-    }).catch(() => {});
+    // Static hosting (e.g. GitHub Pages) has no /api/status, so anything but a JSON answer counts as "not available"
+    const dropBuiltinOption = () => {
+        document.getElementById('aiBuiltinOption')?.remove();
+        if (!aiProviderSelect.value) aiProviderSelect.value = 'openrouter';
+        updateProviderFields();
+    };
+    fetch('/api/status')
+        .then(r => (r.ok ? r.json() : null))
+        .then(status => { if (!status || !status.builtinAssistant) dropBuiltinOption(); })
+        .catch(dropBuiltinOption);
 
     // AI Chatbot Setup
     const aiInfoModal = document.getElementById('aiInfoModal');
@@ -696,6 +701,8 @@ ${schemaSDL}
         toggleBtn: document.getElementById('toggleChatbotBtn'),
         closeBtn: document.getElementById('closeChatbotBtn'),
         getApiKey: () => document.getElementById('geminiApiKey').value.trim(),
+        getOpenRouterKey: () => document.getElementById('openrouterApiKey').value.trim(),
+        getOpenRouterModel: () => document.getElementById('openrouterModel').value.trim(),
         getClaudeApiKey: () => document.getElementById('claudeApiKey').value.trim(),
         getProvider: () => document.getElementById('aiProvider').value,
         getVariables: () => variablesInput.value.trim(),
@@ -1157,7 +1164,7 @@ ${schemaSDL}
     apiKeyInput.addEventListener('input', updateKeyHint);
     updateKeyHint();
     // Keys are masked text inputs, not password fields, so browsers do not offer to save them as passwords
-    [apiKeyInput, document.getElementById('claudeApiKey'), document.getElementById('geminiApiKey')].forEach(hardenSecretInput);
+    [apiKeyInput, document.getElementById('openrouterApiKey'), document.getElementById('claudeApiKey'), document.getElementById('geminiApiKey')].forEach(hardenSecretInput);
     toggleApiKeyBtn.addEventListener('click', () => {
         const show = !isRevealed(apiKeyInput);
         setRevealed(apiKeyInput, show);

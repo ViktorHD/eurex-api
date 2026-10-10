@@ -1,3 +1,6 @@
+export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-oss-120b:free';
+
 export class Chatbot {
     constructor(options) {
         this.container = options.container;
@@ -9,7 +12,8 @@ export class Chatbot {
         this.closeBtn = options.closeBtn;
         this.getApiKey = options.getApiKey;
         this.getClaudeApiKey = options.getClaudeApiKey;
-        this.getDatabricksToken = options.getDatabricksToken;
+        this.getOpenRouterKey = options.getOpenRouterKey;
+        this.getOpenRouterModel = options.getOpenRouterModel;
         this.getProvider = options.getProvider;
         this.getVariables = options.getVariables;
         this.getSchemaSummary = options.getSchemaSummary;
@@ -18,7 +22,7 @@ export class Chatbot {
         this.chatHistory = [];
         this.claudeHistory = [];
         this.claudeSystemPrompt = null;
-        this.databricksHistory = [];
+        this.openaiHistory = [];
         this.lastToolExecuted = false;
         this.bindEvents();
     }
@@ -66,6 +70,12 @@ export class Chatbot {
                 this.addMessage('assistant', 'Please enter your Claude API key in the "Headers & Variables" drawer to use the chatbot.');
                 return;
             }
+        } else if (provider === 'openrouter') {
+            apiKey = this.getOpenRouterKey ? this.getOpenRouterKey() : '';
+            if (!apiKey) {
+                this.addMessage('assistant', 'Please enter your OpenRouter API key in the "Headers & Variables" drawer to use this provider. Free keys: openrouter.ai/keys.');
+                return;
+            }
         } else if (provider === 'gemini') {
             apiKey = this.getApiKey();
             if (!apiKey) {
@@ -84,10 +94,16 @@ export class Chatbot {
             let response;
             if (provider === 'claude') {
                 response = await this.callClaudeAPI(text, apiKey);
-            } else if (provider === 'databricks') {
-                response = await this.callDatabricksAPI(text);
+            } else if (provider === 'openrouter') {
+                const model = (this.getOpenRouterModel && this.getOpenRouterModel()) || DEFAULT_OPENROUTER_MODEL;
+                response = await this.callOpenAICompatible(text, {
+                    url: OPENROUTER_URL,
+                    headers: { Authorization: `Bearer ${apiKey}` },
+                    model,
+                    label: 'OpenRouter'
+                });
             } else if (provider === 'builtin') {
-                response = await this.callDatabricksAPI(text, '/api/llm', 'Built-in assistant');
+                response = await this.callOpenAICompatible(text, { url: '/api/llm', label: 'Built-in assistant' });
             } else {
                 response = await this.callGeminiAPI(text, apiKey);
             }
@@ -252,8 +268,9 @@ query {
         throw new Error("Maximum tool execution turns exceeded.");
     }
 
-    async callDatabricksAPI(message, endpoint = '/api/databricks', label = 'Databricks Agent') {
-        if (this.databricksHistory.length === 0) {
+    // OpenAI chat-completions format: the built-in assistant (same-origin proxy that holds the key) and OpenRouter (user key, called directly)
+    async callOpenAICompatible(message, { url, headers = {}, model, label }) {
+        if (this.openaiHistory.length === 0) {
             let schemaSummary = "No schema data available.";
             try {
                 if (this.getSchemaSummary) {
@@ -268,7 +285,7 @@ query {
                 if (this.getVariables) currentVariables = this.getVariables();
             } catch (e) {}
 
-            this.databricksHistory.push({
+            this.openaiHistory.push({
                 role: 'system',
                 content: `You are derivatives expert, Eurex T7 functional expert and assistant that answers user questions about Eurex functionality, products and contracts using the Eurex Reference Data GraphQL API.
 
@@ -300,7 +317,7 @@ Guidelines:
             });
         }
 
-        this.databricksHistory.push({ role: 'user', content: message });
+        this.openaiHistory.push({ role: 'user', content: message });
 
         const tools = [{
             type: "function",
@@ -319,10 +336,10 @@ Guidelines:
         }];
 
         for (let turn = 0; turn < 5; turn++) {
-            const response = await fetch(endpoint, {
+            const response = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: this.databricksHistory, tools })
+                headers: { 'Content-Type': 'application/json', ...headers },
+                body: JSON.stringify(model ? { model, messages: this.openaiHistory, tools } : { messages: this.openaiHistory, tools })
             });
 
             if (!response.ok) {
@@ -336,16 +353,11 @@ Guidelines:
             }
 
             const data = await response.json();
-            let choice = (data.choices && data.choices[0]) || (data.predictions && data.predictions[0]);
+            if (data.error && !data.choices) throw new Error(`${label}: ${data.error.message || 'request failed'}`);
+            const msg = data.choices && data.choices[0] && data.choices[0].message;
+            if (!msg) throw new Error(`Unexpected response format from ${label}.`);
 
-            // Normalize Databricks weird response structures
-            if (data.dataframe_records && data.dataframe_records[0]) choice = { message: data.dataframe_records[0] };
-            if (typeof choice === 'string') choice = { message: { content: choice } };
-
-            const msg = choice?.message || choice;
-            if (!msg) throw new Error(`Unexpected response format from Databricks: ${JSON.stringify(data)}`);
-
-            this.databricksHistory.push(msg);
+            this.openaiHistory.push(msg);
 
             const toolCalls = msg.tool_calls || [];
             if (toolCalls.length === 0) {
@@ -359,14 +371,14 @@ Guidelines:
                     try {
                         const args = typeof call.function.arguments === 'string' ? JSON.parse(call.function.arguments) : call.function.arguments;
                         const result = await this.onRunQuery(args.query, args.variables || null);
-                        this.databricksHistory.push({
+                        this.openaiHistory.push({
                             role: 'tool',
                             tool_call_id: call.id,
                             name: 'eurex_graphql',
                             content: JSON.stringify(result)
                         });
                     } catch (err) {
-                        this.databricksHistory.push({
+                        this.openaiHistory.push({
                             role: 'tool',
                             tool_call_id: call.id,
                             name: 'eurex_graphql',

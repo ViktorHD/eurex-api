@@ -422,10 +422,18 @@ query {
                                     <label for="aiProvider">AI Chatbot Provider</label>
                                     <select id="aiProvider" class="qe-select">
                                         <option value="builtin" id="aiBuiltinOption">Built-in assistant (free, no key)</option>
-                                        <option value="databricks">Eurex Agent (Databricks)</option>
+                                        <option value="openrouter">OpenRouter (your key, free models)</option>
                                         <option value="claude">Claude (Anthropic)</option>
                                         <option value="gemini">Google Gemini</option>
                                     </select>
+                                </div>
+                                <div class="control-group" style="margin-top: 16px; display: none;" id="openrouterKeyGroup">
+                                    <label for="openrouterApiKey">OpenRouter API Key</label>
+                                    <input type="text" class="secret-input" id="openrouterApiKey" placeholder="Enter OpenRouter API key...">
+                                    <p class="qe-hint">Get a free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. The key stays in this browser and is sent only to OpenRouter.</p>
+                                    <label for="openrouterModel" style="margin-top: 12px; display: block;">Model</label>
+                                    <input type="text" id="openrouterModel" class="qe-select" value="openai/gpt-oss-120b:free" spellcheck="false" autocomplete="off">
+                                    <p class="qe-hint">Must support tool calling. Free models are listed at <a href="https://openrouter.ai/models?supported_parameters=tools&max_price=0" target="_blank" rel="noopener">openrouter.ai/models</a> (ids ending in <code>:free</code>).</p>
                                 </div>
                                 <div class="control-group" style="margin-top: 16px; display: none;" id="claudeKeyGroup">
                                     <label for="claudeApiKey">Claude API Key</label>
