@@ -538,13 +538,16 @@ document.addEventListener('DOMContentLoaded', () => {
     updateProviderFields();
 
     // The built-in assistant is the default when the server has a key for it; otherwise offer only the other providers
-    fetch('/api/status').then(r => r.json()).then(status => {
-        if (!status.builtinAssistant) {
-            document.getElementById('aiBuiltinOption')?.remove();
-            if (!aiProviderSelect.value) aiProviderSelect.value = 'databricks';
-            updateProviderFields();
-        }
-    }).catch(() => {});
+    // Static hosting (e.g. GitHub Pages) has no /api/status, so anything but a JSON answer counts as "not available"
+    const dropBuiltinOption = () => {
+        document.getElementById('aiBuiltinOption')?.remove();
+        if (!aiProviderSelect.value) aiProviderSelect.value = 'databricks';
+        updateProviderFields();
+    };
+    fetch('/api/status')
+        .then(r => (r.ok ? r.json() : null))
+        .then(status => { if (!status || !status.builtinAssistant) dropBuiltinOption(); })
+        .catch(dropBuiltinOption);
 
     // AI Chatbot Setup
     const aiInfoModal = document.getElementById('aiInfoModal');
