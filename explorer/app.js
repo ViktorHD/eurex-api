@@ -537,6 +537,15 @@ document.addEventListener('DOMContentLoaded', () => {
     aiProviderSelect.addEventListener('change', updateProviderFields);
     updateProviderFields();
 
+    // The built-in assistant is the default when the server has a key for it; otherwise offer only the other providers
+    fetch('/api/status').then(r => r.json()).then(status => {
+        if (!status.builtinAssistant) {
+            document.getElementById('aiBuiltinOption')?.remove();
+            if (!aiProviderSelect.value) aiProviderSelect.value = 'databricks';
+            updateProviderFields();
+        }
+    }).catch(() => {});
+
     // AI Chatbot Setup
     const aiInfoModal = document.getElementById('aiInfoModal');
     const closeAiInfoModal = document.getElementById('closeAiInfoModal');

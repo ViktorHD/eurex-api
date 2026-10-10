@@ -7,6 +7,8 @@ import requests
 def reset(monkeypatch):
     server._hits.clear()
     monkeypatch.setenv('DATABRICKS_TOKEN', 'secret-token')
+    monkeypatch.setenv('OPENROUTER_API_KEY', 'or-key')
+    monkeypatch.delenv('LLM_API_KEY', raising=False)
     monkeypatch.setattr(server, 'RATE_LIMIT_PER_MINUTE', 20)
     monkeypatch.setattr(server, 'GLOBAL_LIMIT_PER_MINUTE', 120)
     monkeypatch.delenv('ALLOWED_ORIGINS', raising=False)
@@ -55,7 +57,14 @@ class TestStaticFiles:
 
     def test_status_does_not_reveal_secrets(self, client):
         body = client.get('/api/status').get_json()
-        assert body == {'status': 'Flask is running'}
+        assert body == {'status': 'Flask is running', 'builtinAssistant': True, 'databricksAgent': True}
+        assert 'secret-token' not in str(body) and 'or-key' not in str(body)
+
+    def test_status_reports_unconfigured_assistants(self, client, monkeypatch):
+        monkeypatch.delenv('OPENROUTER_API_KEY')
+        monkeypatch.delenv('DATABRICKS_TOKEN')
+        body = client.get('/api/status').get_json()
+        assert body['builtinAssistant'] is False and body['databricksAgent'] is False
 
 
 # ---------- Agent proxy ----------
@@ -114,6 +123,72 @@ class TestProxy:
         monkeypatch.delenv('DATABRICKS_TOKEN')
         monkeypatch.setattr(server.requests, 'post', lambda *a, **k: pytest.fail('upstream must not be called'))
         assert post(client).status_code == 503
+
+
+class TestBuiltinAssistant:
+    def llm_post(self, client, body=None):
+        return client.post('/api/llm', json=body or {'messages': MESSAGES}, headers=SAME_ORIGIN)
+
+    def test_forwards_to_openrouter_with_server_key_and_model(self, client, monkeypatch):
+        calls = []
+
+        def fake_post(url, json, headers, timeout):
+            calls.append((url, json, headers))
+            return FakeResponse(200, {'choices': [{'message': {'content': 'hi'}}]})
+
+        monkeypatch.setattr(server.requests, 'post', fake_post)
+        tools = [{'type': 'function', 'function': {'name': 'eurex_graphql'}}]
+        resp = self.llm_post(client, {'messages': MESSAGES, 'tools': tools})
+        assert resp.status_code == 200
+        url, payload, headers = calls[0]
+        assert url == 'https://openrouter.ai/api/v1/chat/completions'
+        assert payload == {'model': server.LLM_MODEL, 'messages': MESSAGES, 'tools': tools}
+        assert headers['Authorization'] == 'Bearer or-key'
+
+    def test_llm_api_key_takes_precedence(self, client, monkeypatch):
+        monkeypatch.setenv('LLM_API_KEY', 'other-key')
+        seen = []
+        monkeypatch.setattr(server.requests, 'post', lambda url, json, headers, timeout: seen.append(headers) or FakeResponse(200, {'choices': [{}]}))
+        self.llm_post(client)
+        assert seen[0]['Authorization'] == 'Bearer other-key'
+
+    def test_not_configured(self, client, monkeypatch):
+        monkeypatch.delenv('OPENROUTER_API_KEY')
+        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: pytest.fail('upstream must not be called'))
+        assert self.llm_post(client).status_code == 503
+
+    def test_rejects_other_origins(self, client):
+        assert client.post('/api/llm', json={'messages': MESSAGES}, headers={'Origin': 'https://evil.example'}).status_code == 403
+
+    def test_upstream_quota_becomes_a_friendly_429(self, client, monkeypatch):
+        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(429, text='provider secret detail'))
+        resp = self.llm_post(client)
+        assert resp.status_code == 429
+        assert 'secret' not in resp.get_data(as_text=True)
+        assert resp.headers['Retry-After'] == '60'
+
+    def test_other_upstream_errors_do_not_leak(self, client, monkeypatch):
+        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(401, text='bad key or-key'))
+        resp = self.llm_post(client)
+        assert resp.status_code == 401
+        assert 'or-key' not in resp.get_data(as_text=True)
+
+    def test_error_object_without_choices_is_a_502(self, client, monkeypatch):
+        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(200, {'error': {'message': 'provider down'}}))
+        assert self.llm_post(client).status_code == 502
+
+    def test_unreachable_upstream(self, client, monkeypatch):
+        def boom(*a, **k):
+            raise requests.ConnectionError('dns')
+        monkeypatch.setattr(server.requests, 'post', boom)
+        assert self.llm_post(client).status_code == 502
+
+    def test_shares_rate_limit_and_validation(self, client, monkeypatch):
+        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(200, {'choices': [{}]}))
+        monkeypatch.setattr(server, 'RATE_LIMIT_PER_MINUTE', 2)
+        assert self.llm_post(client, {'messages': []}).status_code == 400
+        assert self.llm_post(client).status_code == 200
+        assert self.llm_post(client).status_code == 429
 
 
 class TestProxyProtection:
