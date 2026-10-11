@@ -36,9 +36,10 @@ button { font:inherit; font-size:.85rem; padding:4px 10px; border:1px solid var(
 
 <div class="box">
 <p><strong>For users:</strong> give your assistant this prompt. It works as is, with the shared demo key.</p>
-<pre id="prompt"><code>Read https://viktorhd.github.io/eurex-api/ai.html and use it to answer my questions with the Eurex API. Use the demo key from that page.</code></pre>
+<pre id="prompt"><code>Read https://raw.githubusercontent.com/ViktorHD/eurex-api/main/ai.md and use it to answer my questions with the Eurex API. Use the demo key from that page.</code></pre>
 <p><button type="button" onclick="navigator.clipboard.writeText(document.getElementById('prompt').innerText)">Copy prompt</button></p>
 <p><strong>Hint:</strong> the demo key is shared by everyone, so it can hit rate limits at busy times. For regular use get your own free key on the <a href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082">Deutsche Börse developer portal</a> and add it to the prompt: <em>"My API key (header X-DBP-APIKEY): &lt;your key&gt;"</em>.</p>
+<p>The prompt points at the plain-text copy of this page (<a href="https://raw.githubusercontent.com/ViktorHD/eurex-api/main/ai.md">ai.md</a>) because some assistants do not read GitHub Pages sites.</p>
 <p>No tool that can send HTTP requests? Ask the assistant for a query and run it in the <a href="./">API Explorer</a>.</p>
 </div>
 
