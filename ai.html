@@ -35,19 +35,18 @@ button { font:inherit; font-size:.85rem; padding:4px 10px; border:1px solid var(
 <p class="lead">Everything an AI assistant needs to answer questions with the Eurex GraphQL reference-data API. Written to be read by a model: plain structure, copy-ready requests, explicit rules.</p>
 
 <div class="box">
-<p><strong>For users:</strong> give your assistant this page and your API key, for example:</p>
-<pre id="prompt"><code>Read https://viktorhd.github.io/eurex-api/ai.html and use it to answer my questions with the Eurex API.
-My API key (header X-DBP-APIKEY): &lt;your key&gt;</code></pre>
-<p><button type="button" onclick="navigator.clipboard.writeText(document.getElementById('prompt').innerText)">Copy prompt</button>
-Get a key (free) on the <a href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082">Deutsche Börse developer portal</a>.
-No tool that can send HTTP requests? Ask the assistant for a query and run it in the <a href="./">API Explorer</a>.</p>
+<p><strong>For users:</strong> give your assistant this prompt. It works as is, with the shared demo key.</p>
+<pre id="prompt"><code>Read https://viktorhd.github.io/eurex-api/ai.html and use it to answer my questions with the Eurex API. Use the demo key from that page.</code></pre>
+<p><button type="button" onclick="navigator.clipboard.writeText(document.getElementById('prompt').innerText)">Copy prompt</button></p>
+<p><strong>Hint:</strong> the demo key is shared by everyone, so it can hit rate limits at busy times. For regular use get your own free key on the <a href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082">Deutsche Börse developer portal</a> and add it to the prompt: <em>"My API key (header X-DBP-APIKEY): &lt;your key&gt;"</em>.</p>
+<p>No tool that can send HTTP requests? Ask the assistant for a query and run it in the <a href="./">API Explorer</a>.</p>
 </div>
 
 <h2 id="facts">1. Facts</h2>
 <table>
 <tr><th>Endpoint</th><td><code>https://api.developer.deutsche-boerse.com/eurex-prod-graphql/</code></td></tr>
 <tr><th>Method</th><td><code>POST</code>, header <code>Content-Type: application/json</code></td></tr>
-<tr><th>Authentication</th><td>Header <code>X-DBP-APIKEY: &lt;key&gt;</code>. Ask the user for their key; never invent or guess one.</td></tr>
+<tr><th>Authentication</th><td>Header <code>X-DBP-APIKEY: &lt;key&gt;</code>. Use the key the user gave you. If they gave none, use the shared <strong>demo key</strong> <code>68cdafd2-c5c1-49be-8558-37244ab4f513</code> (it is the one the public Explorer uses). Never invent or guess a key.</td></tr>
 <tr><th>Body</th><td><code>{"query": "...", "variables": {...}}</code> (<code>variables</code> optional)</td></tr>
 <tr><th>Content</th><td>Eurex <em>reference data</em>: products, contracts, trading hours, holidays, tick rules, TES parameters, settlement prices. It contains no live market data or order books.</td></tr>
 <tr><th>Access</th><td>Read-only queries. There are no mutations.</td></tr>
@@ -63,13 +62,13 @@ No tool that can send HTTP requests? Ask the assistant for a query and run it in
 <li><strong>Report the validity date.</strong> Every dataset returns a <code>date</code>; mention it when it matters ("as of 2026-10-09").</li>
 <li><strong>Do not invent data.</strong> If the API returns nothing or an error, say so. Do not fill gaps from memory: contract specifications and trading hours change, and the API is the source of truth.</li>
 <li><strong>Cannot send POST requests?</strong> Give the user the finished query and tell them to run it in the <a href="./">API Explorer</a>.</li>
-<li>Keep the user's API key out of anything you write back to them or store.</li>
+<li>Prefer the user's own key over the demo key. Do not store or repeat a user's own key in your answers. If the demo key is rate limited (HTTP 429), tell the user once that it is shared and that a free personal key from the developer portal avoids this.</li>
 </ol>
 
 <h2 id="first">3. First request</h2>
 <pre><code>curl -sS -X POST https://api.developer.deutsche-boerse.com/eurex-prod-graphql/ \
   -H 'Content-Type: application/json' \
-  -H 'X-DBP-APIKEY: YOUR_KEY' \
+  -H 'X-DBP-APIKEY: YOUR_KEY'   # or the demo key from section 1 \
   -d '{"query":"{ ProductInfos(filter:{Product:{eq:\"FESX\"}}) { date data { Product Name ProductISIN Currency ContractSize TickSize TickValue } } }"}'</code></pre>
 
 <h3>Response shape</h3>
@@ -142,7 +141,7 @@ TradingHours(filter: { Product: { eq: "FESX" } }) { ... }</code></pre>
 <h2 id="errors">7. Errors and limits</h2>
 <table>
 <tr><th>Symptom</th><th>Meaning and action</th></tr>
-<tr><td>HTTP 401 / 403</td><td>Key missing or invalid. Ask the user to check the key.</td></tr>
+<tr><td>HTTP 401 / 403</td><td>Key missing or invalid. Check the header name and value; if the user's own key fails, ask them to verify it.</td></tr>
 <tr><td>HTTP 429</td><td>Rate limit. Wait for the <code>Retry-After</code> seconds (or about 10 s) and retry once; do not hammer the API.</td></tr>
 <tr><td>HTTP 5xx or timeout</td><td>Temporary. Retry later or narrow the query (add filters, fewer fields, <code>page: { first: N }</code>).</td></tr>
 <tr><td>HTTP 200 with <code>errors</code></td><td>GraphQL error such as an unknown field. Read <code>errors[].message</code>, fix the query, and use introspection instead of guessing. If <code>data</code> is also present, the answer is partial: use what is there and say what is missing.</td></tr>
