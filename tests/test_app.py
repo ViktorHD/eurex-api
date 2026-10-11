@@ -1,44 +1,11 @@
 import app as server
 import pytest
-import requests
-
-
-@pytest.fixture(autouse=True)
-def reset(monkeypatch):
-    server._hits.clear()
-    monkeypatch.setenv('OPENROUTER_API_KEY', 'or-key')
-    monkeypatch.delenv('LLM_API_KEY', raising=False)
-    monkeypatch.setattr(server, 'RATE_LIMIT_PER_MINUTE', 20)
-    monkeypatch.setattr(server, 'GLOBAL_LIMIT_PER_MINUTE', 120)
-    monkeypatch.delenv('ALLOWED_ORIGINS', raising=False)
 
 
 @pytest.fixture
 def client():
     return server.app.test_client()
 
-
-MESSAGES = [{'role': 'user', 'content': 'hello'}]
-SAME_ORIGIN = {'Origin': 'http://localhost'}  # the test client's host
-
-
-class FakeResponse:
-    def __init__(self, status=200, body=None, text=''):
-        self.status_code = status
-        self._body = body
-        self.text = text or str(body)
-
-    def json(self):
-        if self._body is None:
-            raise ValueError('no json')
-        return self._body
-
-
-def post(client, body=None, headers=SAME_ORIGIN, **kwargs):
-    return client.post('/api/llm', json={'messages': MESSAGES} if body is None else body, headers=headers, **kwargs)
-
-
-# ---------- Static files ----------
 
 class TestStaticFiles:
     def test_index_and_explorer_assets_are_served(self, client):
@@ -54,162 +21,32 @@ class TestStaticFiles:
     def test_repository_files_are_not_served(self, client, path):
         assert client.get(path).status_code == 404
 
-    def test_status_does_not_reveal_secrets(self, client):
-        body = client.get('/api/status').get_json()
-        assert body == {'status': 'Flask is running', 'builtinAssistant': True}
-        assert 'or-key' not in str(body)
+    def test_removed_assistant_endpoints_are_gone(self, client):
+        assert client.post('/api/llm', json={'messages': []}).status_code == 404
+        assert client.post('/api/databricks', json={'messages': []}).status_code == 404
 
-    def test_status_reports_unconfigured_assistants(self, client, monkeypatch):
-        monkeypatch.delenv('OPENROUTER_API_KEY')
-        body = client.get('/api/status').get_json()
-        assert body['builtinAssistant'] is False
-
-
-# ---------- Built-in assistant ----------
-
-class TestBuiltinAssistant:
-    def llm_post(self, client, body=None):
-        return client.post('/api/llm', json=body or {'messages': MESSAGES}, headers=SAME_ORIGIN)
-
-    def test_forwards_to_openrouter_with_server_key_and_model(self, client, monkeypatch):
-        calls = []
-
-        def fake_post(url, json, headers, timeout):
-            calls.append((url, json, headers))
-            return FakeResponse(200, {'choices': [{'message': {'content': 'hi'}}]})
-
-        monkeypatch.setattr(server.requests, 'post', fake_post)
-        tools = [{'type': 'function', 'function': {'name': 'eurex_graphql'}}]
-        resp = self.llm_post(client, {'messages': MESSAGES, 'tools': tools})
-        assert resp.status_code == 200
-        url, payload, headers = calls[0]
-        assert url == 'https://openrouter.ai/api/v1/chat/completions'
-        assert payload == {'model': server.LLM_MODEL, 'messages': MESSAGES, 'tools': tools}
-        assert headers['Authorization'] == 'Bearer or-key'
-
-    def test_llm_api_key_takes_precedence(self, client, monkeypatch):
-        monkeypatch.setenv('LLM_API_KEY', 'other-key')
-        seen = []
-        monkeypatch.setattr(server.requests, 'post', lambda url, json, headers, timeout: seen.append(headers) or FakeResponse(200, {'choices': [{}]}))
-        self.llm_post(client)
-        assert seen[0]['Authorization'] == 'Bearer other-key'
-
-    def test_not_configured(self, client, monkeypatch):
-        monkeypatch.delenv('OPENROUTER_API_KEY')
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: pytest.fail('upstream must not be called'))
-        assert self.llm_post(client).status_code == 503
-
-    def test_rejects_other_origins(self, client):
-        assert client.post('/api/llm', json={'messages': MESSAGES}, headers={'Origin': 'https://evil.example'}).status_code == 403
-
-    def test_upstream_quota_becomes_a_friendly_429(self, client, monkeypatch):
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(429, text='provider secret detail'))
-        resp = self.llm_post(client)
-        assert resp.status_code == 429
-        assert 'secret' not in resp.get_data(as_text=True)
-        assert resp.headers['Retry-After'] == '60'
-
-    def test_other_upstream_errors_do_not_leak(self, client, monkeypatch):
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(401, text='bad key or-key'))
-        resp = self.llm_post(client)
-        assert resp.status_code == 401
-        assert 'or-key' not in resp.get_data(as_text=True)
-
-    def test_error_object_without_choices_is_a_502(self, client, monkeypatch):
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(200, {'error': {'message': 'provider down'}}))
-        assert self.llm_post(client).status_code == 502
-
-    def test_unreachable_upstream(self, client, monkeypatch):
-        def boom(*a, **k):
-            raise requests.ConnectionError('dns')
-        monkeypatch.setattr(server.requests, 'post', boom)
-        assert self.llm_post(client).status_code == 502
-
-    def test_shares_rate_limit_and_validation(self, client, monkeypatch):
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(200, {'choices': [{}]}))
-        monkeypatch.setattr(server, 'RATE_LIMIT_PER_MINUTE', 2)
-        assert self.llm_post(client, {'messages': []}).status_code == 400
-        assert self.llm_post(client).status_code == 200
-        assert self.llm_post(client).status_code == 429
-
-
-class TestProxyProtection:
-    @pytest.fixture(autouse=True)
-    def upstream(self, monkeypatch):
-        monkeypatch.setattr(server.requests, 'post', lambda *a, **k: FakeResponse(200, {'choices': [{'message': {'content': 'ok'}}]}))
-
-    def test_rejects_other_origins(self, client):
-        assert post(client, headers={'Origin': 'https://evil.example'}).status_code == 403
-
-    def test_rejects_requests_without_browser_origin_information(self, client):
-        assert post(client, headers={}).status_code == 403
-
-    def test_accepts_same_origin_fetch_metadata(self, client):
-        assert post(client, headers={'Sec-Fetch-Site': 'same-origin'}).status_code == 200
-
-    def test_accepts_the_forwarded_public_host(self, client):
-        headers = {'Origin': 'https://eurex-api.example.com', 'X-Forwarded-Host': 'eurex-api.example.com'}
-        assert post(client, headers=headers).status_code == 200
-
-    def test_accepts_configured_origins(self, client, monkeypatch):
-        monkeypatch.setenv('ALLOWED_ORIGINS', 'app.example.com')
-        assert post(client, headers={'Origin': 'https://app.example.com'}).status_code == 200
-
-    def test_rate_limits_per_client_and_sets_retry_after(self, client, monkeypatch):
-        monkeypatch.setattr(server, 'RATE_LIMIT_PER_MINUTE', 3)
-        headers = {**SAME_ORIGIN, 'X-Forwarded-For': '10.0.0.1'}
-        assert [post(client, headers=headers).status_code for _ in range(3)] == [200, 200, 200]
-        blocked = post(client, headers=headers)
-        assert blocked.status_code == 429
-        assert int(blocked.headers['Retry-After']) >= 1
-        # another client is unaffected
-        assert post(client, headers={**SAME_ORIGIN, 'X-Forwarded-For': '10.0.0.2'}).status_code == 200
-
-    def test_global_limit_caps_total_use(self, client, monkeypatch):
-        monkeypatch.setattr(server, 'GLOBAL_LIMIT_PER_MINUTE', 2)
-        statuses = [post(client, headers={**SAME_ORIGIN, 'X-Forwarded-For': f'10.0.1.{i}'}).status_code for i in range(3)]
-        assert statuses == [200, 200, 429]
-
-    def test_spoofed_leading_forwarded_for_entries_do_not_bypass_the_limit(self, client, monkeypatch):
-        monkeypatch.setattr(server, 'RATE_LIMIT_PER_MINUTE', 1)
-        codes = [post(client, headers={**SAME_ORIGIN, 'X-Forwarded-For': f'{fake}, 10.9.9.9'}).status_code for fake in ('1.1.1.1', '2.2.2.2')]
-        assert codes == [200, 429]
-
-    def test_window_expires(self):
-        key = 'k'
-        assert server.rate_limited(key, now=0) == 0
-        server.RATE_LIMIT_PER_MINUTE, original = 1, server.RATE_LIMIT_PER_MINUTE
-        try:
-            assert server.rate_limited(key, now=1) > 0
-            assert server.rate_limited(key, now=61) == 0
-        finally:
-            server.RATE_LIMIT_PER_MINUTE = original
-
-    @pytest.mark.parametrize('body', [
-        [], {}, {'messages': []}, {'messages': 'hi'},
-        {'messages': [{'role': 'root', 'content': 'x'}]},
-        {'messages': [{'content': 'x'}]},
-        {'messages': [{'role': 'user', 'content': {'a': 1}}]},
-        {'messages': MESSAGES, 'tools': 'rm -rf'},
-        {'messages': MESSAGES, 'tools': [{}] * 6},
-        {'messages': MESSAGES * 81},
-    ])
-    def test_rejects_malformed_bodies(self, client, body):
-        assert post(client, body).status_code == 400
-
-    def test_accepts_tool_messages_and_assistant_tool_calls(self, client):
-        messages = [
-            {'role': 'user', 'content': 'q'},
-            {'role': 'assistant', 'content': None, 'tool_calls': [{'id': '1', 'function': {'name': 'eurex_graphql', 'arguments': '{}'}}]},
-            {'role': 'tool', 'tool_call_id': '1', 'name': 'eurex_graphql', 'content': '[]'},
-        ]
-        assert post(client, {'messages': messages}).status_code == 200
-
-    def test_rejects_oversized_bodies(self, client):
-        big = {'messages': [{'role': 'user', 'content': 'x' * (server.app.config['MAX_CONTENT_LENGTH'] + 1)}]}
-        assert post(client, big).status_code == 413
+    def test_status(self, client):
+        assert client.get('/api/status').get_json() == {'status': 'Flask is running'}
 
     def test_security_headers(self, client):
         resp = client.get('/api/status')
         assert resp.headers['X-Content-Type-Options'] == 'nosniff'
         assert resp.headers['Cache-Control'] == 'no-store'
+
+
+class TestAiInstructions:
+    def test_page_is_served_with_the_essentials(self, client):
+        resp = client.get('/ai.html')
+        assert resp.status_code == 200
+        text = resp.get_data(as_text=True)
+        for needle in ('api.developer.deutsche-boerse.com/eurex-prod-graphql', 'X-DBP-APIKEY', 'ProductInfos', '__schema'):
+            assert needle in text
+
+    def test_page_holds_no_api_key(self, client):
+        assert '68cdafd2' not in client.get('/ai.html').get_data(as_text=True)
+
+    def test_llms_txt_points_to_the_page(self, client):
+        resp = client.get('/llms.txt')
+        assert resp.status_code == 200
+        assert resp.mimetype == 'text/plain'
+        assert '(ai.html)' in resp.get_data(as_text=True)
