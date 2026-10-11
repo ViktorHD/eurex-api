@@ -4,7 +4,9 @@
 
 ## For AI agents
 
-- [AI instructions](ai.html): endpoint, authentication, datasets, query syntax, recipes, error handling and rules for assistants. Read this first.
+- [AI instructions (plain text)](https://raw.githubusercontent.com/ViktorHD/eurex-api/main/ai.md): same content as ai.html. Endpoint, authentication, datasets, query syntax, recipes, error handling and rules for assistants. Read this first.
+
+- [AI instructions (web page)](ai.html): the same content as a page for people.
 
 ## Tools
 

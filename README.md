@@ -20,9 +20,9 @@ Everything personal (watchlist, tabs, history, saved queries, display settings) 
 
 ## AI agents
 
-Point any assistant or agent at **`ai.html`** (served next to the app, e.g. `https://viktorhd.github.io/eurex-api/ai.html`) and give it your API key. The page holds everything it needs to use the API: endpoint, authentication, datasets with their fields, filter / sort / paging syntax, recipes, error handling and rules. `llms.txt` is the short index for crawlers.
+Point any assistant or agent at **`ai.md`** (plain text: `https://raw.githubusercontent.com/ViktorHD/eurex-api/main/ai.md`; `ai.html` is the same content as a web page) and give it your API key. The page holds everything it needs to use the API: endpoint, authentication, datasets with their fields, filter / sort / paging syntax, recipes, error handling and rules. `llms.txt` is the short index for crawlers.
 
-Example prompt: *Read https://viktorhd.github.io/eurex-api/ai.html and use it to answer my questions with the Eurex API. My API key (header X-DBP-APIKEY): ...*
+Example prompt: *Read https://raw.githubusercontent.com/ViktorHD/eurex-api/main/ai.md and use it to answer my questions with the Eurex API. My API key (header X-DBP-APIKEY): ...*
 
 The app itself has no built-in chat and needs no AI keys.
 
@@ -47,6 +47,6 @@ pip install -r requirements-dev.txt && pytest   # server
 - `index.html`, `explorer/`: the front end (plain ES modules, no build step). `app.js` wires the views;
   each view and helper is its own module with tests in `explorer/tests/`.
 - `app.py`: serves the front end and the AI instructions page.
-- `ai.html`, `llms.txt`: instructions for AI agents.
+- `ai.md`, `ai.html`, `llms.txt`: instructions for AI agents (keep `ai.md` and `ai.html` in sync; a test checks the key facts).
 - `docs/api-data-proposals.md`: proposed new API queries from public Eurex information.
 - `notebooks/`: tutorials and recipes for the API.

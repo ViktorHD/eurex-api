@@ -59,3 +59,28 @@ class TestAiInstructions:
         assert resp.status_code == 200
         assert resp.mimetype == 'text/plain'
         assert '(ai.html)' in resp.get_data(as_text=True)
+
+
+class TestAiInstructionsPlainText:
+    """ai.md is what assistants are pointed at (some cannot read github.io); it must say the same as ai.html."""
+
+    @staticmethod
+    def md():
+        with open(server.os.path.join(server.ROOT, 'ai.md'), encoding='utf-8') as f:
+            return f.read()
+
+    def test_same_key_facts_as_the_html_page(self, client):
+        html = client.get('/ai.html').get_data(as_text=True)
+        md = self.md()
+        facts = ['api.developer.deutsche-boerse.com/eurex-prod-graphql', 'X-DBP-APIKEY', '68cdafd2-c5c1-49be-8558-37244ab4f513',
+                 'console.developer.deutsche-boerse.com', '__schema']
+        facts += ['ProductInfos', 'Contracts', 'FlexibleContracts', 'Expirations', 'TradingHours', 'Holidays', 'TickRules',
+                  'TESProfiles', 'SettlementPrices', 'VendorCodes', 'DeliverableBonds', 'Enlight', 'EnlightResponders', 'Changelog']
+        for fact in facts:
+            assert fact in html and fact in md, fact
+
+    def test_prompts_point_at_the_plain_text_file(self, client):
+        raw = 'https://raw.githubusercontent.com/ViktorHD/eurex-api/main/ai.md'
+        assert raw in self.md()
+        assert raw in client.get('/ai.html').get_data(as_text=True)
+        assert raw in client.get('/llms.txt').get_data(as_text=True)
