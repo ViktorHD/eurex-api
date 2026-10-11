@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eurex API for AI agents</title>
+<meta name="description" content="Instructions for AI assistants and agents that query the Eurex Reference Data GraphQL API: endpoint, authentication, datasets, query syntax, recipes and pitfalls.">
+<style>
+:root { --bg:#fff; --fg:#1b1f24; --muted:#5b6570; --line:#d8dee4; --code:#f4f6f8; --accent:#0b5cad; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14181d; --fg:#e6e9ec; --muted:#9aa5b1; --line:#2c333b; --code:#1c2229; --accent:#6cb2ff; } }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+main { max-width:860px; margin:0 auto; padding:24px 16px 64px; }
+h1 { font-size:1.7rem; margin:0 0 4px; }
+h2 { font-size:1.25rem; margin:40px 0 8px; padding-top:8px; border-top:1px solid var(--line); }
+h3 { font-size:1.05rem; margin:24px 0 4px; }
+p, li { max-width:75ch; }
+a { color:var(--accent); }
+.lead { color:var(--muted); margin:0 0 16px; }
+code, pre { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:var(--code); border-radius:4px; }
+code { padding:1px 5px; }
+pre { padding:12px 14px; overflow-x:auto; border:1px solid var(--line); }
+pre code { padding:0; background:none; }
+table { border-collapse:collapse; width:100%; font-size:.92rem; display:block; overflow-x:auto; }
+th, td { text-align:left; vertical-align:top; padding:6px 10px; border-bottom:1px solid var(--line); }
+th { color:var(--muted); font-weight:600; white-space:nowrap; }
+.box { border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:4px; padding:10px 14px; margin:16px 0; }
+.box p { margin:4px 0; }
+button { font:inherit; font-size:.85rem; padding:4px 10px; border:1px solid var(--line); border-radius:4px; background:var(--code); color:var(--fg); cursor:pointer; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Eurex Reference Data API: instructions for AI agents</h1>
+<p class="lead">Everything an AI assistant needs to answer questions with the Eurex GraphQL reference-data API. Written to be read by a model: plain structure, copy-ready requests, explicit rules.</p>
+
+<div class="box">
+<p><strong>For users:</strong> give your assistant this page and your API key, for example:</p>
+<pre id="prompt"><code>Read https://viktorhd.github.io/eurex-api/ai.html and use it to answer my questions with the Eurex API.
+My API key (header X-DBP-APIKEY): &lt;your key&gt;</code></pre>
+<p><button type="button" onclick="navigator.clipboard.writeText(document.getElementById('prompt').innerText)">Copy prompt</button>
+Get a key (free) on the <a href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082">Deutsche Börse developer portal</a>.
+No tool that can send HTTP requests? Ask the assistant for a query and run it in the <a href="./">API Explorer</a>.</p>
+</div>
+
+<h2 id="facts">1. Facts</h2>
+<table>
+<tr><th>Endpoint</th><td><code>https://api.developer.deutsche-boerse.com/eurex-prod-graphql/</code></td></tr>
+<tr><th>Method</th><td><code>POST</code>, header <code>Content-Type: application/json</code></td></tr>
+<tr><th>Authentication</th><td>Header <code>X-DBP-APIKEY: &lt;key&gt;</code>. Ask the user for their key; never invent or guess one.</td></tr>
+<tr><th>Body</th><td><code>{"query": "...", "variables": {...}}</code> (<code>variables</code> optional)</td></tr>
+<tr><th>Content</th><td>Eurex <em>reference data</em>: products, contracts, trading hours, holidays, tick rules, TES parameters, settlement prices. It contains no live market data or order books.</td></tr>
+<tr><th>Access</th><td>Read-only queries. There are no mutations.</td></tr>
+</table>
+
+<h2 id="rules">2. Rules for the agent</h2>
+<ol>
+<li><strong>Never guess names.</strong> Field and type names are case sensitive (<code>ProductInfos</code>, <code>Contracts</code>, <code>ExpirationDate</code>). If unsure, run the introspection query in section 4 and use what it returns.</li>
+<li><strong>Filter by <code>Product</code></strong> for <code>Contracts</code>, <code>FlexibleContracts</code> and <code>SettlementPrices</code>. Without it the result is huge and the request may time out or be cut off.</li>
+<li><strong>Select only the fields you need.</strong> Smaller answers are faster and cheaper to read.</li>
+<li><strong>Find the product code first</strong> when the user gives a name, ISIN or underlying (section 6, recipe 1). Product codes are short, e.g. <code>FESX</code> (Euro STOXX 50 futures) and <code>OESX</code> (its options).</li>
+<li><strong>Several datasets in one request:</strong> put several root fields in one query instead of making several calls.</li>
+<li><strong>Report the validity date.</strong> Every dataset returns a <code>date</code>; mention it when it matters ("as of 2026-10-09").</li>
+<li><strong>Do not invent data.</strong> If the API returns nothing or an error, say so. Do not fill gaps from memory: contract specifications and trading hours change, and the API is the source of truth.</li>
+<li><strong>Cannot send POST requests?</strong> Give the user the finished query and tell them to run it in the <a href="./">API Explorer</a>.</li>
+<li>Keep the user's API key out of anything you write back to them or store.</li>
+</ol>
+
+<h2 id="first">3. First request</h2>
+<pre><code>curl -sS -X POST https://api.developer.deutsche-boerse.com/eurex-prod-graphql/ \
+  -H 'Content-Type: application/json' \
+  -H 'X-DBP-APIKEY: YOUR_KEY' \
+  -d '{"query":"{ ProductInfos(filter:{Product:{eq:\"FESX\"}}) { date data { Product Name ProductISIN Currency ContractSize TickSize TickValue } } }"}'</code></pre>
+
+<h3>Response shape</h3>
+<p>Every dataset is a root field that returns an object with the validity <code>date</code> and a list <code>data</code>. When a dataset is paged, <code>pageInfo</code> sits next to them.</p>
+<pre><code>{ "data": { "ProductInfos": {
+    "date": "2026-10-09",
+    "data": [ { "Product": "FESX", "Name": "...", "Currency": "EUR" } ],
+    "pageInfo": { "hasNextPage": false, "endCursor": null }   // only if requested
+} } }</code></pre>
+
+<h2 id="introspection">4. Discover the schema (introspection)</h2>
+<p>Standard GraphQL introspection works. Start with the list of datasets (root queries) and their arguments:</p>
+<pre><code>{ __schema { queryType { fields { name description args { name type { name kind } } type { name kind ofType { name kind } } } } } }</code></pre>
+<p>Then the fields of one result type (use the type name from above, and its <code>data</code> field's item type):</p>
+<pre><code>{ __type(name: "Contract") { fields { name type { name kind ofType { name } } } } }</code></pre>
+<p>The filter input types show the exact operators available per field: <code>{ __type(name: "ContractsFilter") { inputFields { name type { name } } } }</code> (the type name may differ; look it up from the <code>filter</code> argument of the root field).</p>
+
+<h2 id="datasets">5. Datasets (root queries)</h2>
+<table>
+<tr><th>Root query</th><th>Content</th><th>Useful fields</th></tr>
+<tr><td><code>ProductInfos</code></td><td>Product master data, one row per product</td><td>ProductID, Product, Name, ProductISIN, ProductType, ProductTypeCode, ProductLine, LiquidityClass, Currency, ContractSize, TickSize, TickValue, SettlementType, Underlying, UnderlyingISIN</td></tr>
+<tr><td><code>Contracts</code></td><td>Listed series (futures and options). <strong>Filter by Product.</strong></td><td>Contract, ISIN, ContractDate, ContractCycle, ExpirationDate, FirstTradingDate, LastTradingDate, CallPut, Strike, OptionsDelta, PreviousDaySettlementPrice</td></tr>
+<tr><td><code>FlexibleContracts</code></td><td>Flexible (customised) contracts. <strong>Filter by Product.</strong></td><td>ContractID, Contract, ISIN, CallPut, Strike, ExpirationDate, SettlementDate, SettlementPrice, OpenInterest, ExerciseStyle, SettlementType</td></tr>
+<tr><td><code>Expirations</code></td><td>Expiration calendar per product</td><td>ProductID, Product, MasterContract, ExpirationIndex, ExpirationDate</td></tr>
+<tr><td><code>TradingHours</code></td><td>Trading phases per product</td><td>Product, StartContinuousTrading, EndOpeningAuction, EndContinuousTrading, EndClosingAuction, StartTES, EndTES, LTDBook, LTDTES</td></tr>
+<tr><td><code>Holidays</code></td><td>Exchange holidays per product</td><td>Product, Holiday, ExchangeHoliday</td></tr>
+<tr><td><code>TickRules</code></td><td>Price steps per price band</td><td>Product, TradeType, InstrumentType, StartPrice, EndPrice, PriceStep</td></tr>
+<tr><td><code>TESProfiles</code></td><td>T7 Entry Service (off-book) parameters</td><td>Product, TESType, InstrumentType, PriceValidationRule, AllowAutoApproval, AllowBroker, MinLotSize, MinLotSizeNonPrimary, MinExpiryRange, NonDisclosureLimit, TESminStep, MaxTrader, LegPriceEntry</td></tr>
+<tr><td><code>SettlementPrices</code></td><td>Daily settlement prices. <strong>Filter by Product.</strong></td><td>ContractID, Product, ContractType (e.g. <code>FLEXIBLE</code>), PriceType, SettlementPrice, SettlementDate</td></tr>
+<tr><td><code>VendorCodes</code></td><td>Data-vendor symbols per product</td><td>introspect</td></tr>
+<tr><td><code>DeliverableBonds</code></td><td>Bonds deliverable into fixed income futures</td><td>introspect</td></tr>
+<tr><td><code>Enlight</code>, <code>EnlightResponders</code></td><td>EnLight RFQ configuration and responders</td><td>introspect</td></tr>
+<tr><td><code>Changelog</code></td><td>Announced and past changes to the API data</td><td>Date, Type, OldValue, NewValue, Description, Query</td></tr>
+</table>
+<p>The list can grow; the introspection query in section 4 is authoritative.</p>
+
+<h2 id="syntax">6. Query syntax</h2>
+<h3>Filter</h3>
+<pre><code>Contracts(filter: { Product: { eq: "FESX" } }) { ... }
+TradingHours(filter: { Product: { eq: "FESX" } }) { ... }</code></pre>
+<p><code>eq</code> is the operator used throughout. Do not assume others (<code>in</code>, <code>ne</code>, ranges): read the available operators and the value formats (for example dates) from the filter input type with introspection (section 4) before using them. When in doubt, filter by <code>Product</code> and do the rest of the filtering yourself on the returned rows.</p>
+
+<h3>Sort</h3>
+<pre><code>Holidays(filter: { Product: { eq: "FESX" } }, sort: { field: Holiday, order: ASC }) { ... }</code></pre>
+<p><code>field</code> is an enum value (no quotes), <code>order</code> is <code>ASC</code> or <code>DESC</code>.</p>
+
+<h3>Paging</h3>
+<p>Large results are paged by cursor. Ask for <code>pageInfo</code> and pass the cursor back until <code>hasNextPage</code> is false:</p>
+<pre><code>Contracts(filter: { Product: { eq: "OESX" } }, page: { first: 200 }) {
+  date
+  data { Contract Strike ExpirationDate }
+  pageInfo { hasNextPage endCursor }
+}
+# next page: page: { first: 200, after: "&lt;endCursor&gt;" }</code></pre>
+
+<h3>Variables</h3>
+<pre><code>{"query": "query ($p: String) { Holidays(filter: { Product: { eq: $p } }) { date data { Holiday ExchangeHoliday } } }",
+ "variables": { "p": "FESX" }}</code></pre>
+
+<h3>Recipes</h3>
+<ol>
+<li><strong>Find a product by name, ISIN or underlying.</strong> Load the product list once (<code>ProductInfos { data { Product Name ProductISIN ProductType Currency } }</code>, no filter, about one row per product), then search it yourself (case-insensitive over Product, Name, ProductISIN). Do not guess codes.</li>
+<li><strong>Product card in one request:</strong> <code>ProductInfos</code>, <code>TradingHours</code>, <code>TickRules</code>, <code>TESProfiles</code> and <code>Holidays</code>, each with <code>filter: { Product: { eq: "FESX" } }</code>.</li>
+<li><strong>Next expirations:</strong> <code>Expirations(filter: { Product: { eq: "OESX" } })</code> for the calendar, <code>Contracts</code> for the listed series.</li>
+<li><strong>Option strikes for one expiry:</strong> <code>Contracts</code> with the product filter, select <code>ContractDate CallPut Strike OptionsDelta</code>, then group by <code>ContractDate</code> yourself.</li>
+<li><strong>Is the market open / what are the hours?</strong> <code>TradingHours</code> gives the phase times; <code>Holidays</code> gives days without trading. State which time zone the data uses only if you have verified it from the data or documentation.</li>
+<li><strong>What changed recently?</strong> <code>Changelog { data { Date Type Description Query } }</code>; the <code>Query</code> field names the affected dataset.</li>
+</ol>
+
+<h2 id="errors">7. Errors and limits</h2>
+<table>
+<tr><th>Symptom</th><th>Meaning and action</th></tr>
+<tr><td>HTTP 401 / 403</td><td>Key missing or invalid. Ask the user to check the key.</td></tr>
+<tr><td>HTTP 429</td><td>Rate limit. Wait for the <code>Retry-After</code> seconds (or about 10 s) and retry once; do not hammer the API.</td></tr>
+<tr><td>HTTP 5xx or timeout</td><td>Temporary. Retry later or narrow the query (add filters, fewer fields, <code>page: { first: N }</code>).</td></tr>
+<tr><td>HTTP 200 with <code>errors</code></td><td>GraphQL error such as an unknown field. Read <code>errors[].message</code>, fix the query, and use introspection instead of guessing. If <code>data</code> is also present, the answer is partial: use what is there and say what is missing.</td></tr>
+<tr><td>Empty <code>data</code> list</td><td>No match. Check the product code and the filter value; do not conclude that a product does not exist before looking it up in <code>ProductInfos</code>.</td></tr>
+</table>
+
+<h2 id="answering">8. Answering the user</h2>
+<ul>
+<li>Answer in plain words first; add a small table when the data is a list.</li>
+<li>Name the product (code and name), the dataset and the validity date you used.</li>
+<li>Show the GraphQL query only if the user asks for it or wants to rerun it.</li>
+<li>Say clearly when something is not available in the API instead of estimating it.</li>
+</ul>
+
+<h2 id="links">9. More</h2>
+<ul>
+<li><a href="./">API Explorer</a>: run queries, browse products, trading hours and calendars in the browser.</li>
+<li><a href="https://www.eurex.com/ex-en/data/free-reference-data-api">Eurex: free reference data API</a> (official description).</li>
+<li><a href="https://github.com/ViktorHD/eurex-api/tree/main/notebooks">Notebooks</a>: tutorial and recipes with working queries.</li>
+<li><a href="llms.txt">llms.txt</a>: short index for crawlers.</li>
+</ul>
+
+</main>
+</body>
+</html>

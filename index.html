@@ -9,7 +9,7 @@
         // Land on the API Overview without a flash of the Explorer; share links open the Explorer directly
         if (location.search.indexOf('eurex-api-state=') < 0) document.documentElement.classList.add('boot-overview');
     </script>
-    <link rel="stylesheet" href="explorer/styles.css?v=19">
+    <link rel="stylesheet" href="explorer/styles.css?v=20">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script src="https://unpkg.com/feather-icons"></script>
@@ -102,7 +102,7 @@
             <!-- More Menu Overlay (Mobile) -->
             <div id="moreMenu" class="more-menu hidden-menu">
                 <div class="more-menu-content">
-                    <button id="mobileAskAiBtn" class="menu-item"><i data-feather="cpu"></i> Ask AI</button>
+                    <a class="menu-item" href="ai.html" target="_blank" rel="noopener"><i data-feather="cpu"></i> For AI agents</a>
                     <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="menu-item"><i data-feather="code"></i> API examples</a>
                     <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/ESMA_FIRDS_Eurex_instruments_search.ipynb" target="_blank" rel="noopener" class="menu-item"><i data-feather="search"></i> ESMA search</a>
                     <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/FAQ_cases.ipynb" target="_blank" rel="noopener" class="menu-item"><i data-feather="help-circle"></i> FAQ cases</a>
@@ -386,13 +386,12 @@ query {
   }
 }</textarea>
 
-                    <!-- Bottom drawer: variables, headers, AI settings -->
+                    <!-- Bottom drawer: variables and headers -->
                     <div class="editor-drawer">
                         <div class="drawer-header" id="drawerToggle">
                             <div class="qe-drawer-tabs" role="tablist">
                                 <button type="button" class="qe-drawer-tab active" data-tab="vars" role="tab">Variables <span id="varsBadge" class="qe-badge hidden"></span></button>
                                 <button type="button" class="qe-drawer-tab" data-tab="headers" role="tab">Headers</button>
-                                <button type="button" class="qe-drawer-tab" data-tab="ai" role="tab">AI assistant</button>
                             </div>
                             <i data-feather="chevron-up" id="drawerIcon"></i>
                         </div>
@@ -415,35 +414,6 @@ query {
                                         <button type="button" id="toggleApiKeyBtn" class="qe-tool" title="Show key" aria-label="Show API key"><i data-feather="eye"></i></button>
                                     </div>
                                     <p id="apiKeyHint" class="qe-hint"></p>
-                                </div>
-                            </div>
-                            <div class="qe-drawer-panel hidden" data-panel="ai">
-                                <div class="control-group">
-                                    <label for="aiProvider">AI Chatbot Provider</label>
-                                    <select id="aiProvider" class="qe-select">
-                                        <option value="builtin" id="aiBuiltinOption">Built-in assistant (free, no key)</option>
-                                        <option value="openrouter">OpenRouter (your key, free models)</option>
-                                        <option value="claude">Claude (Anthropic)</option>
-                                        <option value="gemini">Google Gemini</option>
-                                    </select>
-                                </div>
-                                <div class="control-group" style="margin-top: 16px; display: none;" id="openrouterKeyGroup">
-                                    <label for="openrouterApiKey">OpenRouter API Key</label>
-                                    <input type="text" class="secret-input" id="openrouterApiKey" placeholder="Enter OpenRouter API key...">
-                                    <p class="qe-hint">Get a free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. The key stays in this browser and is sent only to OpenRouter.</p>
-                                    <label for="openrouterModel" style="margin-top: 12px; display: block;">Model</label>
-                                    <input type="text" id="openrouterModel" class="qe-select" value="openai/gpt-oss-120b:free" spellcheck="false" autocomplete="off">
-                                    <p class="qe-hint">Must support tool calling. Free models are listed at <a href="https://openrouter.ai/models?supported_parameters=tools&max_price=0" target="_blank" rel="noopener">openrouter.ai/models</a> (ids ending in <code>:free</code>).</p>
-                                </div>
-                                <div class="control-group" style="margin-top: 16px; display: none;" id="claudeKeyGroup">
-                                    <label for="claudeApiKey">Claude API Key</label>
-                                    <input type="text" class="secret-input" id="claudeApiKey" placeholder="Enter Claude API key...">
-                                    <p class="qe-hint">Get a key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Anthropic Console</a>.</p>
-                                </div>
-                                <div class="control-group" style="margin-top: 16px; display: none;" id="geminiKeyGroup">
-                                    <label for="geminiApiKey">Google Gemini API Key</label>
-                                    <input type="text" class="secret-input" id="geminiApiKey" placeholder="Enter Gemini API key...">
-                                    <p class="qe-hint">Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.</p>
                                 </div>
                             </div>
                         </div>
@@ -608,21 +578,6 @@ query {
         </div>
     </div>
 
-    <!-- AI Info Modal -->
-    <div id="aiInfoModal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <span>AI Handoff - API Skill</span>
-                <button id="closeAiInfoModal" class="icon-btn" aria-label="Close AI Info modal" title="Close AI Info modal"><i data-feather="x"></i></button>
-            </div>
-            <div class="modal-body">
-                <p style="margin-bottom: 12px; font-size: 0.875rem; color: var(--text-secondary);">Copy this configuration to your AI assistant (e.g. ChatGPT, Claude) to enable it to help you with the Eurex API.</p>
-                <textarea id="aiInfoText" readonly style="width: 100%; height: 200px; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 12px; font-family: monospace; font-size: 0.75rem; resize: none; margin-bottom: 16px;"></textarea>
-                <button id="copyAiInfoBtn" class="primary-btn" style="width: 100%;">Copy to Clipboard</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Share Modal -->
     <div id="shareModal" class="modal hidden">
         <div class="modal-content">
@@ -640,29 +595,8 @@ query {
         </div>
     </div>
 
-    <!-- Floating Chatbot UI -->
-    <div id="chatbotContainer" class="chatbot-container">
-        <div id="chatbotWindow" class="chatbot-window hidden">
-            <div class="chatbot-header">
-                <span>Eurex AI Assistant</span>
-                <button id="closeChatbotBtn" class="icon-btn" style="color: white;" aria-label="Close AI Assistant" title="Close AI Assistant"><i data-feather="x"></i></button>
-            </div>
-            <div id="chatbotMessages" class="chatbot-messages">
-                <div class="chat-message assistant">
-                    Hi! I'm the Eurex AI Assistant. I can help you understand the GraphQL schema and write queries. How can I help you today?
-                </div>
-            </div>
-            <div class="chatbot-input-area">
-                <textarea id="chatbotInput" placeholder="Ask a question or request a query..." rows="2"></textarea>
-                <button id="sendChatbotBtn" class="icon-btn" aria-label="Send message" title="Send message"><i data-feather="send"></i></button>
-            </div>
-        </div>
-        <button id="toggleChatbotBtn" class="chatbot-toggle-btn" aria-label="Toggle AI Assistant" title="Toggle AI Assistant">
-            <i data-feather="message-circle"></i>
-        </button>
-    </div>
 
-    <script type="module" src="explorer/app.js?v=18"></script>
+    <script type="module" src="explorer/app.js?v=19"></script>
     <script>
       feather.replace();
     </script>

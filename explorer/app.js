@@ -4,8 +4,7 @@ import { buildNextPageQuery, canPaginate } from './pagination.js';
 import { TabManager, loadTabsSnapshot, saveTabsSnapshot } from './tabs.js?v=3';
 import { Autocomplete } from './autocomplete.js?v=3';
 import { QueryEditor, addToHistory, loadHistory, clearHistory, timeAgo, rootFieldsOf, loadSaved, saveQuery, deleteSaved } from './editor.js?v=2';
-import { SchemaExplorer, schemaToSdl } from './schema.js?v=3';
-import { Chatbot } from './chatbot.js';
+import { SchemaExplorer } from './schema.js?v=3';
 import { TimelineManager } from './timeline.js?v=4';
 import { InfoPanel } from './info.js?v=6';
 import { DOMAIN_QUERIES } from './examples.js';
@@ -524,88 +523,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const calendarView = new CalendarView(client, { content: document.getElementById('calendarContent') }, { onOpenProduct: openProduct });
     document.getElementById('productBackBtn')?.addEventListener('click', () => switchAppView('products'));
 
-    // Provider selector show/hide logic
-    const aiProviderSelect = document.getElementById('aiProvider');
-    const openrouterKeyGroup = document.getElementById('openrouterKeyGroup');
-    const claudeKeyGroup = document.getElementById('claudeKeyGroup');
-    const geminiKeyGroup = document.getElementById('geminiKeyGroup');
-
-    function updateProviderFields() {
-        const val = aiProviderSelect.value;
-        openrouterKeyGroup.style.display = val === 'openrouter' ? '' : 'none';
-        claudeKeyGroup.style.display = val === 'claude' ? '' : 'none';
-        geminiKeyGroup.style.display = val === 'gemini' ? '' : 'none';
-    }
-    aiProviderSelect.addEventListener('change', updateProviderFields);
-    updateProviderFields();
-
-    // The built-in assistant is the default when the server has a key for it; otherwise offer only the other providers
-    // Static hosting (e.g. GitHub Pages) has no /api/status, so anything but a JSON answer counts as "not available"
-    const dropBuiltinOption = () => {
-        document.getElementById('aiBuiltinOption')?.remove();
-        if (!aiProviderSelect.value) aiProviderSelect.value = 'openrouter';
-        updateProviderFields();
-    };
-    fetch('/api/status')
-        .then(r => (r.ok ? r.json() : null))
-        .then(status => { if (!status || !status.builtinAssistant) dropBuiltinOption(); })
-        .catch(dropBuiltinOption);
-
-    // AI Chatbot Setup
-    const aiInfoModal = document.getElementById('aiInfoModal');
-    const closeAiInfoModal = document.getElementById('closeAiInfoModal');
-    const aiInfoText = document.getElementById('aiInfoText');
-    const copyAiInfoBtn = document.getElementById('copyAiInfoBtn');
-
-    const getSdlSummary = async () => {
-        const schema = await schemaExplorer.fetchSchema();
-        return schema ? schemaToSdl(schema) : 'Schema not loaded yet.';
-    };
-
-    const showAiHandoff = async () => {
-        const schemaSDL = await getSdlSummary();
-        const endpoint = apiUrlInput.value.trim();
-        const apiKey = apiKeyInput.value.trim() || DEMO_API_KEY;
-        const variables = variablesInput.value.trim();
-
-        const handoffPrompt = `You are a GraphQL expert assisting a developer with the Eurex API.
-
-### API CONFIGURATION
-- ENDPOINT: ${endpoint}
-- AUTHENTICATION: Use header "X-DBP-APIKEY: ${apiKey}"
-${variables ? `- VARIABLES: ${variables}` : ''}
-
-### SCHEMA SUMMARY (SDL)
-${schemaSDL}
-
-### INSTRUCTIONS
-1. Help the user write valid GraphQL queries for this API.
-2. Ensure you use the correct field names and types as defined in the SDL.
-3. If the user asks for data visualization, suggest appropriate table columns.
-4. You can assume the user is using the Eurex API Explorer.`;
-
-        aiInfoText.value = handoffPrompt;
-        aiInfoModal.classList.remove('hidden');
-    };
-
-    closeAiInfoModal.addEventListener('click', () => aiInfoModal.classList.add('hidden'));
-    copyAiInfoBtn.addEventListener('click', () => {
-        aiInfoText.select();
-        navigator.clipboard.writeText(aiInfoText.value).then(() => {
-            const originalText = copyAiInfoBtn.textContent;
-            copyAiInfoBtn.textContent = 'Copied!';
-            setTimeout(() => {
-                copyAiInfoBtn.textContent = originalText;
-            }, 2000);
-        });
-    });
-
-    document.getElementById('mobileAskAiBtn').addEventListener('click', showAiHandoff);
-
-    window.addEventListener('click', (e) => {
-        if (e.target === aiInfoModal) aiInfoModal.classList.add('hidden');
-    });
-
     // Mobile Navigation & More Menu
     const moreMenuBtn = document.getElementById('moreMenuBtn');
     const moreMenu = document.getElementById('moreMenu');
@@ -692,33 +609,6 @@ ${schemaSDL}
         switchMobilePane('query');
     }
 
-    const chatbot = new Chatbot({
-        container: document.getElementById('chatbotContainer'),
-        window: document.getElementById('chatbotWindow'),
-        messagesContainer: document.getElementById('chatbotMessages'),
-        input: document.getElementById('chatbotInput'),
-        sendBtn: document.getElementById('sendChatbotBtn'),
-        toggleBtn: document.getElementById('toggleChatbotBtn'),
-        closeBtn: document.getElementById('closeChatbotBtn'),
-        getApiKey: () => document.getElementById('geminiApiKey').value.trim(),
-        getOpenRouterKey: () => document.getElementById('openrouterApiKey').value.trim(),
-        getOpenRouterModel: () => document.getElementById('openrouterModel').value.trim(),
-        getClaudeApiKey: () => document.getElementById('claudeApiKey').value.trim(),
-        getProvider: () => document.getElementById('aiProvider').value,
-        getVariables: () => variablesInput.value.trim(),
-        getSchemaSummary: getSdlSummary,
-        onRunQuery: async (queryText, variablesObj) => {
-            queryInput.value = queryText;
-            if (variablesObj) {
-                variablesInput.value = JSON.stringify(variablesObj, null, 2);
-            }
-            // Optionally auto-open the query pane if it's hidden
-            if (queryPane.classList.contains('hidden')) {
-                toggleQueryBtn.click();
-            }
-            return await executeGraphQLQuery(queryText, null, variablesObj);
-        }
-    });
 
     // One query can run per tab; switching tabs does not stop it, and its result goes to the tab it was started in
     const runs = new Map(); // tab id -> AbortController
@@ -1164,7 +1054,7 @@ ${schemaSDL}
     apiKeyInput.addEventListener('input', updateKeyHint);
     updateKeyHint();
     // Keys are masked text inputs, not password fields, so browsers do not offer to save them as passwords
-    [apiKeyInput, document.getElementById('openrouterApiKey'), document.getElementById('claudeApiKey'), document.getElementById('geminiApiKey')].forEach(hardenSecretInput);
+    hardenSecretInput(apiKeyInput);
     toggleApiKeyBtn.addEventListener('click', () => {
         const show = !isRevealed(apiKeyInput);
         setRevealed(apiKeyInput, show);

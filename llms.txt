@@ -1,0 +1,16 @@
+# Eurex Reference Data API
+
+> Read-only GraphQL API with Eurex reference data (products, contracts, trading hours, holidays, tick rules, TES parameters, settlement prices). Authentication: header X-DBP-APIKEY with the user's own key. Start with the AI instructions page.
+
+## For AI agents
+
+- [AI instructions](ai.html): endpoint, authentication, datasets, query syntax, recipes, error handling and rules for assistants. Read this first.
+
+## Tools
+
+- [API Explorer](./): run queries and browse products, trading hours and calendars in the browser.
+
+## More
+
+- [Eurex: free reference data API](https://www.eurex.com/ex-en/data/free-reference-data-api): official description.
+- [Notebooks](https://github.com/ViktorHD/eurex-api/tree/main/notebooks): tutorial and recipes with working queries.
