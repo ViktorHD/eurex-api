@@ -1,3 +1,5 @@
+import re
+
 import app as server
 import pytest
 
@@ -42,8 +44,15 @@ class TestAiInstructions:
         for needle in ('api.developer.deutsche-boerse.com/eurex-prod-graphql', 'X-DBP-APIKEY', 'ProductInfos', '__schema'):
             assert needle in text
 
-    def test_page_holds_no_api_key(self, client):
-        assert '68cdafd2' not in client.get('/ai.html').get_data(as_text=True)
+    def test_page_offers_the_demo_key_the_explorer_uses(self, client):
+        index = client.get('/').get_data(as_text=True)
+        key = re.search(r'id="apiKey" value="([0-9a-f-]{36})"', index).group(1)
+        text = client.get('/ai.html').get_data(as_text=True)
+        assert key in text
+        assert 'developer.deutsche-boerse.com' in text  # where to get an own free key
+
+    def test_landing_page_links_to_the_instructions(self, client):
+        assert 'href="ai.html"' in client.get('/').get_data(as_text=True)
 
     def test_llms_txt_points_to_the_page(self, client):
         resp = client.get('/llms.txt')
