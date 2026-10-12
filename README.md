@@ -26,16 +26,21 @@ Four ways in, from simplest to most robust. All share one tool registry (`eurex_
 
 Example prompt: *Read https://raw.githubusercontent.com/ViktorHD/eurex-api/main/ai.md and use it to answer my questions with the Eurex API. My API key (header X-DBP-APIKEY): ...*
 
-**2. MCP server** (Claude Desktop, Claude Code, Cursor, other MCP clients). The tools apply the rules for you (product filters, paging, Europe/Berlin trading status, tick grid, TES tiers) and return compact results with the `as_of` date.
+**2. MCP server** (Claude, ChatGPT, Cursor, Hermes front ends and other MCP clients). The tools apply the rules for you (product filters, paging, Europe/Berlin trading status, tick grid, TES tiers) and return compact results with the `as_of` date. Two ways to connect, no clone needed:
+
+*Local, one command* (needs [uv](https://docs.astral.sh/uv/)):
 
 ```bash
-pip install -r requirements-mcp.txt
-EUREX_API_KEY=... python -m eurex_mcp.server          # stdio
-python -m eurex_mcp.server --http --port 8000          # streamable HTTP
-claude mcp add eurex -e EUREX_API_KEY=... -- python -m eurex_mcp.server   # Claude Code
+claude mcp add eurex -- uvx --from git+https://github.com/ViktorHD/eurex-api eurex-mcp                      # Claude Code
+claude mcp add eurex -e EUREX_API_KEY=... -- uvx --from git+https://github.com/ViktorHD/eurex-api eurex-mcp   # with your own key
 ```
 
-Claude Desktop (`claude_desktop_config.json`): `{"mcpServers": {"eurex": {"command": "python", "args": ["-m", "eurex_mcp.server"], "cwd": "/path/to/eurex-api", "env": {"EUREX_API_KEY": "..."}}}}`
+Claude Desktop, Cursor and most other clients take the same thing as JSON:
+`{"mcpServers": {"eurex": {"command": "uvx", "args": ["--from", "git+https://github.com/ViktorHD/eurex-api", "eurex-mcp"], "env": {"EUREX_API_KEY": "..."}}}}`
+
+*Remote, just a URL.* The app serves MCP at `/mcp` (streamable HTTP, stateless, tools only). In a client that supports remote servers add `https://YOUR-APP-HOST/mcp`; for Claude Code: `claude mcp add --transport http eurex https://YOUR-APP-HOST/mcp`. Send your own key as header `X-DBP-APIKEY` (or `Authorization: Bearer <key>`). Without a key the shared demo key is used, limited to 20 calls a minute per address (`EUREX_DEMO_CALLS_PER_MINUTE`). The app must be deployed somewhere public for this: GitHub Pages is static and cannot serve it.
+
+From a clone: `pip install -r requirements-mcp.txt && python -m eurex_mcp.server` (stdio) or `--http --port 8000`.
 
 Tools: `search_products`, `get_product`, `get_market_status`, `get_tick_size`, `get_expirations`, `get_holidays`, `list_contracts`, `get_strikes`, `get_tes_thresholds`, `get_settlement_prices`, `get_changes`, `get_schema`, `run_graphql` (escape hatch, refuses unfiltered `Contracts` / `FlexibleContracts` / `SettlementPrices`), `get_api_info`. Without `EUREX_API_KEY` the shared demo key is used.
 
@@ -70,9 +75,9 @@ pip install -r requirements-dev.txt && pytest   # server, MCP tools, REST wrappe
 
 - `index.html`, `explorer/`: the front end (plain ES modules, no build step). `app.js` wires the views;
   each view and helper is its own module with tests in `explorer/tests/`.
-- `app.py`: serves the front end, the AI instructions and the REST tools (`/api/v1/tools`, `/openapi.json`).
+- `app.py`: serves the front end, the AI instructions, the hosted MCP endpoint (`/mcp`) and the REST tools (`/api/v1/tools`, `/openapi.json`).
 - `ai.md`, `ai.html`, `llms.txt`: instructions for AI agents (keep `ai.md` and `ai.html` in sync; a test checks the key facts).
-- `eurex_mcp/`: tool registry (`tools.py`), GraphQL client, pure logic ported from the Explorer, MCP server, REST blueprint, tool definitions.
+- `eurex_mcp/`: tool registry (`tools.py`), GraphQL client, pure logic ported from the Explorer, MCP server (stdio/HTTP, `pyproject.toml` installs it as `eurex-mcp`), hosted `/mcp` endpoint (`remote.py`), REST blueprint, tool definitions.
 - `ai/`, `llms-full.txt`, `schema.graphql`: generated agent assets (`scripts/build_ai_assets.py`, `scripts/export_schema.py`).
 - `evals/`: question set and runner.
 - `docs/api-data-proposals.md`: proposed new API queries from public Eurex information.

@@ -167,7 +167,7 @@ Proven ways to answer frequent questions. Dates and times below are Eurex time (
 
 ## 10. Tools instead of raw GraphQL
 
-If your client supports MCP, use the MCP server in this repository (`python -m eurex_mcp.server`, see README) instead of writing queries: `search_products`, `get_product`, `get_market_status`, `get_tick_size`, `get_expirations`, `get_holidays`, `list_contracts`, `get_strikes`, `get_tes_thresholds`, `get_settlement_prices`, `get_changes`, `get_schema`, `run_graphql`. They apply the rules and patterns above. Tool definitions for the Claude and OpenAI APIs are in `ai/claude_tools.json` and `ai/openai_tools.json`; an OpenAPI document is in `ai/openapi.json`. The full schema is in `schema.graphql` and everything in one file in `llms-full.txt` (both once generated).
+If your client supports MCP, connect the MCP server instead of writing queries. Local: `uvx --from git+https://github.com/ViktorHD/eurex-api eurex-mcp` (set `EUREX_API_KEY` for your own key). Remote: add the URL `https://YOUR-APP-HOST/mcp` and send your key as header `X-DBP-APIKEY`; without one the shared demo key is used with a per-address limit. Tools: `search_products`, `get_product`, `get_market_status`, `get_tick_size`, `get_expirations`, `get_holidays`, `list_contracts`, `get_strikes`, `get_tes_thresholds`, `get_settlement_prices`, `get_changes`, `get_schema`, `run_graphql`. They apply the rules and patterns above. Tool definitions for the Claude and OpenAI APIs are in `ai/claude_tools.json` and `ai/openai_tools.json`; an OpenAPI document is in `ai/openapi.json`. The full schema is in `schema.graphql` and everything in one file in `llms-full.txt` (both once generated).
 
 ## 11. More
 
