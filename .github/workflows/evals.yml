@@ -1,0 +1,38 @@
+name: AI evals
+# Manual: measures how well a model answers the questions in evals/questions.json with the tools and with the docs only.
+# Needs the repository secrets ANTHROPIC_API_KEY and EUREX_API_KEY.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Model id (default in evals/run_evals.py)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [tools, docs]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-evals.txt
+      - env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EUREX_API_KEY: ${{ secrets.EUREX_API_KEY }}
+          EVAL_MODEL: ${{ inputs.model }}
+        run: |
+          if [ -z "$EVAL_MODEL" ]; then unset EVAL_MODEL; fi
+          python evals/run_evals.py --mode ${{ matrix.mode }} --out evals-${{ matrix.mode }}.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evals-${{ matrix.mode }}
+          path: evals-${{ matrix.mode }}.json

@@ -1,0 +1,41 @@
+name: refresh AI assets
+# Re-reads the live GraphQL schema weekly, regenerates schema.graphql and the files derived from it,
+# and opens a pull request when something changed. Needs the repository secret EUREX_API_KEY
+# (without it the shared demo key from ai.md is used and may be rate limited).
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - name: Export schema and rebuild assets
+        env:
+          EUREX_API_KEY: ${{ secrets.EUREX_API_KEY }}
+        run: |
+          python scripts/export_schema.py
+          python scripts/build_ai_assets.py
+      - run: pytest
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bot/refresh-ai-assets
+          commit-message: Refresh schema.graphql and generated AI assets
+          title: Refresh schema.graphql and generated AI assets
+          body: |
+            The live GraphQL schema changed, or the generated agent files were out of date.
+            Review `schema.graphql` for the changed datasets and fields; update `ai.md` if a dataset or rule changed.
+          add-paths: |
+            schema.graphql
+            llms-full.txt
+            ai/*.json

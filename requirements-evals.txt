@@ -1,0 +1,2 @@
+-r requirements-mcp.txt
+anthropic>=0.40

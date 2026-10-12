@@ -1,0 +1,367 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_api_info",
+      "description": "Describe the Eurex reference-data API and this tool set: endpoint, datasets, whether the shared demo key is in use. Call first if unsure what is available.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_products",
+      "description": "Find Eurex products by code, name, ISIN or underlying (case-insensitive, all words must match). Returns code, name, ISIN, type and currency.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text, e.g. \"euro stoxx 50\", \"DE0009652644\" or \"FESX\"."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum results (default 20)."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_product",
+      "description": "Product card in one call: master data, trading hours with live status, tick rules, TES profiles, next holidays and upcoming expirations.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "Eurex product code, e.g. FESX (Euro STOXX 50 futures) or OESX (its options). Use search_products if you only have a name, ISIN or underlying."
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_market_status",
+      "description": "Is a product trading now (or at a given time)? Computes open / tes / closed / holiday from TradingHours and Holidays. Times are Europe/Berlin.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "Eurex product code, e.g. FESX (Euro STOXX 50 futures) or OESX (its options). Use search_products if you only have a name, ISIN or underlying."
+          },
+          "at": {
+            "type": "string",
+            "description": "ISO date-time to check, e.g. 2026-12-24T10:00:00. Without a zone it is read as Eurex time (Europe/Berlin). Default: now."
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_tick_size",
+      "description": "Tick (price step) rules of a product: the step that applies at a price, whether the price is on the grid, and the nearest valid prices.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "Eurex product code, e.g. FESX (Euro STOXX 50 futures) or OESX (its options). Use search_products if you only have a name, ISIN or underlying."
+          },
+          "price": {
+            "type": "number",
+            "description": "Price to check. Omit to get the whole band table."
+          },
+          "trade_type": {
+            "type": "string",
+            "description": "e.g. ORDER_BOOK (default) or BLOCK."
+          },
+          "instrument_type": {
+            "type": "string",
+            "description": "e.g. a simple instrument (default) or a strategy type."
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_expirations",
+      "description": "Expiration calendar of a product (upcoming by default), with the expiration index and master contract.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "Eurex product code, e.g. FESX (Euro STOXX 50 futures) or OESX (its options). Use search_products if you only have a name, ISIN or underlying."
+          },
+          "upcoming_only": {
+            "type": "boolean",
+            "description": "Only expirations from today on (default true)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum rows (default 12)."
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_holidays",
+      "description": "Exchange holidays of a product (upcoming by default).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "Eurex product code, e.g. FESX (Euro STOXX 50 futures) or OESX (its options). Use search_products if you only have a name, ISIN or underlying."
+          },
+          "upcoming_only": {
+            "type": "boolean",
+            "description": "Only from today on (default true)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum rows (default 20)."
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_contracts",
+      "description": "Listed series of a product (futures or options), optionally narrowed by contract date (e.g. 2026-12 or 202612) and call/put.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "Eurex product code, e.g. FESX (Euro STOXX 50 futures) or OESX (its options). Use search_products if you only have a name, ISIN or underlying."
+          },
+          "contract_date": {
+            "type": "string",
+            "description": "Contract month, e.g. 2026-12 or 202612 (prefix match)."
+          },
+          "call_put": {
+            "type": "string",
+            "description": "C or P (options only)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum rows returned (default 100)."
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_strikes",
+      "description": "Option strikes per contract date of an options product: sorted unique strikes, split into calls and puts.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "Eurex product code, e.g. FESX (Euro STOXX 50 futures) or OESX (its options). Use search_products if you only have a name, ISIN or underlying."
+          },
+          "contract_date": {
+            "type": "string",
+            "description": "Contract month, e.g. 2026-12 (prefix match). Omit for all."
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_tes_thresholds",
+      "description": "T7 Entry Service (TES, off-book) minimum lot sizes and non-disclosure limits per expiration, from TESProfiles and Expirations.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "Eurex product code, e.g. FESX (Euro STOXX 50 futures) or OESX (its options). Use search_products if you only have a name, ISIN or underlying."
+          },
+          "tes_type": {
+            "type": "string",
+            "description": "TESType to use. Default: the first group listed."
+          },
+          "instrument_type": {
+            "type": "string",
+            "description": "InstrumentType to use. Default: the first group listed."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum expirations (default 12)."
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_settlement_prices",
+      "description": "Settlement price history of a product, newest first. Narrow with contract_id, price_type or since to keep the answer small.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "Eurex product code, e.g. FESX (Euro STOXX 50 futures) or OESX (its options). Use search_products if you only have a name, ISIN or underlying."
+          },
+          "contract_id": {
+            "type": "string",
+            "description": "Only this ContractID."
+          },
+          "price_type": {
+            "type": "string",
+            "description": "Only this PriceType."
+          },
+          "since": {
+            "type": "string",
+            "description": "Only SettlementDate on or after this date (YYYY-MM-DD)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum rows (default 30)."
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_changes",
+      "description": "Announced and past changes to the API data (Changelog), newest first; optionally only entries that mention a product code or text.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mentions": {
+            "type": "string",
+            "description": "Keep entries whose text mentions this (e.g. a product code or dataset name)."
+          },
+          "since": {
+            "type": "string",
+            "description": "Only entries dated on or after this (YYYY-MM-DD)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum rows (default 20)."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_schema",
+      "description": "Introspect the GraphQL schema. Without type_name: all datasets (root queries) with arguments. With type_name: the fields, input fields or enum values of that type. Use it instead of guessing names.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "type_name": {
+            "type": "string",
+            "description": "e.g. Contract, or a filter input type name taken from the root query arguments."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "run_graphql",
+      "description": "Escape hatch: run a read-only GraphQL query against the Eurex API and get the raw result. Contracts, FlexibleContracts and SettlementPrices must be filtered by Product. Prefer the specific tools.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "GraphQL query text."
+          },
+          "variables": {
+            "type": "object",
+            "description": "Optional variables."
+          },
+          "max_chars": {
+            "type": "integer",
+            "description": "Truncate the JSON result to this many characters (default 20000)."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]
