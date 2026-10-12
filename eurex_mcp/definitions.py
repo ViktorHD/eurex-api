@@ -3,6 +3,10 @@ from . import tools
 
 API_PREFIX = '/api/v1/tools'
 
+INSTRUCTIONS = """Eurex reference data (products, contracts, trading hours, holidays, tick rules, TES parameters, settlement prices). Read-only; no live market data.
+Rules: find the product code with search_products first and never guess codes or field names (use get_schema). Prefer the specific tools over run_graphql.
+In answers name the product, the dataset and the as_of date. If a tool returns ok=false, read `hint`; do not fill gaps from memory: the API is the source of truth."""
+
 
 def claude_tools():
     """For the Anthropic Messages API `tools` parameter."""

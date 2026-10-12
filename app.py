@@ -2,6 +2,7 @@ import os
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
+from eurex_mcp.remote import bp as remote_mcp
 from eurex_mcp.rest import bp as tools_api
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -10,6 +11,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 # never the repository itself (app.py, .git, notebooks, tests).
 app = Flask(__name__, static_folder=None)
 app.register_blueprint(tools_api)
+app.register_blueprint(remote_mcp)
 
 PUBLIC_EXTENSIONS = {'.js', '.css', '.png', '.svg', '.ico'}
 
