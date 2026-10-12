@@ -157,7 +157,25 @@ TradingHours(filter: { Product: { eq: "FESX" } }) { ... }</code></pre>
 <li>Say clearly when something is not available in the API instead of estimating it.</li>
 </ul>
 
-<h2 id="links">9. More</h2>
+<h2 id="patterns">9. Answer patterns</h2>
+<p>Proven ways to answer frequent questions. Dates and times below are Eurex time (Europe/Berlin), the convention of the API Explorer.</p>
+<table>
+<thead><tr><th>Question</th><th>How</th></tr></thead>
+<tbody>
+<tr><td>Next expiration of a product</td><td><code>Expirations(filter: { Product: { eq: "OESX" } })</code>; keep rows with <code>ExpirationDate</code> today or later, take the earliest. Report date, <code>ExpirationIndex</code> and <code>MasterContract</code>.</td></tr>
+<tr><td>Is the product trading now?</td><td><code>TradingHours</code> + <code>Holidays</code> for the product. Weekend: closed. Today in <code>Holidays</code>: holiday. Now inside <code>StartContinuousTrading</code>..<code>EndContinuousTrading</code>: open. Else inside <code>StartTES</code>..<code>EndTES</code>: only TES. Else closed. A range that ends before it starts runs over midnight.</td></tr>
+<tr><td>Tick size at a price</td><td><code>TickRules</code> for the product. Use <code>TradeType</code> ORDER_BOOK and the simple <code>InstrumentType</code> unless asked otherwise; BLOCK without own rules follows the order book. A band covers <code>StartPrice</code> up to <code>EndPrice</code> (<code>EndPrice</code> excluded when the next band starts there, included otherwise; empty <code>EndPrice</code> is open ended). A price is valid when it is a whole multiple of <code>PriceStep</code>.</td></tr>
+<tr><td>Minimum TES lot size for the n-th expiry</td><td><code>TESProfiles</code> + <code>Expirations</code>. <code>MinExpiryRange</code> is the expiration index (1 = front expiry) from which a row applies until the next row starts. Use the row with the highest <code>MinExpiryRange</code> not above n.</td></tr>
+<tr><td>Strikes of an option for one expiry</td><td><code>Contracts</code> with the product filter; select <code>ContractDate CallPut Strike OptionsDelta</code>; keep the wanted <code>ContractDate</code>; list unique strikes sorted.</td></tr>
+<tr><td>Latest settlement price</td><td><code>SettlementPrices</code> with the product filter; take the newest <code>SettlementDate</code> for the wanted <code>ContractID</code> and <code>PriceType</code>. Narrow the result; the history is large.</td></tr>
+<tr><td>Is something changing for a product?</td><td><code>Changelog</code>; keep entries whose <code>Description</code>, <code>OldValue</code>, <code>NewValue</code> or <code>Query</code> mention the product or dataset; newest first.</td></tr>
+</tbody>
+</table>
+
+<h2 id="tools">10. Tools instead of raw GraphQL</h2>
+<p>If your client supports MCP, use the MCP server in this repository (<code>python -m eurex_mcp.server</code>, see the README) instead of writing queries: <code>search_products</code>, <code>get_product</code>, <code>get_market_status</code>, <code>get_tick_size</code>, <code>get_expirations</code>, <code>get_holidays</code>, <code>list_contracts</code>, <code>get_strikes</code>, <code>get_tes_thresholds</code>, <code>get_settlement_prices</code>, <code>get_changes</code>, <code>get_schema</code>, <code>run_graphql</code>. They apply the rules and patterns above. Tool definitions for the Claude and OpenAI APIs are in <code>ai/claude_tools.json</code> and <code>ai/openai_tools.json</code>; an OpenAPI document is in <code>ai/openapi.json</code>. The full schema is in <code>schema.graphql</code> and everything in one file in <code>llms-full.txt</code> (both once generated).</p>
+
+<h2 id="links">11. More</h2>
 <ul>
 <li><a href="./">API Explorer</a>: run queries, browse products, trading hours and calendars in the browser.</li>
 <li><a href="https://www.eurex.com/ex-en/data/free-reference-data-api">Eurex: free reference data API</a> (official description).</li>

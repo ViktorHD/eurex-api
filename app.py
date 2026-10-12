@@ -2,11 +2,14 @@ import os
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
+from eurex_mcp.rest import bp as tools_api
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # No automatic static route: only the files listed in static_file() below are served,
 # never the repository itself (app.py, .git, notebooks, tests).
 app = Flask(__name__, static_folder=None)
+app.register_blueprint(tools_api)
 
 PUBLIC_EXTENSIONS = {'.js', '.css', '.png', '.svg', '.ico'}
 
@@ -37,6 +40,27 @@ def ai_instructions():
 @app.route('/llms.txt')
 def llms_txt():
     return send_from_directory(ROOT, 'llms.txt', mimetype='text/plain')
+
+
+# Plain-text and machine-readable files for agents, under stable URLs (served as text, never as the page)
+AGENT_FILES = {
+    'ai.md': 'text/markdown',
+    'llms-full.txt': 'text/plain',
+    'schema.graphql': 'text/plain',
+    'ai/claude_tools.json': 'application/json',
+    'ai/openai_tools.json': 'application/json',
+}
+
+
+@app.route('/ai.md')
+@app.route('/llms-full.txt')
+@app.route('/schema.graphql')
+@app.route('/ai/<path:name>')
+def agent_files(name=None):
+    path = (request.path.lstrip('/'))
+    if path not in AGENT_FILES or not os.path.isfile(os.path.join(ROOT, path)):
+        abort(404)
+    return send_from_directory(ROOT, path, mimetype=AGENT_FILES[path] + '; charset=utf-8')
 
 
 @app.route('/explorer/<path:path>')

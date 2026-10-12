@@ -8,6 +8,11 @@
 
 - [AI instructions (web page)](ai.html): the same content as a page for people.
 
+- [Full context in one file](https://raw.githubusercontent.com/ViktorHD/eurex-api/main/llms-full.txt): instructions, tool list and GraphQL schema.
+- [GraphQL schema (SDL)](https://raw.githubusercontent.com/ViktorHD/eurex-api/main/schema.graphql): all datasets, fields and filters.
+- [MCP server](https://github.com/ViktorHD/eurex-api/tree/main/eurex_mcp): `python -m eurex_mcp.server`; tools for products, trading status, tick sizes, TES thresholds, contracts and more.
+- [Tool definitions](https://github.com/ViktorHD/eurex-api/tree/main/ai): Claude and OpenAI function definitions and an OpenAPI document.
+
 ## Tools
 
 - [API Explorer](./): run queries and browse products, trading hours and calendars in the browser.

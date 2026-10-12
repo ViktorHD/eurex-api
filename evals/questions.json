@@ -1,0 +1,596 @@
+{
+  "version": 1,
+  "description": "Questions for evals/run_evals.py. Checks that need live data use answer_cites: some value of those fields from the tool results must appear in the answer.",
+  "cases": [
+    {
+      "id": "find-fesx",
+      "question": "What is the Eurex product code for Euro STOXX 50 index futures?",
+      "expect": {
+        "tools_any": [
+          "search_products"
+        ],
+        "contains_any": [
+          "FESX"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "find-oesx",
+      "question": "Which product code do options on the Euro STOXX 50 have?",
+      "expect": {
+        "tools_any": [
+          "search_products"
+        ],
+        "contains_any": [
+          "OESX"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "find-fdax",
+      "question": "What is the product code of DAX futures at Eurex?",
+      "expect": {
+        "tools_any": [
+          "search_products"
+        ],
+        "contains_any": [
+          "FDAX"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "find-fgbl",
+      "question": "Which Eurex futures product is the Euro-Bund future (long term German government bond)?",
+      "expect": {
+        "tools_any": [
+          "search_products"
+        ],
+        "contains_any": [
+          "FGBL"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "find-isin",
+      "question": "Which product has the ISIN DE0009652644 as underlying? Give code and name.",
+      "expect": {
+        "tools_any": [
+          "search_products",
+          "run_graphql"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ],
+        "answer_cites": [
+          "Product"
+        ]
+      }
+    },
+    {
+      "id": "find-missing",
+      "question": "Tell me the contract size of the Eurex product with code ZZZZ.",
+      "expect": {
+        "tools_any": [
+          "search_products",
+          "get_product"
+        ],
+        "contains_any": [
+          "not found",
+          "no product",
+          "doesn't exist",
+          "does not exist",
+          "no match",
+          "could not find",
+          "couldn't find",
+          "not available",
+          "no such"
+        ]
+      }
+    },
+    {
+      "id": "card-currency",
+      "question": "In which currency is the FESX future denominated and what is its tick size and tick value?",
+      "expect": {
+        "tools_any": [
+          "get_product",
+          "search_products"
+        ],
+        "contains_any": [
+          "EUR"
+        ],
+        "answer_cites": [
+          "TickSize",
+          "TickValue"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "card-contract-size",
+      "question": "What is the contract size of FDAX?",
+      "expect": {
+        "tools_any": [
+          "get_product",
+          "run_graphql"
+        ],
+        "answer_cites": [
+          "ContractSize"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "card-settlement",
+      "question": "Is FESX cash settled or physically delivered?",
+      "expect": {
+        "tools_any": [
+          "get_product"
+        ],
+        "answer_cites": [
+          "SettlementType"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "card-underlying",
+      "question": "What is the underlying of OESX (name and ISIN)?",
+      "expect": {
+        "tools_any": [
+          "get_product",
+          "search_products"
+        ],
+        "answer_cites": [
+          "UnderlyingISIN"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "card-liquidity",
+      "question": "Which liquidity class does FGBL belong to?",
+      "expect": {
+        "tools_any": [
+          "get_product",
+          "run_graphql"
+        ],
+        "answer_cites": [
+          "LiquidityClass"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "card-product-line",
+      "question": "Which product line is FDAX in, and what is the product type?",
+      "expect": {
+        "tools_any": [
+          "get_product",
+          "search_products"
+        ],
+        "answer_cites": [
+          "ProductLine",
+          "ProductType"
+        ],
+        "datasets_all": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "exp-next",
+      "question": "When is the next expiration of OESX?",
+      "expect": {
+        "tools_any": [
+          "get_expirations"
+        ],
+        "answer_cites": [
+          "ExpirationDate"
+        ],
+        "datasets_all": [
+          "Expirations"
+        ]
+      }
+    },
+    {
+      "id": "exp-three",
+      "question": "List the next three expiration dates of FDAX.",
+      "expect": {
+        "tools_any": [
+          "get_expirations"
+        ],
+        "answer_cites": [
+          "ExpirationDate"
+        ],
+        "datasets_all": [
+          "Expirations"
+        ]
+      }
+    },
+    {
+      "id": "exp-index",
+      "question": "Which expiration index does the second upcoming expiration of FESX have, and on which date is it?",
+      "expect": {
+        "tools_any": [
+          "get_expirations"
+        ],
+        "answer_cites": [
+          "ExpirationDate"
+        ],
+        "datasets_all": [
+          "Expirations"
+        ]
+      }
+    },
+    {
+      "id": "exp-master",
+      "question": "What is the master contract of the next FGBL expiration?",
+      "expect": {
+        "tools_any": [
+          "get_expirations"
+        ],
+        "answer_cites": [
+          "MasterContract"
+        ],
+        "datasets_all": [
+          "Expirations"
+        ]
+      }
+    },
+    {
+      "id": "hours-fesx",
+      "question": "What are the continuous trading hours of FESX?",
+      "expect": {
+        "tools_any": [
+          "get_market_status",
+          "get_product"
+        ],
+        "answer_cites": [
+          "StartContinuousTrading",
+          "EndContinuousTrading"
+        ],
+        "datasets_all": [
+          "TradingHours"
+        ]
+      }
+    },
+    {
+      "id": "hours-tes",
+      "question": "Until when can I enter TES trades in FDAX?",
+      "expect": {
+        "tools_any": [
+          "get_market_status",
+          "get_product"
+        ],
+        "answer_cites": [
+          "EndTES"
+        ],
+        "datasets_all": [
+          "TradingHours"
+        ]
+      }
+    },
+    {
+      "id": "status-christmas",
+      "question": "Is FESX trading on 2026-12-24 at 10:00 Eurex time? Check the holiday calendar.",
+      "expect": {
+        "tools_any": [
+          "get_market_status",
+          "get_holidays"
+        ],
+        "datasets_all": [
+          "TradingHours",
+          "Holidays"
+        ]
+      }
+    },
+    {
+      "id": "status-sunday",
+      "question": "Is FDAX open for continuous trading on a Sunday at noon?",
+      "expect": {
+        "tools_any": [
+          "get_market_status"
+        ],
+        "contains_any": [
+          "closed",
+          "not open",
+          "not trading",
+          "no"
+        ],
+        "datasets_all": [
+          "TradingHours"
+        ]
+      }
+    },
+    {
+      "id": "hol-next",
+      "question": "What is the next exchange holiday for FESX?",
+      "expect": {
+        "tools_any": [
+          "get_holidays",
+          "get_market_status",
+          "get_product"
+        ],
+        "answer_cites": [
+          "Holiday"
+        ],
+        "datasets_all": [
+          "Holidays"
+        ]
+      }
+    },
+    {
+      "id": "hol-count",
+      "question": "How many exchange holidays does FDAX have from today on?",
+      "expect": {
+        "tools_any": [
+          "get_holidays"
+        ],
+        "datasets_all": [
+          "Holidays"
+        ]
+      }
+    },
+    {
+      "id": "tick-simple",
+      "question": "What is the minimum price step of FESX at a price of 5000?",
+      "expect": {
+        "tools_any": [
+          "get_tick_size"
+        ],
+        "answer_cites": [
+          "PriceStep"
+        ],
+        "datasets_all": [
+          "TickRules"
+        ]
+      }
+    },
+    {
+      "id": "tick-valid",
+      "question": "Is a price of 5000.25 a valid tick for FESX futures in the order book? If not, give the nearest valid prices.",
+      "expect": {
+        "tools_any": [
+          "get_tick_size"
+        ],
+        "answer_cites": [
+          "PriceStep"
+        ],
+        "datasets_all": [
+          "TickRules"
+        ]
+      }
+    },
+    {
+      "id": "tick-bund",
+      "question": "Is 128.455 a valid price for FGBL order book trading?",
+      "expect": {
+        "tools_any": [
+          "get_tick_size"
+        ],
+        "answer_cites": [
+          "PriceStep"
+        ],
+        "datasets_all": [
+          "TickRules"
+        ]
+      }
+    },
+    {
+      "id": "tick-block",
+      "question": "Which tick size applies to a block trade in FDAX?",
+      "expect": {
+        "tools_any": [
+          "get_tick_size"
+        ],
+        "answer_cites": [
+          "PriceStep"
+        ],
+        "datasets_all": [
+          "TickRules"
+        ]
+      }
+    },
+    {
+      "id": "tes-min-lot",
+      "question": "What is the minimum TES lot size for the front expiry of OESX?",
+      "expect": {
+        "tools_any": [
+          "get_tes_thresholds"
+        ],
+        "answer_cites": [
+          "MinLotSize"
+        ],
+        "datasets_all": [
+          "TESProfiles",
+          "Expirations"
+        ]
+      }
+    },
+    {
+      "id": "tes-ndl",
+      "question": "What is the non-disclosure limit for TES trades in FESX?",
+      "expect": {
+        "tools_any": [
+          "get_tes_thresholds",
+          "get_product"
+        ],
+        "answer_cites": [
+          "NonDisclosureLimit"
+        ],
+        "datasets_all": [
+          "TESProfiles"
+        ]
+      }
+    },
+    {
+      "id": "tes-broker",
+      "question": "Does TES in FDAX allow brokers and auto approval?",
+      "expect": {
+        "tools_any": [
+          "get_product",
+          "get_tes_thresholds"
+        ],
+        "answer_cites": [
+          "AllowBroker",
+          "AllowAutoApproval"
+        ],
+        "datasets_all": [
+          "TESProfiles"
+        ]
+      }
+    },
+    {
+      "id": "strikes-oesx",
+      "question": "List the strikes available for OESX options for the next expiry month.",
+      "expect": {
+        "tools_any": [
+          "get_strikes",
+          "list_contracts"
+        ],
+        "answer_cites": [
+          "Strike"
+        ],
+        "datasets_all": [
+          "Contracts"
+        ]
+      }
+    },
+    {
+      "id": "contracts-fgbl",
+      "question": "Which FGBL futures contracts are listed? Give contract names and last trading dates.",
+      "expect": {
+        "tools_any": [
+          "list_contracts"
+        ],
+        "answer_cites": [
+          "LastTradingDate"
+        ],
+        "datasets_all": [
+          "Contracts"
+        ]
+      }
+    },
+    {
+      "id": "delta",
+      "question": "What is the option delta of the OESX call with the strike closest to 5000 for the next expiry?",
+      "expect": {
+        "tools_any": [
+          "list_contracts",
+          "get_strikes"
+        ],
+        "answer_cites": [
+          "OptionsDelta"
+        ],
+        "datasets_all": [
+          "Contracts"
+        ]
+      }
+    },
+    {
+      "id": "settle-latest",
+      "question": "What was the latest settlement price of FESX?",
+      "expect": {
+        "tools_any": [
+          "get_settlement_prices"
+        ],
+        "answer_cites": [
+          "SettlementPrice"
+        ],
+        "datasets_all": [
+          "SettlementPrices"
+        ]
+      }
+    },
+    {
+      "id": "settle-date",
+      "question": "On which date is the newest settlement price for FDAX?",
+      "expect": {
+        "tools_any": [
+          "get_settlement_prices"
+        ],
+        "answer_cites": [
+          "SettlementDate"
+        ],
+        "datasets_all": [
+          "SettlementPrices"
+        ]
+      }
+    },
+    {
+      "id": "changes-recent",
+      "question": "What changed recently in the Eurex API data? Name three changes.",
+      "expect": {
+        "tools_any": [
+          "get_changes"
+        ],
+        "answer_cites": [
+          "Description"
+        ],
+        "datasets_all": [
+          "Changelog"
+        ]
+      }
+    },
+    {
+      "id": "changes-product",
+      "question": "Is any change announced that mentions FESX?",
+      "expect": {
+        "tools_any": [
+          "get_changes"
+        ],
+        "datasets_all": [
+          "Changelog"
+        ]
+      }
+    },
+    {
+      "id": "schema-datasets",
+      "question": "Which datasets does the API offer? List them.",
+      "expect": {
+        "tools_any": [
+          "get_schema",
+          "get_api_info"
+        ],
+        "contains_any": [
+          "ProductInfos"
+        ]
+      }
+    },
+    {
+      "id": "schema-fields",
+      "question": "Which fields does the TradingHours dataset have?",
+      "expect": {
+        "tools_any": [
+          "get_schema",
+          "run_graphql"
+        ],
+        "contains_any": [
+          "StartContinuousTrading"
+        ]
+      }
+    }
+  ]
+}

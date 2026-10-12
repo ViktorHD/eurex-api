@@ -151,7 +151,25 @@ Recipes:
 - Show the GraphQL query only if the user asks for it or wants to rerun it.
 - Say clearly when something is not available in the API instead of estimating it.
 
-## 9. More
+## 9. Answer patterns
+
+Proven ways to answer frequent questions. Dates and times below are Eurex time (Europe/Berlin), the convention of the API Explorer.
+
+| Question | How |
+|---|---|
+| Next expiration of a product | `Expirations(filter: { Product: { eq: "OESX" } })`; keep rows with `ExpirationDate` today or later, take the earliest. Report date, `ExpirationIndex` and `MasterContract`. |
+| Is the product trading now? | `TradingHours` + `Holidays` for the product. Weekend: closed. Today in `Holidays`: holiday. Now inside `StartContinuousTrading`..`EndContinuousTrading`: open. Else inside `StartTES`..`EndTES`: only TES. Else closed. A range that ends before it starts runs over midnight. |
+| Tick size at a price | `TickRules` for the product. Use `TradeType` ORDER_BOOK and the simple `InstrumentType` unless asked otherwise; BLOCK without own rules follows the order book. A band covers `StartPrice` up to `EndPrice` (`EndPrice` excluded when the next band starts there, included otherwise; empty `EndPrice` is open ended). A price is valid when it is a whole multiple of `PriceStep`. |
+| Minimum TES lot size for the n-th expiry | `TESProfiles` + `Expirations`. `MinExpiryRange` is the expiration index (1 = front expiry) from which a row applies until the next row starts. Use the row with the highest `MinExpiryRange` not above n. |
+| Strikes of an option for one expiry | `Contracts` with the product filter; select `ContractDate CallPut Strike OptionsDelta`; keep the wanted `ContractDate`; list unique strikes sorted. |
+| Latest settlement price | `SettlementPrices` with the product filter; take the newest `SettlementDate` for the wanted `ContractID` and `PriceType`. Narrow the result; the history is large. |
+| Is something changing for a product? | `Changelog`; keep entries whose `Description`, `OldValue`, `NewValue` or `Query` mention the product or dataset; newest first. |
+
+## 10. Tools instead of raw GraphQL
+
+If your client supports MCP, use the MCP server in this repository (`python -m eurex_mcp.server`, see README) instead of writing queries: `search_products`, `get_product`, `get_market_status`, `get_tick_size`, `get_expirations`, `get_holidays`, `list_contracts`, `get_strikes`, `get_tes_thresholds`, `get_settlement_prices`, `get_changes`, `get_schema`, `run_graphql`. They apply the rules and patterns above. Tool definitions for the Claude and OpenAI APIs are in `ai/claude_tools.json` and `ai/openai_tools.json`; an OpenAPI document is in `ai/openapi.json`. The full schema is in `schema.graphql` and everything in one file in `llms-full.txt` (both once generated).
+
+## 11. More
 
 - API Explorer: https://viktorhd.github.io/eurex-api/
 - Official description: https://www.eurex.com/ex-en/data/free-reference-data-api
