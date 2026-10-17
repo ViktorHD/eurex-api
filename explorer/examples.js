@@ -28,7 +28,7 @@ export const DOMAIN_QUERIES = {
       ExpirationDate
       FirstTradingDate
       LastTradingDate
-      PreviousDaySettlementPrice
+      SettlementPrice
     }
   }
 }`,
@@ -145,7 +145,7 @@ export const DOMAIN_QUERIES = {
       CallPut
       Strike
       OptionsDelta
-      PreviousDaySettlementPrice
+      SettlementPrice
     }
   }
 }`

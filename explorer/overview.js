@@ -649,7 +649,7 @@ export class OverviewManager {
               ContractDate
               ContractCycle
               ExpirationDate
-              PreviousDaySettlementPrice
+              SettlementPrice
               OptionsDelta
               CallPut
             }
@@ -690,7 +690,7 @@ export class OverviewManager {
                         ContractDate: r.ContractDate,
                         ContractCycle: (r.ContractCycle || '').toUpperCase(),
                         ExpirationDate: r.ExpirationDate,
-                        RefPrice: r.PreviousDaySettlementPrice,
+                        RefPrice: r.SettlementPrice,
                         CallPut: (r.CallPut || '').toUpperCase(),
                         Delta: this._signedDelta(r.OptionsDelta, r.CallPut)
                     };

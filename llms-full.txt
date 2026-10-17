@@ -79,7 +79,7 @@ The filter input types show the exact operators available per field. Look up the
 | Root query | Content | Useful fields |
 |---|---|---|
 | `ProductInfos` | Product master data, one row per product | ProductID, Product, Name, ProductISIN, ProductType, ProductTypeCode, ProductLine, LiquidityClass, Currency, ContractSize, TickSize, TickValue, SettlementType, Underlying, UnderlyingISIN |
-| `Contracts` | Listed series (futures and options). **Filter by Product.** | Contract, ISIN, ContractDate, ContractCycle, ExpirationDate, FirstTradingDate, LastTradingDate, CallPut, Strike, OptionsDelta, PreviousDaySettlementPrice |
+| `Contracts` | Listed series (futures and options). **Filter by Product.** | Contract, ISIN, ContractDate, ContractCycle, ExpirationDate, FirstTradingDate, LastTradingDate, CallPut, Strike, OptionsDelta, SettlementPrice |
 | `FlexibleContracts` | Flexible (customised) contracts. **Filter by Product.** | ContractID, Contract, ISIN, CallPut, Strike, ExpirationDate, SettlementDate, SettlementPrice, OpenInterest, ExerciseStyle, SettlementType |
 | `Expirations` | Expiration calendar per product | ProductID, Product, MasterContract, ExpirationIndex, ExpirationDate |
 | `TradingHours` | Trading phases per product | Product, StartContinuousTrading, EndOpeningAuction, EndContinuousTrading, EndClosingAuction, StartTES, EndTES, LTDBook, LTDTES |
