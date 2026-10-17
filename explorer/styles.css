@@ -2420,19 +2420,6 @@ th.sticky-col { z-index: 30; }
     stroke-width: 2;
 }
 
-.overview-ref-marker {
-    stroke: var(--error);
-    stroke-width: 2;
-    cursor: pointer;
-}
-
-.overview-legend-swatch-line {
-    width: 3px;
-    height: 12px;
-    border-radius: 2px;
-    background: var(--error);
-}
-
 .overview-3d-floor {
     fill: rgba(30, 136, 229, 0.06);
     stroke: var(--border-color);

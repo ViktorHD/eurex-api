@@ -145,6 +145,18 @@ describe('Strike Window helpers', () => {
         expect(atm.get('2026-12-18')).toBeCloseTo(5450);
         expect(atm.has('2027-03-19')).toBe(false);
     });
+
+    test('_forwardByDate borrows the nearest date estimate for expiries without a delta crossing', () => {
+        const rows = [
+            { ContractDate: '2026-12-18', CallPut: 'C', ContractCycle: 'MONTHLY', Strike: 5400, Delta: 0.6 },
+            { ContractDate: '2026-12-18', CallPut: 'C', ContractCycle: 'MONTHLY', Strike: 5500, Delta: 0.4 },
+            { ContractDate: '2027-03-19', CallPut: 'C', ContractCycle: 'QUARTERLY', Strike: 5000, Delta: 0.9 }
+        ];
+        const fwd = om._forwardByDate(rows);
+        expect(fwd.get('2026-12-18')).toBeCloseTo(5450);
+        expect(fwd.get('2027-03-19')).toBeCloseTo(5450);
+        expect(om._forwardByDate([{ ContractDate: '2026-12-18', CallPut: 'P', Strike: 5000, Delta: -0.5 }]).size).toBe(0);
+    });
 });
 
 describe('Per-expiry strike gap detection', () => {
