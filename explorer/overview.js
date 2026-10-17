@@ -12,12 +12,12 @@ const DEFAULT_CYCLE_COLOR = '#757575';
 const PRODUCT_CODE_RE = /^[A-Z0-9_-]{1,32}$/;
 // Delta Coverage view flags adjacent strikes whose deltas differ by more than this.
 const DELTA_JUMP_THRESHOLD = 0.2;
-// 3D camera presets. Front: delta vs contract date; Side: strike vs contract date; Top: delta vs strike.
+// 3D camera presets. Front: delta vs contract date; Side: moneyness vs contract date; Top: delta vs moneyness.
 const VIEW_PRESETS_3D = {
     iso: { label: '3D', title: 'Isometric view', azimuth: Math.PI / 4, pitch: Math.PI / 6 },
     front: { label: 'Δ × Date', title: 'Front: delta against contract date', azimuth: 0, pitch: 0.05 },
-    side: { label: 'Strike × Date', title: 'Side: strike against contract date', azimuth: Math.PI / 2, pitch: 0.05 },
-    top: { label: 'Δ × Strike', title: 'Top: delta against strike', azimuth: 0, pitch: Math.PI / 2 - 0.05 }
+    side: { label: 'Moneyness × Date', title: 'Side: moneyness against contract date', azimuth: Math.PI / 2, pitch: 0.05 },
+    top: { label: 'Δ × Moneyness', title: 'Top: delta against moneyness', azimuth: 0, pitch: Math.PI / 2 - 0.05 }
 };
 // Frequently used option products offered as quick picks in the empty state (only those that exist are shown).
 const QUICK_PICKS = ['OESX', 'ODAX', 'OSMI', 'OGBL', 'OGBM', 'OVS2', 'OKS2', 'OMSC'];
@@ -944,7 +944,8 @@ export class OverviewManager {
             return;
         }
         if (viewMode === '3d') {
-            this._render3DChart(allRows || [...normalRows, ...lepoRows], product);
+            // LEPO strikes sit near 0 and would stretch the moneyness axis, so they stay out of the 3D view.
+            this._render3DChart(normalRows, product);
             return;
         }
 
@@ -1191,6 +1192,23 @@ export class OverviewManager {
         return result;
     }
 
+    // Forward estimate per contract date for moneyness: the delta-0.5 strike from _atmByDate. Dates without a
+    // crossing (e.g. delta not listed for that expiry) borrow the nearest date's estimate.
+    _forwardByDate(rows) {
+        const atm = this._atmByDate(rows);
+        if (atm.size === 0) return atm;
+        const known = [...atm.entries()].map(([date, f]) => ({ t: new Date(date).getTime(), f }));
+        const result = new Map(atm);
+        new Set(rows.map(r => r.ContractDate)).forEach(date => {
+            if (result.has(date)) return;
+            const t = new Date(date).getTime();
+            if (Number.isNaN(t)) return;
+            const nearest = known.reduce((best, k) => (Math.abs(k.t - t) < Math.abs(best.t - t) ? k : best));
+            result.set(date, nearest.f);
+        });
+        return result;
+    }
+
     // Delta Coverage view: X = Options Delta (puts left, calls right), Y = days to maturity (log scale).
     // Each expiry is one row of points with a coverage band per side; large delta jumps between adjacent
     // listed strikes are flagged and can be requested directly.
@@ -1388,30 +1406,37 @@ export class OverviewManager {
         if (window.feather) window.feather.replace();
     }
 
-    // 3D View: isometric projection with Strike x Days-to-Maturity as the floor plane and Options Delta as elevation.
+    // 3D View: isometric projection with Moneyness (strike / forward) x Contract Date as the floor plane and Options Delta as elevation.
     _render3DChart(rows, product) {
+        const forwards = this._forwardByDate(rows);
         const points = rows
-            .map(r => ({
-                ...r,
-                strike: Number(r.Strike),
-                delta: Number(r.Delta),
-                dtm: this._daysToMaturity(r.ExpirationDate)
-            }))
-            .filter(p => Number.isFinite(p.strike) && Number.isFinite(p.delta) && !!p.ContractDate);
+            .map(r => {
+                const strike = Number(r.Strike);
+                const forward = forwards.get(r.ContractDate);
+                return {
+                    ...r,
+                    strike,
+                    delta: Number(r.Delta),
+                    dtm: this._daysToMaturity(r.ExpirationDate),
+                    forward,
+                    moneyness: forward > 0 ? strike / forward : NaN
+                };
+            })
+            .filter(p => Number.isFinite(p.moneyness) && Number.isFinite(p.delta) && !!p.ContractDate);
 
         if (points.length === 0) {
             this.els.content.innerHTML = this._emptyState(
                 'No data for 3D view',
-                `No contracts with Strike, Options Delta, and a Contract Date were found for ${product}.`
+                `Moneyness needs Strike, Options Delta (to locate the at-the-money strike) and a Contract Date, and none were found for ${product}.`
             );
             if (window.feather) window.feather.replace();
             return;
         }
 
-        const strikes = points.map(p => p.strike);
-        const minStrike = Math.min(...strikes);
-        const maxStrike = Math.max(...strikes);
-        const strikePad = (maxStrike - minStrike) * 0.08 || 1;
+        const moneynesses = points.map(p => p.moneyness);
+        const minStrike = Math.min(...moneynesses);
+        const maxStrike = Math.max(...moneynesses);
+        const strikePad = (maxStrike - minStrike) * 0.08 || 0.1;
         const domainMinStrike = Math.max(0, minStrike - strikePad);
         const domainMaxStrike = maxStrike + strikePad;
 
@@ -1439,11 +1464,10 @@ export class OverviewManager {
         const legend = this._buildLegend(points, [], 'Drag to rotate · Shift+drag to pan · Scroll or +/− to zoom · Arrow keys rotate');
 
         const deltas3 = points.filter(p => !this.hiddenCycles.has((p.ContractCycle || '').toUpperCase())).map(p => p.delta);
-        const fmtNum = (n) => Math.round(n).toLocaleString('en-US');
         const stats = [
             `${dates.length} contract dates`,
             `${points.length.toLocaleString('en-US')} contracts`,
-            `Strike ${fmtNum(minStrike)} – ${fmtNum(maxStrike)}`,
+            `Moneyness ${minStrike.toFixed(2)} – ${maxStrike.toFixed(2)}`,
             ...(deltas3.length ? [`Δ ${Math.min(...deltas3).toFixed(2)} to ${Math.max(...deltas3).toFixed(2)}`] : [])
         ];
         const reqStrikes = [...new Set(points.filter(p => p.ContractCycle !== 'FLEXIBLE').map(p => p.strike))].sort((a, b) => a - b);
@@ -1607,6 +1631,7 @@ export class OverviewManager {
             : d.points;
         const { azimuth, pitch } = this.rotation3D;
 
+        // "Strike" in the names below is the depth axis, which holds moneyness (strike / forward).
         const nStrike = (s) => (s - d.domainMinStrike) / (d.domainMaxStrike - d.domainMinStrike);
         const nDate = (date) => d.dates.length > 1 ? d.dates.indexOf(date) / (d.dates.length - 1) : 0;
         const nDelta = (v) => (v - d.domainMinDelta) / (d.domainMaxDelta - d.domainMinDelta);
@@ -1649,10 +1674,10 @@ export class OverviewManager {
             p2: project(worldX(v), 0, worldZ(d.domainMaxStrike))
         }));
 
-        const strikeStep = this._niceTickStep(this._strikeStep([...new Set(points.map(p => p.strike))].sort((a, b) => a - b)), d.domainMaxStrike - d.domainMinStrike, 6);
-        const firstStrikeTick = Math.ceil(d.domainMinStrike / strikeStep) * strikeStep;
+        const strikeStep = this._niceTickStep(0.05, d.domainMaxStrike - d.domainMinStrike, 6);
+        const firstStrikeTick = Math.ceil(d.domainMinStrike / strikeStep - 1e-9) * strikeStep;
         const strikeTicks = [];
-        for (let s = firstStrikeTick; s <= d.domainMaxStrike; s += strikeStep) strikeTicks.push(s);
+        for (let s = firstStrikeTick; s <= d.domainMaxStrike + 1e-9; s += strikeStep) strikeTicks.push(s);
         const strikeGrid = strikeTicks.map(s => ({
             value: s,
             p1: project(worldX(d.domainMinDelta), 0, worldZ(s)),
@@ -1673,7 +1698,7 @@ export class OverviewManager {
 
         const projectedPoints = points.map(p => ({
             p,
-            proj: project(worldX(p.delta), worldY(p.ContractDate), worldZ(p.strike))
+            proj: project(worldX(p.delta), worldY(p.ContractDate), worldZ(p.moneyness))
         }));
 
         // Fit whatever is currently visible into the available viewport, regardless of rotation.
@@ -1759,7 +1784,7 @@ export class OverviewManager {
             label.setAttribute('y', p1.y + 4);
             label.setAttribute('class', 'overview-date-label');
             label.setAttribute('text-anchor', 'end');
-            label.textContent = Math.round(g.value).toLocaleString('en-US');
+            label.textContent = g.value.toFixed(2);
             if (showStrikeLabels) svg.appendChild(label);
         });
 
@@ -1777,7 +1802,7 @@ export class OverviewManager {
         strikeTitle.setAttribute('x', strikeTitleSvg.x + 10);
         strikeTitle.setAttribute('y', strikeTitleSvg.y);
         strikeTitle.setAttribute('class', 'overview-axis-title');
-        strikeTitle.textContent = 'Strike';
+        strikeTitle.textContent = 'Moneyness (K/F)';
         if (showStrikeLabels) svg.appendChild(strikeTitle);
 
         dateTicks.forEach(tick => {
@@ -1837,6 +1862,7 @@ export class OverviewManager {
 
                 this._addTooltip(circle, [
                     `Strike: ${p.strike.toLocaleString('en-US')} ${p.CallPut === 'P' ? 'Put' : p.CallPut === 'C' ? 'Call' : ''}`.trim(),
+                    `Moneyness (K/F): ${p.moneyness.toFixed(3)} (F ≈ ${Math.round(p.forward).toLocaleString('en-US')})`,
                     `Options Delta: ${p.Delta}`,
                     `Contract Date: ${formatDateToDDMMYYYY(p.ContractDate)}${Number.isFinite(p.dtm) ? ` (${p.dtm}d)` : ''}`,
                     `Contract Cycle: ${p.ContractCycle || '-'}`
