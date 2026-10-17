@@ -829,7 +829,7 @@ export class OverviewManager {
     }
 
     // LEPOs (Low Exercise Price Options) carry a strike far below the rest of the ladder (often near 0),
-    // so they're pulled out and shown as an underlying reference price instead of a normal strike point.
+    // so they're excluded from the strike window to keep the axis readable (the at-the-money marker at delta 0.5 replaces them).
     _splitLepoRows(rows) {
         const strikes = [...new Set(rows.map(r => Number(r.Strike)))].filter(s => s > 0).sort((a, b) => a - b);
         if (strikes.length < 2) return { normalRows: rows, lepoRows: [] };
@@ -948,24 +948,15 @@ export class OverviewManager {
             return;
         }
 
-        const lepoByDate = new Map();
-        lepoRows.forEach(r => {
-            if (!lepoByDate.has(r.ContractDate)) lepoByDate.set(r.ContractDate, r);
-        });
-        const refPrices = [...lepoByDate.values()]
-            .map(r => Number(r.RefPrice))
-            .filter(v => Number.isFinite(v) && v > 0);
-
         const hidden = this.hiddenCycles;
         const visibleRows = normalRows.filter(r => !hidden.has((r.ContractCycle || '').toUpperCase()));
 
-        const dates = [...new Set([...normalRows, ...lepoRows].map(r => r.ContractDate))].sort();
+        const dates = [...new Set(normalRows.map(r => r.ContractDate))].sort();
         const strikes = [...new Set(normalRows.map(r => Number(r.Strike)))].sort((a, b) => a - b);
         // Flexible contracts can sit on arbitrary strikes, so the listed strike increment comes from standard series only.
         const standardStrikes = [...new Set(normalRows.filter(r => r.ContractCycle !== 'FLEXIBLE').map(r => Number(r.Strike)))].sort((a, b) => a - b);
-        const domainCandidates = [...strikes, ...refPrices];
-        const minStrike = Math.min(...domainCandidates);
-        const maxStrike = Math.max(...domainCandidates);
+        const minStrike = Math.min(...strikes);
+        const maxStrike = Math.max(...strikes);
         const strikePad = (maxStrike - minStrike) * 0.04 || 1;
         // Strikes are never negative, so the axis never extends below 0.
         const domainMin = Math.max(0, minStrike - strikePad);
@@ -1131,27 +1122,9 @@ export class OverviewManager {
             ].join('\n'));
         });
 
-        // Underlying reference price markers, derived from LEPO settlement prices
-        dates.forEach((date, i) => {
-            const lepo = lepoByDate.get(date);
-            if (!lepo) return;
-            const refPrice = Number(lepo.RefPrice);
-            if (!Number.isFinite(refPrice) || refPrice <= 0) return;
-
-            const x = xScale(refPrice);
-            const y = topAxisHeight + i * rowHeight;
-            const marker = el('line', { x1: x, y1: y + 2, x2: x, y2: y + rowHeight - 2, class: 'overview-ref-marker' });
-            this._addTooltip(marker, [
-                'Underlying Reference (LEPO settlement price)',
-                `Price: ${lepo.RefPrice}`,
-                `Contract Date: ${formatDateToDDMMYYYY(date)}`
-            ].join('\n'));
-        });
-
         const legend = this._buildLegend(normalRows, [
             ...(atmByDate.size > 0 ? [['overview-legend-swatch-atm', 'At the money (Δ 0.50)']] : []),
-            ...(gaps.length > 0 ? [['overview-legend-swatch-gap', 'Missing strikes (click to request)']] : []),
-            ...(lepoByDate.size > 0 ? [['overview-legend-swatch-line', 'Underlying Ref (LEPO)']] : [])
+            ...(gaps.length > 0 ? [['overview-legend-swatch-gap', 'Missing strikes (click to request)']] : [])
         ]);
 
         const flexCount = normalRows.filter(r => r.ContractCycle === 'FLEXIBLE').length;
