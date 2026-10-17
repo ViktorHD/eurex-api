@@ -23,7 +23,7 @@ TES_FIELDS = ('TESType InstrumentType PriceValidationRule AllowAutoApproval Allo
               'MinExpiryRange NonDisclosureLimit TESminStep MaxTrader LegPriceEntry').split()
 EXPIRATION_FIELDS = 'ProductID Product MasterContract ExpirationIndex ExpirationDate'.split()
 CONTRACT_FIELDS = ('Contract ISIN ContractDate ContractCycle ExpirationDate FirstTradingDate LastTradingDate CallPut Strike '
-                   'OptionsDelta PreviousDaySettlementPrice').split()
+                   'OptionsDelta SettlementPrice').split()
 SETTLEMENT_FIELDS = 'ContractID Product ContractType PriceType SettlementPrice SettlementDate'.split()
 CHANGELOG_FIELDS = 'Date Type OldValue NewValue Description Query'.split()
 
