@@ -937,13 +937,14 @@ export class OverviewManager {
 
     _renderChart(normalRows, lepoRows, product, allRows) {
         const viewMode = this.els.viewSelect?.value || 'strike';
+        this._disposeGl();
         if (!this.hiddenCycles) this.hiddenCycles = new Set(); // shared by all views, so a toggle survives a view switch
         this._stepsByDate = this._computeStepsByDate(normalRows);
         if (viewMode === 'delta') {
             this._renderDeltaChart(allRows || [...normalRows, ...lepoRows], product);
             return;
         }
-        if (viewMode === '3d') {
+        if (viewMode === '3d' || viewMode === '3d-gl') {
             // LEPO strikes sit near 0 and would stretch the moneyness axis, so they stay out of the 3D view.
             this._render3DChart(normalRows, product);
             return;
@@ -1407,7 +1408,8 @@ export class OverviewManager {
     }
 
     // 3D View: isometric projection with Moneyness (strike / forward) x Contract Date as the floor plane and Options Delta as elevation.
-    _render3DChart(rows, product) {
+    _render3DChart(rows, product, { forceSvg = false } = {}) {
+        const useGl = !forceSvg && this.els.viewSelect?.value === '3d-gl';
         const forwards = this._forwardByDate(rows);
         const points = rows
             .map(r => {
@@ -1480,6 +1482,10 @@ export class OverviewManager {
         const chartWrap = document.createElement('div');
         chartWrap.className = 'overview-3d-wrap';
         this.els.content.appendChild(chartWrap);
+        if (useGl) {
+            this._mountGl(chartWrap, rows, product, { points, dates, d: this._chart3D });
+            return;
+        }
 
         const controls = document.createElement('div');
         controls.className = 'overview-3d-controls';
@@ -1526,6 +1532,117 @@ export class OverviewManager {
         this._bind3DDrag(scrollWrap);
         this._redraw3DScene();
 
+        if (window.feather) window.feather.replace();
+    }
+
+    _disposeGl() {
+        this._glToken = (this._glToken || 0) + 1; // invalidates a mount that is still loading three.js
+        if (this._gl) {
+            this._glView = this._gl.getView();
+            this._gl.dispose();
+            this._gl = null;
+        }
+    }
+
+    // WebGL variant of the 3D view (three.js, loaded lazily). Falls back to the SVG view if it can't start.
+    async _mountGl(chartWrap, rows, product, { points, d }) {
+        const token = ++this._glToken;
+        const hidden = this.hiddenCycles || new Set();
+        const nStrike = (s) => (s - d.domainMinStrike) / (d.domainMaxStrike - d.domainMinStrike);
+        const nDate = (date) => d.dates.length > 1 ? d.dates.indexOf(date) / (d.dates.length - 1) : 0;
+        const nDelta = (v) => (v - d.domainMinDelta) / (d.domainMaxDelta - d.domainMinDelta);
+
+        const deltaStep = this._niceTickStep(0.1, d.domainMaxDelta - d.domainMinDelta, 8);
+        const deltaTicks = [];
+        for (let v = Math.ceil(d.domainMinDelta / deltaStep) * deltaStep; v <= d.domainMaxDelta; v += deltaStep) {
+            deltaTicks.push({ n: nDelta(v), label: v.toFixed(2) });
+        }
+        const strikeStep = this._niceTickStep(0.05, d.domainMaxStrike - d.domainMinStrike, 6);
+        const strikeTicks = [];
+        for (let s = Math.ceil(d.domainMinStrike / strikeStep - 1e-9) * strikeStep; s <= d.domainMaxStrike + 1e-9; s += strikeStep) {
+            strikeTicks.push({ n: nStrike(s), label: s.toFixed(2) });
+        }
+        const dateTicks = this._sampleTicks(d.dates, 8).map(date => ({ n: nDate(date), label: formatDateToDDMMYYYY(date) }));
+
+        const spec = {
+            points: points
+                .filter(p => !hidden.has((p.ContractCycle || '').toUpperCase()))
+                .map(p => {
+                    const cycle = (p.ContractCycle || '').toUpperCase();
+                    return {
+                        x: nDelta(p.delta), y: nDate(p.ContractDate), z: nStrike(p.moneyness),
+                        color: CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR,
+                        flex: cycle === 'FLEXIBLE',
+                        tip: [
+                            `Strike: ${p.strike.toLocaleString('en-US')} ${p.CallPut === 'P' ? 'Put' : p.CallPut === 'C' ? 'Call' : ''}`.trim(),
+                            `Moneyness (K/F): ${p.moneyness.toFixed(3)} (F ≈ ${Math.round(p.forward).toLocaleString('en-US')})`,
+                            `Options Delta: ${p.Delta}`,
+                            `Contract Date: ${formatDateToDDMMYYYY(p.ContractDate)}${Number.isFinite(p.dtm) ? ` (${p.dtm}d)` : ''}`,
+                            `Contract Cycle: ${p.ContractCycle || '-'}`
+                        ].join('\n')
+                    };
+                }),
+            ticks: { delta: deltaTicks, strike: strikeTicks, date: dateTicks },
+            titles: { delta: 'Delta', strike: 'Moneyness (K/F)', date: 'Contract date' },
+            view: this._glView || null,
+            onHover: (text, e) => {
+                if (!text) { this.tooltip.classList.add('hidden'); return; }
+                this.tooltip.textContent = text;
+                this.tooltip.classList.remove('hidden');
+                const rect = this.tooltip.getBoundingClientRect();
+                this.tooltip.style.left = `${Math.max(12, Math.min(e.clientX + 15, window.innerWidth - rect.width - 12))}px`;
+                this.tooltip.style.top = `${e.clientY + 15 + rect.height > window.innerHeight - 12 ? e.clientY - rect.height - 10 : e.clientY + 15}px`;
+            }
+        };
+
+        const host = document.createElement('div');
+        host.className = 'overview-gl-host';
+        host.setAttribute('aria-label', '3D chart (WebGL): drag to rotate, right-drag to pan, scroll to zoom');
+        host.style.height = `${Math.max(this.els.container.clientHeight - 110, 300)}px`;
+        chartWrap.appendChild(host);
+
+        try {
+            const { mountGlScene } = await import('./overview3d-gl.js');
+            const gl = await mountGlScene(host, spec);
+            if (token !== this._glToken) { gl.dispose(); return; } // view changed while three.js was loading
+            this._gl = gl;
+        } catch (err) {
+            if (token !== this._glToken) return;
+            console.warn('WebGL 3D view unavailable, falling back to SVG:', err);
+            this._render3DChart(rows, product, { forceSvg: true });
+            return;
+        }
+
+        const controls = document.createElement('div');
+        controls.className = 'overview-3d-controls';
+        controls.innerHTML = `
+            <button type="button" class="icon-btn" data-action="zoom-in" title="Zoom in" aria-label="Zoom in"><i data-feather="plus"></i></button>
+            <button type="button" class="icon-btn" data-action="zoom-out" title="Zoom out" aria-label="Zoom out"><i data-feather="minus"></i></button>
+            <button type="button" class="icon-btn" data-action="reset" title="Reset view" aria-label="Reset 3D view"><i data-feather="refresh-ccw"></i></button>
+        `;
+        controls.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn || !this._gl) return;
+            if (btn.dataset.action === 'zoom-in') this._gl.zoom(1.2);
+            else if (btn.dataset.action === 'zoom-out') this._gl.zoom(1 / 1.2);
+            else this._gl.reset();
+        });
+        chartWrap.appendChild(controls);
+
+        const presets = document.createElement('div');
+        presets.className = 'overview-3d-presets';
+        presets.setAttribute('role', 'group');
+        presets.setAttribute('aria-label', 'Camera presets');
+        Object.entries(VIEW_PRESETS_3D).forEach(([key, preset]) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = preset.label;
+            btn.title = preset.title;
+            btn.dataset.preset = key;
+            btn.addEventListener('click', () => this._gl?.setPreset(preset.azimuth, preset.pitch));
+            presets.appendChild(btn);
+        });
+        chartWrap.appendChild(presets);
         if (window.feather) window.feather.replace();
     }
 
