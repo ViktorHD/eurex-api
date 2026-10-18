@@ -75,7 +75,7 @@ External links open in the browser. Like the web app, it loads three.js, icons a
 cd android && ./gradlew assembleDebug    # needs JDK 17 and the Android SDK; APK in app/build/outputs/apk/debug/
 ```
 
-The `android` workflow builds the debug APK on every relevant change and uploads it as an artifact. In Android Studio, open `android/`.
+The `android` workflow builds the debug APK on every relevant change, uploads it as an artifact and commits it as `android/eurex-explorer.apk`, ready to install (allow "install unknown apps" for your file manager or browser). It is signed with the fixed debug key in `android/debug.keystore`, so updates install over older builds. In Android Studio, open `android/`.
 
 ## Test
 
