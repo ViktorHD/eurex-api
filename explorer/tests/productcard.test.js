@@ -47,7 +47,7 @@ describe('ProductCard', () => {
         expect(query).toContain('ProductInfos(filter: { Product: { eq: "FESX" } })');
         expect(box.querySelector('.pc-title h2').textContent).toBe('FESX');
         expect(box.querySelector('.pc-name').textContent).toBe('Euro STOXX 50 Index Futures');
-        expect(titles(box)).toEqual(['Product data', 'Trading hours', 'Tick rules', 'TES (block trades)', 'Expirations and holidays', 'Settlement prices']);
+        expect(titles(box)).toEqual(['Product data', 'Profile', 'Trading hours', 'Tick rules', 'TES (block trades)', 'Expirations and holidays', 'Settlement prices']);
     });
 
     test('product data skips empty values and splits camel case labels', async () => {
@@ -252,7 +252,7 @@ describe('ProductCard layout', () => {
         await card.open('FESX');
         const grid = box.querySelector('.pc-grid');
         expect(grid.querySelectorAll('.pc-col').length).toBeGreaterThanOrEqual(1);
-        expect(grid.querySelectorAll('.pc-card')).toHaveLength(6);
+        expect(grid.querySelectorAll('.pc-card')).toHaveLength(7);
     });
 
     test('with several columns each card goes to the shortest one', () => {
