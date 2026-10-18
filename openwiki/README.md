@@ -11,5 +11,6 @@ User-facing docs live in the root `README.md`; agent-facing instructions live in
 | [Generated assets](generated-assets.md) | `ai/*.json`, `llms-full.txt`, `schema.graphql` and their scripts |
 | [Testing and CI](testing-and-ci.md) | Pytest, Jest, workflows, evals |
 | [Conventions and gotchas](conventions.md) | Rules a change must respect |
+| [Overview map](overview.html) | Interactive architecture diagram (open in a browser; uses Google Fonts) |
 
 Scope: the Eurex GraphQL reference-data API (`https://api.developer.deutsche-boerse.com/eurex-prod-graphql/`, header `X-DBP-APIKEY`). It is read-only; there is no live market data.
