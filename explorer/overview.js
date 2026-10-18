@@ -1,3 +1,5 @@
+import { DEFAULT_GL_OPTIONS } from './overview3d-gl.js';
+
 // Strike Window visualization for the Eurex Overview pane.
 // X-axis: Strike price. Y-axis: Contract date. Color: ContractCycle.
 
@@ -257,6 +259,42 @@ export function refineStep(interval, steps) {
     const candidates = (steps || []).filter(st => st < interval - 1e-9 && Math.abs(interval / st - Math.round(interval / st)) < 1e-6);
     if (candidates.length) return Math.max(...candidates);
     return steps && steps.length ? Math.min(...steps) : null;
+}
+
+export function downloadBlobFile(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', filename);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Resolves the 3D search box: a strike (nearest listed one, calls and puts) or a contract date / month.
+// points: [{ strike, date: 'YYYY-MM-DD…', side }]. Returns { indices, pin, message }; pin = highlight the first hit.
+export function findIn3DPoints(points, text) {
+    const q = String(text ?? '').trim();
+    if (!q) return { indices: [], pin: false, message: '' };
+    let prefix = null;
+    let m;
+    if ((m = q.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/))) prefix = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    else if ((m = q.match(/^(\d{1,2})\.(\d{4})$/))) prefix = `${m[2]}-${m[1].padStart(2, '0')}`;
+    else if (/^\d{4}-\d{2}(-\d{2})?$/.test(q)) prefix = q;
+    if (prefix) {
+        const indices = points.map((p, i) => i).filter(i => String(points[i].date || '').startsWith(prefix));
+        return { indices, pin: false, message: indices.length ? `${indices.length} contracts` : 'No contract date matches' };
+    }
+    const value = Number(q.replace(/,/g, ''));
+    if (!Number.isFinite(value) || !points.length) return { indices: [], pin: false, message: 'Enter a strike or a date' };
+    let best = Infinity;
+    points.forEach(p => { best = Math.min(best, Math.abs(p.strike - value)); });
+    const nearest = points.find(p => Math.abs(p.strike - value) === best).strike;
+    const indices = points.map((p, i) => i).filter(i => points[i].strike === nearest);
+    // Calls first, so the pinned point is the call when both sides are listed
+    indices.sort((a, b) => (points[a].side === 'C' ? 0 : 1) - (points[b].side === 'C' ? 0 : 1));
+    return { indices, pin: true, message: best === 0 ? `Strike ${nearest.toLocaleString('en-US')}` : `Nearest strike ${nearest.toLocaleString('en-US')}` };
 }
 
 export function downloadCsvFile(filename, csvContent) {
@@ -944,7 +982,7 @@ export class OverviewManager {
             this._renderDeltaChart(allRows || [...normalRows, ...lepoRows], product);
             return;
         }
-        if (viewMode === '3d' || viewMode === '3d-gl') {
+        if (viewMode === '3d') {
             // LEPO strikes sit near 0 and would stretch the moneyness axis, so they stay out of the 3D view.
             this._render3DChart(normalRows, product);
             return;
@@ -1407,9 +1445,8 @@ export class OverviewManager {
         if (window.feather) window.feather.replace();
     }
 
-    // 3D View: isometric projection with Moneyness (strike / forward) x Contract Date as the floor plane and Options Delta as elevation.
-    _render3DChart(rows, product, { forceSvg = false } = {}) {
-        const useGl = !forceSvg && this.els.viewSelect?.value === '3d-gl';
+    // 3D View (three.js): with Moneyness (strike / forward) x Contract Date as the floor plane and Options Delta as elevation.
+    _render3DChart(rows, product) {
         const forwards = this._forwardByDate(rows);
         const points = rows
             .map(r => {
@@ -1453,17 +1490,14 @@ export class OverviewManager {
         const domainMaxDelta = maxDelta + deltaPad;
 
         // Cached so drag-to-rotate can re-project without refetching or re-filtering the data.
-        this._chart3D = {
+        const chart3D = {
             points,
             product,
             domainMinStrike, domainMaxStrike,
             dates,
             domainMinDelta, domainMaxDelta
         };
-        if (!this.rotation3D) this.rotation3D = { azimuth: Math.PI / 4, pitch: Math.PI / 6 };
-        if (!this.zoom3D) this.zoom3D = 1;
-        if (!this.pan3D) this.pan3D = { x: 0, y: 0 };
-        const legend = this._buildLegend(points, [], 'Drag to rotate · Shift+drag to pan · Scroll or +/− to zoom · Arrow keys rotate');
+        const legend = this._buildLegend(points, [], 'Drag to rotate · Right-drag to pan · Scroll to zoom · Click a point to pin its strike');
 
         const deltas3 = points.filter(p => !this.hiddenCycles.has((p.ContractCycle || '').toUpperCase())).map(p => p.delta);
         const stats = [
@@ -1482,55 +1516,7 @@ export class OverviewManager {
         const chartWrap = document.createElement('div');
         chartWrap.className = 'overview-3d-wrap';
         this.els.content.appendChild(chartWrap);
-        if (useGl) {
-            this._mountGl(chartWrap, rows, product, { points, dates, d: this._chart3D });
-            return;
-        }
-
-        const controls = document.createElement('div');
-        controls.className = 'overview-3d-controls';
-        controls.innerHTML = `
-            <button type="button" class="icon-btn" data-action="zoom-in" title="Zoom in" aria-label="Zoom in"><i data-feather="plus"></i></button>
-            <button type="button" class="icon-btn" data-action="zoom-out" title="Zoom out" aria-label="Zoom out"><i data-feather="minus"></i></button>
-            <button type="button" class="icon-btn" data-action="reset" title="Reset view" aria-label="Reset 3D view"><i data-feather="refresh-ccw"></i></button>
-        `;
-        controls.addEventListener('click', (e) => {
-            const btn = e.target.closest('button[data-action]');
-            if (!btn) return;
-            if (btn.dataset.action === 'zoom-in') this._zoom3D(1.2);
-            else if (btn.dataset.action === 'zoom-out') this._zoom3D(1 / 1.2);
-            else if (btn.dataset.action === 'reset') this._reset3DView();
-        });
-        chartWrap.appendChild(controls);
-
-        // Camera presets: each flattens one axis so a 2D relationship can be read exactly
-        const presets = document.createElement('div');
-        presets.className = 'overview-3d-presets';
-        presets.setAttribute('role', 'group');
-        presets.setAttribute('aria-label', 'Camera presets');
-        Object.entries(VIEW_PRESETS_3D).forEach(([key, preset]) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = preset.label;
-            btn.title = preset.title;
-            btn.dataset.preset = key;
-            btn.addEventListener('click', () => {
-                this.rotation3D = { azimuth: preset.azimuth, pitch: preset.pitch };
-                this.pan3D = { x: 0, y: 0 };
-                this._redraw3DScene();
-            });
-            presets.appendChild(btn);
-        });
-        chartWrap.appendChild(presets);
-
-        const scrollWrap = document.createElement('div');
-        scrollWrap.className = 'overview-chart-scroll overview-3d-scroll';
-        chartWrap.appendChild(scrollWrap);
-        this._chart3DScrollWrap = scrollWrap;
-        scrollWrap.tabIndex = 0;
-        scrollWrap.setAttribute('aria-label', '3D chart: arrow keys rotate, plus and minus zoom, 0 resets');
-        this._bind3DDrag(scrollWrap);
-        this._redraw3DScene();
+        this._mountGl(chartWrap, { points, d: chart3D });
 
         if (window.feather) window.feather.replace();
     }
@@ -1539,15 +1525,52 @@ export class OverviewManager {
         this._glToken = (this._glToken || 0) + 1; // invalidates a mount that is still loading three.js
         if (this._gl) {
             this._glView = this._gl.getView();
+            this._glOptions = this._gl.getOptions();
             this._gl.dispose();
             this._gl = null;
         }
     }
 
-    // WebGL variant of the 3D view (three.js, loaded lazily). Falls back to the SVG view if it can't start.
-    async _mountGl(chartWrap, rows, product, { points, d }) {
+    // Camera and display options of the 3D view in the compact keys of the share link format.
+    get3DShareState() {
+        const view = this._gl ? this._gl.getView() : this._glView;
+        if (!view) return null;
+        const round = (arr) => arr.map(v => Math.round(v * 100) / 100);
+        const o = this._gl ? this._gl.getOptions() : (this._glOptions || {});
+        const opt = {};
+        if (o.surface) opt.su = 1;
+        if (o.atm === false) opt.at = 0;
+        if (o.jumps) opt.ju = 1;
+        if (o.side && o.side !== 'all') opt.sd = o.side;
+        if (Number.isFinite(o.deltaMin) && o.deltaMin > -1) opt.lo = o.deltaMin;
+        if (Number.isFinite(o.deltaMax) && o.deltaMax < 1) opt.hi = o.deltaMax;
+        return {
+            cam: { p: round(view.position), t: round(view.target), o: view.ortho ? 1 : 0, z: Math.round(view.zoom * 1000) / 1000 },
+            opt,
+            hc: [...(this.hiddenCycles || [])]
+        };
+    }
+
+    // Restores what get3DShareState produced; the next 3D render picks it up.
+    apply3DShareState(g) {
+        if (!g || !g.cam || !Array.isArray(g.cam.p) || !Array.isArray(g.cam.t)) return;
+        this._glView = { position: g.cam.p, target: g.cam.t, ortho: !!g.cam.o, zoom: g.cam.z || 1 };
+        const opt = g.opt || {};
+        this._glOptions = {
+            ...DEFAULT_GL_OPTIONS,
+            surface: !!opt.su, atm: opt.at !== 0, jumps: !!opt.ju, ortho: !!g.cam.o,
+            side: opt.sd === 'C' || opt.sd === 'P' ? opt.sd : 'all',
+            deltaMin: Number.isFinite(opt.lo) ? opt.lo : -1,
+            deltaMax: Number.isFinite(opt.hi) ? opt.hi : 1
+        };
+        this.hiddenCycles = new Set(Array.isArray(g.hc) ? g.hc : []);
+    }
+
+    // Renders the 3D view with three.js (loaded lazily on first use).
+    async _mountGl(chartWrap, { points, d }) {
         const token = ++this._glToken;
         const hidden = this.hiddenCycles || new Set();
+        const o = this._glOptions = { ...DEFAULT_GL_OPTIONS, ...(this._glOptions || {}) };
         const nStrike = (s) => (s - d.domainMinStrike) / (d.domainMaxStrike - d.domainMinStrike);
         const nDate = (date) => d.dates.length > 1 ? d.dates.indexOf(date) / (d.dates.length - 1) : 0;
         const nDelta = (v) => (v - d.domainMinDelta) / (d.domainMaxDelta - d.domainMinDelta);
@@ -1564,6 +1587,22 @@ export class OverviewManager {
         }
         const dateTicks = this._sampleTicks(d.dates, 8).map(date => ({ n: nDate(date), label: formatDateToDDMMYYYY(date) }));
 
+        // Strikes next to a delta jump (same rule as the Delta Coverage view), per expiry and option side.
+        const groups = new Map();
+        points.forEach(p => {
+            if (p.ContractCycle === 'FLEXIBLE') return;
+            const key = `${p.ContractDate}|${p.CallPut}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(p);
+        });
+        const jumpPoints = new Set();
+        groups.forEach(pts => {
+            const flagged = new Set();
+            findDeltaJumps(pts.map(p => ({ strike: p.strike, delta: p.delta })), DELTA_JUMP_THRESHOLD)
+                .forEach(j => { flagged.add(j.lo); flagged.add(j.hi); });
+            pts.forEach(p => { if (flagged.has(p.strike)) jumpPoints.add(p); });
+        });
+
         const spec = {
             points: points
                 .filter(p => !hidden.has((p.ContractCycle || '').toUpperCase()))
@@ -1573,6 +1612,8 @@ export class OverviewManager {
                         x: nDelta(p.delta), y: nDate(p.ContractDate), z: nStrike(p.moneyness),
                         color: CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR,
                         flex: cycle === 'FLEXIBLE',
+                        strike: p.strike, side: p.CallPut, delta: p.delta, date: p.ContractDate,
+                        jump: jumpPoints.has(p),
                         tip: [
                             `Strike: ${p.strike.toLocaleString('en-US')} ${p.CallPut === 'P' ? 'Put' : p.CallPut === 'C' ? 'Call' : ''}`.trim(),
                             `Moneyness (K/F): ${p.moneyness.toFixed(3)} (F ≈ ${Math.round(p.forward).toLocaleString('en-US')})`,
@@ -1584,6 +1625,10 @@ export class OverviewManager {
                 }),
             ticks: { delta: deltaTicks, strike: strikeTicks, date: dateTicks },
             titles: { delta: 'Delta', strike: 'Moneyness (K/F)', date: 'Contract date' },
+            deltaDomain: [d.domainMinDelta, d.domainMaxDelta],
+            atm: d.domainMinStrike < 1 && d.domainMaxStrike > 1 ? nStrike(1) : null,
+            caption: `${this._productTitle(d.product)} · 3D strike view`,
+            options: o,
             view: this._glView || null,
             onHover: (text, e) => {
                 if (!text) { this.tooltip.classList.add('hidden'); return; }
@@ -1595,10 +1640,12 @@ export class OverviewManager {
             }
         };
 
+        const toolbar = this._build3DToolbar(spec, jumpPoints.size);
+        chartWrap.before(toolbar);
+
         const host = document.createElement('div');
         host.className = 'overview-gl-host';
-        host.setAttribute('aria-label', '3D chart (WebGL): drag to rotate, right-drag to pan, scroll to zoom');
-        host.style.height = `${Math.max(this.els.container.clientHeight - 110, 300)}px`;
+        host.style.height = `${Math.max(this.els.container.clientHeight - 110 - toolbar.offsetHeight, 300)}px`;
         chartWrap.appendChild(host);
 
         try {
@@ -1608,10 +1655,17 @@ export class OverviewManager {
             this._gl = gl;
         } catch (err) {
             if (token !== this._glToken) return;
-            console.warn('WebGL 3D view unavailable, falling back to SVG:', err);
-            this._render3DChart(rows, product, { forceSvg: true });
+            console.warn('WebGL 3D view unavailable:', err);
+            host.remove();
+            toolbar.remove();
+            chartWrap.insertAdjacentHTML('beforeend', this._emptyState(
+                '3D view unavailable',
+                'It needs WebGL and the three.js library (loaded from a CDN). Check your connection and browser settings, or use the Strike Window or Delta Coverage view.'
+            ));
+            if (window.feather) window.feather.replace();
             return;
         }
+        this._glView = null; // consumed; the live camera is read from the scene from here on
 
         const controls = document.createElement('div');
         controls.className = 'overview-3d-controls';
@@ -1619,373 +1673,124 @@ export class OverviewManager {
             <button type="button" class="icon-btn" data-action="zoom-in" title="Zoom in" aria-label="Zoom in"><i data-feather="plus"></i></button>
             <button type="button" class="icon-btn" data-action="zoom-out" title="Zoom out" aria-label="Zoom out"><i data-feather="minus"></i></button>
             <button type="button" class="icon-btn" data-action="reset" title="Reset view" aria-label="Reset 3D view"><i data-feather="refresh-ccw"></i></button>
+            <button type="button" class="icon-btn" data-action="png" title="Save as PNG" aria-label="Save 3D view as PNG"><i data-feather="download"></i></button>
         `;
-        controls.addEventListener('click', (e) => {
+        controls.addEventListener('click', async (e) => {
             const btn = e.target.closest('button[data-action]');
             if (!btn || !this._gl) return;
-            if (btn.dataset.action === 'zoom-in') this._gl.zoom(1.2);
-            else if (btn.dataset.action === 'zoom-out') this._gl.zoom(1 / 1.2);
-            else this._gl.reset();
+            const action = btn.dataset.action;
+            if (action === 'zoom-in') this._gl.zoom(1.2);
+            else if (action === 'zoom-out') this._gl.zoom(1 / 1.2);
+            else if (action === 'reset') this._gl.reset();
+            else if (action === 'png') {
+                const blob = await this._gl?.snapshot();
+                if (blob) downloadBlobFile(`${(this._lastChart?.product || 'strikes')}-3d.png`, blob);
+            }
         });
         chartWrap.appendChild(controls);
+        if (window.feather) window.feather.replace();
+        this._glSpecPoints = spec.points;
+    }
 
-        const presets = document.createElement('div');
-        presets.className = 'overview-3d-presets';
-        presets.setAttribute('role', 'group');
-        presets.setAttribute('aria-label', 'Camera presets');
-        Object.entries(VIEW_PRESETS_3D).forEach(([key, preset]) => {
+    // Controls row above the 3D chart: camera presets, overlays, option side and delta band filters, search.
+    _build3DToolbar(spec, jumpCount) {
+        const o = this._glOptions;
+        const bar = document.createElement('div');
+        bar.className = 'overview-3d-toolbar';
+        bar.setAttribute('role', 'toolbar');
+        bar.setAttribute('aria-label', '3D view controls');
+        const group = (label) => {
+            const g = document.createElement('div');
+            g.className = 'overview-3d-group';
+            g.setAttribute('role', 'group');
+            g.setAttribute('aria-label', label);
+            bar.appendChild(g);
+            return g;
+        };
+        const button = (parent, text, title, onClick) => {
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.textContent = preset.label;
-            btn.title = preset.title;
+            btn.textContent = text;
+            btn.title = title;
+            btn.addEventListener('click', onClick);
+            parent.appendChild(btn);
+            return btn;
+        };
+        const apply = (patch) => { Object.assign(o, patch); this._gl?.setOptions(patch); };
+
+        const presets = group('Camera presets');
+        Object.entries(VIEW_PRESETS_3D).forEach(([key, preset]) => {
+            const btn = button(presets, preset.label, preset.title, () => this._gl?.setPreset(preset.azimuth, preset.pitch));
             btn.dataset.preset = key;
-            btn.addEventListener('click', () => this._gl?.setPreset(preset.azimuth, preset.pitch));
-            presets.appendChild(btn);
         });
-        chartWrap.appendChild(presets);
-        if (window.feather) window.feather.replace();
-    }
 
-    _zoom3D(factor) {
-        this.zoom3D = Math.min(4, Math.max(0.3, this.zoom3D * factor));
-        this._redraw3DScene();
-    }
-
-    _reset3DView() {
-        this.rotation3D = { azimuth: Math.PI / 4, pitch: Math.PI / 6 };
-        this.zoom3D = 1;
-        this.pan3D = { x: 0, y: 0 };
-        this._redraw3DScene();
-    }
-
-    // Re-projects the cached 3D data at the current rotation and swaps the <svg> in place (header/legend untouched).
-    _redraw3DScene() {
-        if (!this._chart3DScrollWrap || !this._chart3D) return;
-        const svg = this._build3DSvg();
-        this._chart3DScrollWrap.innerHTML = '';
-        this._chart3DScrollWrap.appendChild(svg);
-    }
-
-    _bind3DDrag(scrollWrap) {
-        let dragging = false;
-        let panning = false;
-        let startX = 0, startY = 0, startAzimuth = 0, startPitch = 0;
-        let startPanX = 0, startPanY = 0;
-        let rafScheduled = false;
-        const minPitch = 0.05;
-        const maxPitch = Math.PI / 2 - 0.05;
-
-        const scheduleRedraw = () => {
-            if (rafScheduled) return;
-            rafScheduled = true;
-            requestAnimationFrame(() => {
-                rafScheduled = false;
-                this._redraw3DScene();
+        const toggles = group('Overlays');
+        const toggle = (text, title, key, onChange) => {
+            const btn = button(toggles, text, title, () => {
+                const next = !o[key];
+                apply({ [key]: next });
+                btn.setAttribute('aria-pressed', String(next));
+                if (onChange) onChange(next);
             });
+            btn.setAttribute('aria-pressed', String(!!o[key]));
+            return btn;
         };
+        toggle('Surface', 'Smooth delta surface across moneyness and contract date', 'surface');
+        if (spec.atm != null) toggle('ATM', 'At-the-money plane (moneyness 1.0)', 'atm');
+        toggle(`Jumps${jumpCount ? ` (${jumpCount})` : ''}`, `Outline strikes next to a delta jump above ${DELTA_JUMP_THRESHOLD.toFixed(2)}`, 'jumps');
+        toggle('Ortho', 'Orthographic camera: parallel projection, exact for reading the preset views', 'ortho');
 
-        scrollWrap.addEventListener('pointerdown', (e) => {
-            panning = e.shiftKey || e.button === 1 || e.button === 2;
-            dragging = !panning;
-            startX = e.clientX;
-            startY = e.clientY;
-            startAzimuth = this.rotation3D.azimuth;
-            startPitch = this.rotation3D.pitch;
-            startPanX = this.pan3D.x;
-            startPanY = this.pan3D.y;
-            scrollWrap.setPointerCapture(e.pointerId);
-            scrollWrap.classList.add('dragging');
-            e.preventDefault();
-        });
-        scrollWrap.addEventListener('pointermove', (e) => {
-            if (!dragging && !panning) return;
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            if (panning) {
-                this.pan3D.x = startPanX + dx;
-                this.pan3D.y = startPanY + dy;
-            } else {
-                const sensitivity = 0.01;
-                this.rotation3D.azimuth = startAzimuth + dx * sensitivity;
-                this.rotation3D.pitch = Math.min(maxPitch, Math.max(minPitch, startPitch - dy * sensitivity));
-            }
-            scheduleRedraw();
-        });
-        const endDrag = () => {
-            dragging = false;
-            panning = false;
-            scrollWrap.classList.remove('dragging');
-        };
-        scrollWrap.addEventListener('pointerup', endDrag);
-        scrollWrap.addEventListener('pointercancel', endDrag);
-        scrollWrap.addEventListener('contextmenu', (e) => e.preventDefault());
-        scrollWrap.addEventListener('keydown', (e) => {
-            const step = 0.1;
-            const r = this.rotation3D;
-            if (e.key === 'ArrowLeft') r.azimuth -= step;
-            else if (e.key === 'ArrowRight') r.azimuth += step;
-            else if (e.key === 'ArrowUp') r.pitch = Math.min(maxPitch, r.pitch + step);
-            else if (e.key === 'ArrowDown') r.pitch = Math.max(minPitch, r.pitch - step);
-            else if (e.key === '+' || e.key === '=') this.zoom3D = Math.min(4, this.zoom3D * 1.2);
-            else if (e.key === '-') this.zoom3D = Math.max(0.3, this.zoom3D / 1.2);
-            else if (e.key === '0') { this._reset3DView(); e.preventDefault(); return; }
-            else return;
-            e.preventDefault();
-            scheduleRedraw();
-        });
-        scrollWrap.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            this.zoom3D = Math.min(4, Math.max(0.3, this.zoom3D * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
-            scheduleRedraw();
-        }, { passive: false });
-    }
-
-    _build3DSvg() {
-        const d = this._chart3D;
-        const hidden = this.hiddenCycles || new Set();
-        const points = hidden.size > 0
-            ? d.points.filter(p => !hidden.has((p.ContractCycle || '').toUpperCase()))
-            : d.points;
-        const { azimuth, pitch } = this.rotation3D;
-
-        // "Strike" in the names below is the depth axis, which holds moneyness (strike / forward).
-        const nStrike = (s) => (s - d.domainMinStrike) / (d.domainMaxStrike - d.domainMinStrike);
-        const nDate = (date) => d.dates.length > 1 ? d.dates.indexOf(date) / (d.dates.length - 1) : 0;
-        const nDelta = (v) => (v - d.domainMinDelta) / (d.domainMaxDelta - d.domainMinDelta);
-
-        const containerWidth = Math.max(this.els.container.clientWidth, 300);
-        const reservedHeight = 110;
-        const containerHeight = Math.max(this.els.container.clientHeight - reservedHeight, 300);
-        const planeSize = Math.max(Math.min(containerWidth - 100, containerHeight - 60), 240);
-        // Same magnitude as planeSize so Delta/Strike/Contract Date form a cube rather than a flattened box.
-        const elevationScale = planeSize;
-
-        // X = Delta (puts negative, calls positive), Z = Strike (depth), Y = Contract Date (height, short-dated at the bottom).
-        const worldX = (delta) => nDelta(delta) * planeSize - planeSize / 2;
-        const worldZ = (s) => nStrike(s) * planeSize - planeSize / 2;
-        const worldY = (date) => nDate(date) * elevationScale;
-
-        // Orthographic projection: azimuth spins around the vertical (contract date) axis, pitch tilts the camera.
-        const project = (x, y, z) => {
-            const xr = x * Math.cos(azimuth) + z * Math.sin(azimuth);
-            const zr = -x * Math.sin(azimuth) + z * Math.cos(azimuth);
-            // depth: larger = closer to the camera
-            return { sx: xr, sy: y * Math.cos(pitch) - zr * Math.sin(pitch), depth: y * Math.sin(pitch) + zr * Math.cos(pitch) };
-        };
-
-        // Floor corners (earliest Contract Date, i.e. world Y = 0) span Delta x Strike.
-        const corners = [
-            [d.domainMinDelta, d.domainMinStrike],
-            [d.domainMaxDelta, d.domainMinStrike],
-            [d.domainMaxDelta, d.domainMaxStrike],
-            [d.domainMinDelta, d.domainMaxStrike]
-        ].map(([delta, s]) => project(worldX(delta), 0, worldZ(s)));
-
-        const deltaStep = this._niceTickStep(0.1, d.domainMaxDelta - d.domainMinDelta, 8);
-        const firstDeltaTick = Math.ceil(d.domainMinDelta / deltaStep) * deltaStep;
-        const deltaAxisTicks = [];
-        for (let v = firstDeltaTick; v <= d.domainMaxDelta; v += deltaStep) deltaAxisTicks.push(v);
-        const deltaGrid = deltaAxisTicks.map(v => ({
-            value: v,
-            p1: project(worldX(v), 0, worldZ(d.domainMinStrike)),
-            p2: project(worldX(v), 0, worldZ(d.domainMaxStrike))
-        }));
-
-        const strikeStep = this._niceTickStep(0.05, d.domainMaxStrike - d.domainMinStrike, 6);
-        const firstStrikeTick = Math.ceil(d.domainMinStrike / strikeStep - 1e-9) * strikeStep;
-        const strikeTicks = [];
-        for (let s = firstStrikeTick; s <= d.domainMaxStrike + 1e-9; s += strikeStep) strikeTicks.push(s);
-        const strikeGrid = strikeTicks.map(s => ({
-            value: s,
-            p1: project(worldX(d.domainMinDelta), 0, worldZ(s)),
-            p2: project(worldX(d.domainMaxDelta), 0, worldZ(s))
-        }));
-
-        const dateBaseX = worldX(d.domainMinDelta);
-        const dateBaseZ = worldZ(d.domainMinStrike);
-        const dateTicks = this._sampleTicks(d.dates, 8).map(date => ({
-            value: date,
-            p: project(dateBaseX, worldY(date), dateBaseZ)
-        }));
-        const dateAxisTop = project(dateBaseX, elevationScale, dateBaseZ);
-        const dateAxisBase = project(dateBaseX, 0, dateBaseZ);
-
-        const deltaTitlePos = project(worldX((d.domainMinDelta + d.domainMaxDelta) / 2), 0, worldZ(d.domainMaxStrike));
-        const strikeTitlePos = project(worldX(d.domainMaxDelta), 0, worldZ((d.domainMinStrike + d.domainMaxStrike) / 2));
-
-        const projectedPoints = points.map(p => ({
-            p,
-            proj: project(worldX(p.delta), worldY(p.ContractDate), worldZ(p.moneyness))
-        }));
-
-        // Fit whatever is currently visible into the available viewport, regardless of rotation.
-        const all = [
-            ...corners,
-            ...deltaGrid.flatMap(g => [g.p1, g.p2]),
-            ...strikeGrid.flatMap(g => [g.p1, g.p2]),
-            ...dateTicks.map(t => t.p),
-            dateAxisTop, dateAxisBase,
-            deltaTitlePos, strikeTitlePos,
-            ...projectedPoints.map(pp => pp.proj)
-        ];
-        const xs = all.map(a => a.sx);
-        const ys = all.map(a => a.sy);
-        const minSx = Math.min(...xs), maxSx = Math.max(...xs);
-        const maxSy = Math.max(...ys), minSy = Math.min(...ys);
-        const bboxW = Math.max(maxSx - minSx, 1);
-        const bboxH = Math.max(maxSy - minSy, 1);
-
-        const padding = 60;
-        const labelRoom = 80; // contract date labels are drawn left of the vertical axis
-        const availW = Math.max(containerWidth - padding * 2 - labelRoom, 100);
-        const availH = Math.max(containerHeight - padding * 2, 100);
-        const fitScale = Math.min(availW / bboxW, availH / bboxH, 1.4);
-        const scale = fitScale * (this.zoom3D || 1);
-        const centerSx = (minSx + maxSx) / 2;
-        const centerSy = (minSy + maxSy) / 2;
-        const svgWidth = containerWidth;
-        const svgHeight = containerHeight;
-        const panX = this.pan3D?.x || 0;
-        const panY = this.pan3D?.y || 0;
-        const toSvg = (proj) => ({
-            x: svgWidth / 2 + labelRoom / 2 + panX + (proj.sx - centerSx) * scale,
-            y: svgHeight / 2 + panY - (proj.sy - centerSy) * scale
-        });
-
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const svg = document.createElementNS(svgNS, 'svg');
-        svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
-        svg.setAttribute('width', '100%');
-        svg.setAttribute('height', svgHeight);
-        svg.classList.add('overview-chart-svg');
-
-        const floorPts = corners.map(c => toSvg(c));
-        const floor = document.createElementNS(svgNS, 'polygon');
-        floor.setAttribute('points', floorPts.map(c => `${c.x},${c.y}`).join(' '));
-        floor.setAttribute('class', 'overview-3d-floor');
-        svg.appendChild(floor);
-
-        // An axis seen edge-on (e.g. strike in the front preset) collapses: hide its labels instead of stacking them
-        const spacing = (grid) => grid.length > 1 ? Math.hypot(toSvg(grid[1].p1).x - toSvg(grid[0].p1).x, toSvg(grid[1].p1).y - toSvg(grid[0].p1).y) : Infinity;
-        const showDeltaLabels = spacing(deltaGrid) >= 28;
-        const showStrikeLabels = spacing(strikeGrid) >= 18;
-        const showDateLabels = dateTicks.length < 2 || Math.abs(toSvg(dateTicks[1].p).y - toSvg(dateTicks[0].p).y) >= 12;
-
-        deltaGrid.forEach(g => {
-            const p1 = toSvg(g.p1), p2 = toSvg(g.p2);
-            const line = document.createElementNS(svgNS, 'line');
-            line.setAttribute('x1', p1.x); line.setAttribute('y1', p1.y);
-            line.setAttribute('x2', p2.x); line.setAttribute('y2', p2.y);
-            line.setAttribute('class', 'overview-3d-gridline');
-            svg.appendChild(line);
-
-            const label = document.createElementNS(svgNS, 'text');
-            label.setAttribute('x', p1.x);
-            label.setAttribute('y', p1.y + 14);
-            label.setAttribute('class', 'overview-tick-label');
-            label.setAttribute('text-anchor', 'middle');
-            label.textContent = g.value.toFixed(2);
-            if (showDeltaLabels) svg.appendChild(label);
-        });
-
-        strikeGrid.forEach(g => {
-            const p1 = toSvg(g.p1), p2 = toSvg(g.p2);
-            const line = document.createElementNS(svgNS, 'line');
-            line.setAttribute('x1', p1.x); line.setAttribute('y1', p1.y);
-            line.setAttribute('x2', p2.x); line.setAttribute('y2', p2.y);
-            line.setAttribute('class', 'overview-3d-gridline');
-            svg.appendChild(line);
-
-            const label = document.createElementNS(svgNS, 'text');
-            label.setAttribute('x', p1.x - 6);
-            label.setAttribute('y', p1.y + 4);
-            label.setAttribute('class', 'overview-date-label');
-            label.setAttribute('text-anchor', 'end');
-            label.textContent = g.value.toFixed(2);
-            if (showStrikeLabels) svg.appendChild(label);
-        });
-
-        const deltaTitleSvg = toSvg(deltaTitlePos);
-        const deltaTitle = document.createElementNS(svgNS, 'text');
-        deltaTitle.setAttribute('x', deltaTitleSvg.x);
-        deltaTitle.setAttribute('y', deltaTitleSvg.y - 10);
-        deltaTitle.setAttribute('class', 'overview-axis-title');
-        deltaTitle.setAttribute('text-anchor', 'middle');
-        deltaTitle.textContent = 'Delta';
-        if (showDeltaLabels) svg.appendChild(deltaTitle);
-
-        const strikeTitleSvg = toSvg(strikeTitlePos);
-        const strikeTitle = document.createElementNS(svgNS, 'text');
-        strikeTitle.setAttribute('x', strikeTitleSvg.x + 10);
-        strikeTitle.setAttribute('y', strikeTitleSvg.y);
-        strikeTitle.setAttribute('class', 'overview-axis-title');
-        strikeTitle.textContent = 'Moneyness (K/F)';
-        if (showStrikeLabels) svg.appendChild(strikeTitle);
-
-        dateTicks.forEach(tick => {
-            const p = toSvg(tick.p);
-            const tickLine = document.createElementNS(svgNS, 'line');
-            tickLine.setAttribute('x1', p.x - 6); tickLine.setAttribute('y1', p.y);
-            tickLine.setAttribute('x2', p.x); tickLine.setAttribute('y2', p.y);
-            tickLine.setAttribute('class', 'overview-3d-gridline');
-            svg.appendChild(tickLine);
-
-            const label = document.createElementNS(svgNS, 'text');
-            label.setAttribute('x', p.x - 10);
-            label.setAttribute('y', p.y + 4);
-            label.setAttribute('class', 'overview-date-label');
-            label.setAttribute('text-anchor', 'end');
-            label.textContent = formatDateToDDMMYYYY(tick.value);
-            if (showDateLabels) svg.appendChild(label);
-        });
-
-        const axisBaseSvg = toSvg(dateAxisBase);
-        const axisTopSvg = toSvg(dateAxisTop);
-        const dateAxisLine = document.createElementNS(svgNS, 'line');
-        dateAxisLine.setAttribute('x1', axisBaseSvg.x); dateAxisLine.setAttribute('y1', axisBaseSvg.y);
-        dateAxisLine.setAttribute('x2', axisTopSvg.x); dateAxisLine.setAttribute('y2', axisTopSvg.y);
-        dateAxisLine.setAttribute('class', 'overview-3d-gridline');
-        svg.appendChild(dateAxisLine);
-        const dateTitle = document.createElementNS(svgNS, 'text');
-        dateTitle.setAttribute('x', axisTopSvg.x - 10);
-        dateTitle.setAttribute('y', axisTopSvg.y - 10);
-        dateTitle.setAttribute('class', 'overview-axis-title');
-        dateTitle.setAttribute('text-anchor', 'end');
-        dateTitle.textContent = 'Contract date';
-        if (showDateLabels) svg.appendChild(dateTitle);
-
-        // Points, sorted so ones further from the camera draw first (painter's algorithm) and fade with distance.
-        const depths = projectedPoints.map(pp => pp.proj.depth);
-        const minDepth = Math.min(...depths);
-        const depthRange = Math.max(...depths) - minDepth || 1;
-        const radius = Math.max(2.2, Math.min(5, 6.5 - Math.log10(Math.max(points.length, 1)))) * Math.sqrt(this.zoom3D || 1);
-        projectedPoints
-            .slice()
-            .sort((a, b) => a.proj.depth - b.proj.depth)
-            .forEach(({ p, proj }) => {
-                const top = toSvg(proj);
-                const cycle = (p.ContractCycle || '').toUpperCase();
-                const color = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
-                const isFlex = cycle === 'FLEXIBLE';
-
-                const circle = document.createElementNS(svgNS, 'circle');
-                circle.setAttribute('cx', top.x);
-                circle.setAttribute('cy', top.y);
-                circle.setAttribute('r', isFlex ? Math.max(radius, 4) : radius);
-                circle.setAttribute('fill', color);
-                circle.setAttribute('class', isFlex ? 'overview-point overview-point-flex' : 'overview-point');
-                circle.style.opacity = (0.35 + 0.65 * (proj.depth - minDepth) / depthRange).toFixed(2);
-                svg.appendChild(circle);
-
-                this._addTooltip(circle, [
-                    `Strike: ${p.strike.toLocaleString('en-US')} ${p.CallPut === 'P' ? 'Put' : p.CallPut === 'C' ? 'Call' : ''}`.trim(),
-                    `Moneyness (K/F): ${p.moneyness.toFixed(3)} (F ≈ ${Math.round(p.forward).toLocaleString('en-US')})`,
-                    `Options Delta: ${p.Delta}`,
-                    `Contract Date: ${formatDateToDDMMYYYY(p.ContractDate)}${Number.isFinite(p.dtm) ? ` (${p.dtm}d)` : ''}`,
-                    `Contract Cycle: ${p.ContractCycle || '-'}`
-                ].join('\n'));
+        const sides = group('Option side');
+        [['all', 'All'], ['C', 'Calls'], ['P', 'Puts']].forEach(([value, text]) => {
+            const btn = button(sides, text, `Show ${text.toLowerCase()}`, () => {
+                apply({ side: value });
+                sides.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
             });
+            btn.setAttribute('aria-pressed', String(o.side === value));
+        });
 
-        return svg;
+        const band = group('Delta band');
+        const slider = (label, key) => {
+            const wrap = document.createElement('label');
+            wrap.className = 'overview-3d-slider';
+            const out = document.createElement('output');
+            const input = document.createElement('input');
+            input.type = 'range'; input.min = -1; input.max = 1; input.step = 0.05;
+            input.value = o[key];
+            input.setAttribute('aria-label', `${label} delta`);
+            const show = () => { out.textContent = `${label} ${Number(input.value).toFixed(2)}`; };
+            input.addEventListener('input', () => {
+                let v = Number(input.value);
+                if (key === 'deltaMin') v = Math.min(v, o.deltaMax); else v = Math.max(v, o.deltaMin);
+                input.value = v;
+                apply({ [key]: v });
+                show();
+            });
+            show();
+            wrap.append(out, input);
+            band.appendChild(wrap);
+        };
+        slider('Δ min', 'deltaMin');
+        slider('Δ max', 'deltaMax');
+
+        const searchWrap = group('Search');
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'overview-3d-search';
+        search.placeholder = 'Strike or date…';
+        search.setAttribute('aria-label', 'Find a strike or contract date, e.g. 5000, 21.12.2026 or 2026-12');
+        search.title = 'Strike (e.g. 5000) or contract date (21.12.2026, 2026-12-21, 2026-12)';
+        const status = document.createElement('span');
+        status.className = 'overview-3d-search-status';
+        status.setAttribute('role', 'status');
+        search.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            const result = findIn3DPoints(this._glSpecPoints || [], search.value);
+            status.textContent = result.message;
+            if (result.indices.length && this._gl) this._gl.focus(result.indices, result.pin);
+        });
+        search.addEventListener('input', () => { status.textContent = ''; });
+        searchWrap.append(search, status);
+        return bar;
     }
 }

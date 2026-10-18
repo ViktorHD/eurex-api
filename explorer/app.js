@@ -1139,12 +1139,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const shareOverviewAction = () => {
         const productInput = document.getElementById('overviewProductInput');
         const viewSelect = document.getElementById('overviewViewSelect');
-        openShare({
+        const mode = viewSelect ? viewSelect.value : 'strike';
+        const state = {
             view: 'eurex-overview',
             p: productInput ? productInput.value.trim() : '',
-            m: viewSelect ? viewSelect.value : 'strike',
+            m: mode,
             e: apiUrlInput.value.trim()
-        }, 'Share Strike Window');
+        };
+        // The 3D view also shares its camera and display options
+        const view3d = mode === '3d' ? overviewManager.get3DShareState() : null;
+        if (view3d) state.g = view3d;
+        openShare(state, 'Share Strike Window');
     };
 
     const shareTimelineAction = () => openShare({ view: 'trading-hours', e: apiUrlInput.value.trim(), ...timelineManager.getState() }, 'Share Trading Hours');
@@ -1260,6 +1265,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const overviewViewSelect = document.getElementById('overviewViewSelect');
             if (s.p && overviewProductInput) overviewProductInput.value = s.p;
             if (s.m && overviewViewSelect) overviewViewSelect.value = s.m;
+            if (s.m === '3d' && s.g) overviewManager.apply3DShareState(s.g);
 
             setTimeout(() => {
                 if (!overviewProductsLoaded) {
