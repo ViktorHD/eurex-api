@@ -353,7 +353,7 @@ export async function mountGlScene(host, spec) {
             g.setIndex(index);
             g.computeVertexNormals();
             surfaceGroup.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({
-                color: SURFACE_COLORS[side] || '#888', transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false, roughness: 1
+                color: SURFACE_COLORS[side] || '#888', transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false, roughness: 1
             })));
         });
     }
