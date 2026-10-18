@@ -1,4 +1,4 @@
-import { formatDateToDDMMYYYY, generateStrikesCsv, generateStrikeRequestEmailText, OverviewManager, findLadderGaps, ladderSteps, findDeltaJumps, refineStep } from '../overview.js';
+import { formatDateToDDMMYYYY, generateStrikesCsv, generateStrikeRequestEmailText, OverviewManager, findLadderGaps, ladderSteps, findDeltaJumps, refineStep, findIn3DPoints } from '../overview.js';
 
 describe('Overview Additional Strikes Helpers', () => {
     describe('formatDateToDDMMYYYY', () => {
@@ -227,5 +227,67 @@ describe('Delta coverage helpers', () => {
         expect(refineStep(650, [50, 100, 200])).toBe(50);
         expect(refineStep(25, [25, 50])).toBe(25);
         expect(refineStep(100, [])).toBeNull();
+    });
+});
+
+describe('3D view search and share state', () => {
+    const pts = [
+        { strike: 5000, side: 'C', date: '2026-12-18' },
+        { strike: 5000, side: 'P', date: '2026-12-18' },
+        { strike: 5050, side: 'C', date: '2027-01-15' },
+        { strike: 5100, side: 'C', date: '2027-03-19' }
+    ];
+
+    test('a number finds the nearest strike on both sides, calls first, and pins it', () => {
+        const r = findIn3DPoints(pts, '5040');
+        expect(r.pin).toBe(true);
+        expect(r.indices).toEqual([2]);
+        expect(r.message).toBe('Nearest strike 5,050');
+        const exact = findIn3DPoints(pts, '5,000');
+        expect(exact.indices).toEqual([0, 1]);
+        expect(exact.message).toBe('Strike 5,000');
+        expect(findIn3DPoints([{ strike: 1, side: 'P' }, { strike: 1, side: 'C' }], '1').indices).toEqual([1, 0]);
+    });
+
+    test('dates are matched as DD.MM.YYYY, ISO, or a month prefix, without pinning', () => {
+        expect(findIn3DPoints(pts, '18.12.2026')).toMatchObject({ indices: [0, 1], pin: false });
+        expect(findIn3DPoints(pts, '2027-01-15').indices).toEqual([2]);
+        expect(findIn3DPoints(pts, '2027-03').indices).toEqual([3]);
+        expect(findIn3DPoints(pts, '03.2027').indices).toEqual([3]);
+        expect(findIn3DPoints(pts, '2030-01').message).toBe('No contract date matches');
+    });
+
+    test('empty and unusable input finds nothing', () => {
+        expect(findIn3DPoints(pts, '  ').indices).toEqual([]);
+        expect(findIn3DPoints(pts, 'abc').indices).toEqual([]);
+        expect(findIn3DPoints([], '5000').indices).toEqual([]);
+    });
+
+    test('camera and display options survive a share-link round trip', () => {
+        const om = Object.create(OverviewManager.prototype);
+        om.hiddenCycles = new Set(['WEEKLY']);
+        om._glView = null;
+        om._gl = {
+            getView: () => ({ position: [10.123, 8, 20.987], target: [0, 5, 0], ortho: true, zoom: 1.23456 }),
+            getOptions: () => ({ surface: true, atm: false, jumps: true, ortho: true, side: 'C', deltaMin: 0.1, deltaMax: 1 })
+        };
+        const shared = om.get3DShareState();
+        expect(shared).toEqual({
+            cam: { p: [10.12, 8, 20.99], t: [0, 5, 0], o: 1, z: 1.235 },
+            opt: { su: 1, at: 0, ju: 1, sd: 'C', lo: 0.1 },
+            hc: ['WEEKLY']
+        });
+
+        const other = Object.create(OverviewManager.prototype);
+        other.apply3DShareState(JSON.parse(JSON.stringify(shared)));
+        expect(other._glView).toEqual({ position: [10.12, 8, 20.99], target: [0, 5, 0], ortho: true, zoom: 1.235 });
+        expect(other._glOptions).toMatchObject({ surface: true, atm: false, jumps: true, ortho: true, side: 'C', deltaMin: 0.1, deltaMax: 1 });
+        expect([...other.hiddenCycles]).toEqual(['WEEKLY']);
+    });
+
+    test('a malformed shared camera is ignored', () => {
+        const om = Object.create(OverviewManager.prototype);
+        om.apply3DShareState({ cam: { p: 'x' } });
+        expect(om._glView).toBeUndefined();
     });
 });

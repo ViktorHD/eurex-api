@@ -1,3 +1,5 @@
+import { DEFAULT_GL_OPTIONS } from './overview3d-gl.js';
+
 // Strike Window visualization for the Eurex Overview pane.
 // X-axis: Strike price. Y-axis: Contract date. Color: ContractCycle.
 
@@ -257,6 +259,42 @@ export function refineStep(interval, steps) {
     const candidates = (steps || []).filter(st => st < interval - 1e-9 && Math.abs(interval / st - Math.round(interval / st)) < 1e-6);
     if (candidates.length) return Math.max(...candidates);
     return steps && steps.length ? Math.min(...steps) : null;
+}
+
+export function downloadBlobFile(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', filename);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Resolves the 3D search box: a strike (nearest listed one, calls and puts) or a contract date / month.
+// points: [{ strike, date: 'YYYY-MM-DD…', side }]. Returns { indices, pin, message }; pin = highlight the first hit.
+export function findIn3DPoints(points, text) {
+    const q = String(text ?? '').trim();
+    if (!q) return { indices: [], pin: false, message: '' };
+    let prefix = null;
+    let m;
+    if ((m = q.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/))) prefix = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    else if ((m = q.match(/^(\d{1,2})\.(\d{4})$/))) prefix = `${m[2]}-${m[1].padStart(2, '0')}`;
+    else if (/^\d{4}-\d{2}(-\d{2})?$/.test(q)) prefix = q;
+    if (prefix) {
+        const indices = points.map((p, i) => i).filter(i => String(points[i].date || '').startsWith(prefix));
+        return { indices, pin: false, message: indices.length ? `${indices.length} contracts` : 'No contract date matches' };
+    }
+    const value = Number(q.replace(/,/g, ''));
+    if (!Number.isFinite(value) || !points.length) return { indices: [], pin: false, message: 'Enter a strike or a date' };
+    let best = Infinity;
+    points.forEach(p => { best = Math.min(best, Math.abs(p.strike - value)); });
+    const nearest = points.find(p => Math.abs(p.strike - value) === best).strike;
+    const indices = points.map((p, i) => i).filter(i => points[i].strike === nearest);
+    // Calls first, so the pinned point is the call when both sides are listed
+    indices.sort((a, b) => (points[a].side === 'C' ? 0 : 1) - (points[b].side === 'C' ? 0 : 1));
+    return { indices, pin: true, message: best === 0 ? `Strike ${nearest.toLocaleString('en-US')}` : `Nearest strike ${nearest.toLocaleString('en-US')}` };
 }
 
 export function downloadCsvFile(filename, csvContent) {
@@ -1454,11 +1492,12 @@ export class OverviewManager {
         // Cached so drag-to-rotate can re-project without refetching or re-filtering the data.
         const chart3D = {
             points,
+            product,
             domainMinStrike, domainMaxStrike,
             dates,
             domainMinDelta, domainMaxDelta
         };
-        const legend = this._buildLegend(points, [], 'Drag to rotate · Right-drag to pan · Scroll to zoom · Hover a point for details');
+        const legend = this._buildLegend(points, [], 'Drag to rotate · Right-drag to pan · Scroll to zoom · Click a point to pin its strike');
 
         const deltas3 = points.filter(p => !this.hiddenCycles.has((p.ContractCycle || '').toUpperCase())).map(p => p.delta);
         const stats = [
@@ -1486,15 +1525,52 @@ export class OverviewManager {
         this._glToken = (this._glToken || 0) + 1; // invalidates a mount that is still loading three.js
         if (this._gl) {
             this._glView = this._gl.getView();
+            this._glOptions = this._gl.getOptions();
             this._gl.dispose();
             this._gl = null;
         }
+    }
+
+    // Camera and display options of the 3D view in the compact keys of the share link format.
+    get3DShareState() {
+        const view = this._gl ? this._gl.getView() : this._glView;
+        if (!view) return null;
+        const round = (arr) => arr.map(v => Math.round(v * 100) / 100);
+        const o = this._gl ? this._gl.getOptions() : (this._glOptions || {});
+        const opt = {};
+        if (o.surface) opt.su = 1;
+        if (o.atm === false) opt.at = 0;
+        if (o.jumps) opt.ju = 1;
+        if (o.side && o.side !== 'all') opt.sd = o.side;
+        if (Number.isFinite(o.deltaMin) && o.deltaMin > -1) opt.lo = o.deltaMin;
+        if (Number.isFinite(o.deltaMax) && o.deltaMax < 1) opt.hi = o.deltaMax;
+        return {
+            cam: { p: round(view.position), t: round(view.target), o: view.ortho ? 1 : 0, z: Math.round(view.zoom * 1000) / 1000 },
+            opt,
+            hc: [...(this.hiddenCycles || [])]
+        };
+    }
+
+    // Restores what get3DShareState produced; the next 3D render picks it up.
+    apply3DShareState(g) {
+        if (!g || !g.cam || !Array.isArray(g.cam.p) || !Array.isArray(g.cam.t)) return;
+        this._glView = { position: g.cam.p, target: g.cam.t, ortho: !!g.cam.o, zoom: g.cam.z || 1 };
+        const opt = g.opt || {};
+        this._glOptions = {
+            ...DEFAULT_GL_OPTIONS,
+            surface: !!opt.su, atm: opt.at !== 0, jumps: !!opt.ju, ortho: !!g.cam.o,
+            side: opt.sd === 'C' || opt.sd === 'P' ? opt.sd : 'all',
+            deltaMin: Number.isFinite(opt.lo) ? opt.lo : -1,
+            deltaMax: Number.isFinite(opt.hi) ? opt.hi : 1
+        };
+        this.hiddenCycles = new Set(Array.isArray(g.hc) ? g.hc : []);
     }
 
     // Renders the 3D view with three.js (loaded lazily on first use).
     async _mountGl(chartWrap, { points, d }) {
         const token = ++this._glToken;
         const hidden = this.hiddenCycles || new Set();
+        const o = this._glOptions = { ...DEFAULT_GL_OPTIONS, ...(this._glOptions || {}) };
         const nStrike = (s) => (s - d.domainMinStrike) / (d.domainMaxStrike - d.domainMinStrike);
         const nDate = (date) => d.dates.length > 1 ? d.dates.indexOf(date) / (d.dates.length - 1) : 0;
         const nDelta = (v) => (v - d.domainMinDelta) / (d.domainMaxDelta - d.domainMinDelta);
@@ -1511,6 +1587,22 @@ export class OverviewManager {
         }
         const dateTicks = this._sampleTicks(d.dates, 8).map(date => ({ n: nDate(date), label: formatDateToDDMMYYYY(date) }));
 
+        // Strikes next to a delta jump (same rule as the Delta Coverage view), per expiry and option side.
+        const groups = new Map();
+        points.forEach(p => {
+            if (p.ContractCycle === 'FLEXIBLE') return;
+            const key = `${p.ContractDate}|${p.CallPut}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(p);
+        });
+        const jumpPoints = new Set();
+        groups.forEach(pts => {
+            const flagged = new Set();
+            findDeltaJumps(pts.map(p => ({ strike: p.strike, delta: p.delta })), DELTA_JUMP_THRESHOLD)
+                .forEach(j => { flagged.add(j.lo); flagged.add(j.hi); });
+            pts.forEach(p => { if (flagged.has(p.strike)) jumpPoints.add(p); });
+        });
+
         const spec = {
             points: points
                 .filter(p => !hidden.has((p.ContractCycle || '').toUpperCase()))
@@ -1520,6 +1612,8 @@ export class OverviewManager {
                         x: nDelta(p.delta), y: nDate(p.ContractDate), z: nStrike(p.moneyness),
                         color: CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR,
                         flex: cycle === 'FLEXIBLE',
+                        strike: p.strike, side: p.CallPut, delta: p.delta, date: p.ContractDate,
+                        jump: jumpPoints.has(p),
                         tip: [
                             `Strike: ${p.strike.toLocaleString('en-US')} ${p.CallPut === 'P' ? 'Put' : p.CallPut === 'C' ? 'Call' : ''}`.trim(),
                             `Moneyness (K/F): ${p.moneyness.toFixed(3)} (F ≈ ${Math.round(p.forward).toLocaleString('en-US')})`,
@@ -1531,6 +1625,10 @@ export class OverviewManager {
                 }),
             ticks: { delta: deltaTicks, strike: strikeTicks, date: dateTicks },
             titles: { delta: 'Delta', strike: 'Moneyness (K/F)', date: 'Contract date' },
+            deltaDomain: [d.domainMinDelta, d.domainMaxDelta],
+            atm: d.domainMinStrike < 1 && d.domainMaxStrike > 1 ? nStrike(1) : null,
+            caption: `${this._productTitle(d.product)} · 3D strike view`,
+            options: o,
             view: this._glView || null,
             onHover: (text, e) => {
                 if (!text) { this.tooltip.classList.add('hidden'); return; }
@@ -1542,10 +1640,12 @@ export class OverviewManager {
             }
         };
 
+        const toolbar = this._build3DToolbar(spec, jumpPoints.size);
+        chartWrap.before(toolbar);
+
         const host = document.createElement('div');
         host.className = 'overview-gl-host';
-        host.setAttribute('aria-label', '3D chart (WebGL): drag to rotate, right-drag to pan, scroll to zoom');
-        host.style.height = `${Math.max(this.els.container.clientHeight - 110, 300)}px`;
+        host.style.height = `${Math.max(this.els.container.clientHeight - 110 - toolbar.offsetHeight, 300)}px`;
         chartWrap.appendChild(host);
 
         try {
@@ -1557,6 +1657,7 @@ export class OverviewManager {
             if (token !== this._glToken) return;
             console.warn('WebGL 3D view unavailable:', err);
             host.remove();
+            toolbar.remove();
             chartWrap.insertAdjacentHTML('beforeend', this._emptyState(
                 '3D view unavailable',
                 'It needs WebGL and the three.js library (loaded from a CDN). Check your connection and browser settings, or use the Strike Window or Delta Coverage view.'
@@ -1564,6 +1665,7 @@ export class OverviewManager {
             if (window.feather) window.feather.replace();
             return;
         }
+        this._glView = null; // consumed; the live camera is read from the scene from here on
 
         const controls = document.createElement('div');
         controls.className = 'overview-3d-controls';
@@ -1571,30 +1673,124 @@ export class OverviewManager {
             <button type="button" class="icon-btn" data-action="zoom-in" title="Zoom in" aria-label="Zoom in"><i data-feather="plus"></i></button>
             <button type="button" class="icon-btn" data-action="zoom-out" title="Zoom out" aria-label="Zoom out"><i data-feather="minus"></i></button>
             <button type="button" class="icon-btn" data-action="reset" title="Reset view" aria-label="Reset 3D view"><i data-feather="refresh-ccw"></i></button>
+            <button type="button" class="icon-btn" data-action="png" title="Save as PNG" aria-label="Save 3D view as PNG"><i data-feather="download"></i></button>
         `;
-        controls.addEventListener('click', (e) => {
+        controls.addEventListener('click', async (e) => {
             const btn = e.target.closest('button[data-action]');
             if (!btn || !this._gl) return;
-            if (btn.dataset.action === 'zoom-in') this._gl.zoom(1.2);
-            else if (btn.dataset.action === 'zoom-out') this._gl.zoom(1 / 1.2);
-            else this._gl.reset();
+            const action = btn.dataset.action;
+            if (action === 'zoom-in') this._gl.zoom(1.2);
+            else if (action === 'zoom-out') this._gl.zoom(1 / 1.2);
+            else if (action === 'reset') this._gl.reset();
+            else if (action === 'png') {
+                const blob = await this._gl?.snapshot();
+                if (blob) downloadBlobFile(`${(this._lastChart?.product || 'strikes')}-3d.png`, blob);
+            }
         });
         chartWrap.appendChild(controls);
+        if (window.feather) window.feather.replace();
+        this._glSpecPoints = spec.points;
+    }
 
-        const presets = document.createElement('div');
-        presets.className = 'overview-3d-presets';
-        presets.setAttribute('role', 'group');
-        presets.setAttribute('aria-label', 'Camera presets');
-        Object.entries(VIEW_PRESETS_3D).forEach(([key, preset]) => {
+    // Controls row above the 3D chart: camera presets, overlays, option side and delta band filters, search.
+    _build3DToolbar(spec, jumpCount) {
+        const o = this._glOptions;
+        const bar = document.createElement('div');
+        bar.className = 'overview-3d-toolbar';
+        bar.setAttribute('role', 'toolbar');
+        bar.setAttribute('aria-label', '3D view controls');
+        const group = (label) => {
+            const g = document.createElement('div');
+            g.className = 'overview-3d-group';
+            g.setAttribute('role', 'group');
+            g.setAttribute('aria-label', label);
+            bar.appendChild(g);
+            return g;
+        };
+        const button = (parent, text, title, onClick) => {
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.textContent = preset.label;
-            btn.title = preset.title;
+            btn.textContent = text;
+            btn.title = title;
+            btn.addEventListener('click', onClick);
+            parent.appendChild(btn);
+            return btn;
+        };
+        const apply = (patch) => { Object.assign(o, patch); this._gl?.setOptions(patch); };
+
+        const presets = group('Camera presets');
+        Object.entries(VIEW_PRESETS_3D).forEach(([key, preset]) => {
+            const btn = button(presets, preset.label, preset.title, () => this._gl?.setPreset(preset.azimuth, preset.pitch));
             btn.dataset.preset = key;
-            btn.addEventListener('click', () => this._gl?.setPreset(preset.azimuth, preset.pitch));
-            presets.appendChild(btn);
         });
-        chartWrap.appendChild(presets);
-        if (window.feather) window.feather.replace();
+
+        const toggles = group('Overlays');
+        const toggle = (text, title, key, onChange) => {
+            const btn = button(toggles, text, title, () => {
+                const next = !o[key];
+                apply({ [key]: next });
+                btn.setAttribute('aria-pressed', String(next));
+                if (onChange) onChange(next);
+            });
+            btn.setAttribute('aria-pressed', String(!!o[key]));
+            return btn;
+        };
+        toggle('Surface', 'Smooth delta surface across moneyness and contract date', 'surface');
+        if (spec.atm != null) toggle('ATM', 'At-the-money plane (moneyness 1.0)', 'atm');
+        toggle(`Jumps${jumpCount ? ` (${jumpCount})` : ''}`, `Outline strikes next to a delta jump above ${DELTA_JUMP_THRESHOLD.toFixed(2)}`, 'jumps');
+        toggle('Ortho', 'Orthographic camera: parallel projection, exact for reading the preset views', 'ortho');
+
+        const sides = group('Option side');
+        [['all', 'All'], ['C', 'Calls'], ['P', 'Puts']].forEach(([value, text]) => {
+            const btn = button(sides, text, `Show ${text.toLowerCase()}`, () => {
+                apply({ side: value });
+                sides.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+            });
+            btn.setAttribute('aria-pressed', String(o.side === value));
+        });
+
+        const band = group('Delta band');
+        const slider = (label, key) => {
+            const wrap = document.createElement('label');
+            wrap.className = 'overview-3d-slider';
+            const out = document.createElement('output');
+            const input = document.createElement('input');
+            input.type = 'range'; input.min = -1; input.max = 1; input.step = 0.05;
+            input.value = o[key];
+            input.setAttribute('aria-label', `${label} delta`);
+            const show = () => { out.textContent = `${label} ${Number(input.value).toFixed(2)}`; };
+            input.addEventListener('input', () => {
+                let v = Number(input.value);
+                if (key === 'deltaMin') v = Math.min(v, o.deltaMax); else v = Math.max(v, o.deltaMin);
+                input.value = v;
+                apply({ [key]: v });
+                show();
+            });
+            show();
+            wrap.append(out, input);
+            band.appendChild(wrap);
+        };
+        slider('Δ min', 'deltaMin');
+        slider('Δ max', 'deltaMax');
+
+        const searchWrap = group('Search');
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'overview-3d-search';
+        search.placeholder = 'Strike or date…';
+        search.setAttribute('aria-label', 'Find a strike or contract date, e.g. 5000, 21.12.2026 or 2026-12');
+        search.title = 'Strike (e.g. 5000) or contract date (21.12.2026, 2026-12-21, 2026-12)';
+        const status = document.createElement('span');
+        status.className = 'overview-3d-search-status';
+        status.setAttribute('role', 'status');
+        search.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            const result = findIn3DPoints(this._glSpecPoints || [], search.value);
+            status.textContent = result.message;
+            if (result.indices.length && this._gl) this._gl.focus(result.indices, result.pin);
+        });
+        search.addEventListener('input', () => { status.textContent = ''; });
+        searchWrap.append(search, status);
+        return bar;
     }
 }
