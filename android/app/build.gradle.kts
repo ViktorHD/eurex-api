@@ -15,6 +15,15 @@ android {
         versionName = "1.0"
     }
 
+    // A fixed debug key (the standard public debug credentials), so every build is signed alike
+    // and a new APK installs over an older one
+    signingConfigs.getByName("debug") {
+        storeFile = rootProject.file("debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

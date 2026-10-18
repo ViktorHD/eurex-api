@@ -7,13 +7,15 @@ on:
     paths: ['android/**', 'index.html', 'explorer/**', '.github/workflows/android.yml']
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apk:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -25,3 +27,13 @@ jobs:
         with:
           name: eurex-explorer-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+      # Keep a ready-to-install copy in the repo (android/eurex-explorer.apk)
+      - name: Commit APK
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk eurex-explorer.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add eurex-explorer.apk
+          git diff --cached --quiet || { git commit -m "Update Android APK [skip ci]" && git push; }
+        working-directory: android

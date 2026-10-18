@@ -2,5 +2,6 @@
 build/
 local.properties
 *.apk
+!eurex-explorer.apk
 *.aab
 .idea/
