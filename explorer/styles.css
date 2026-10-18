@@ -4126,3 +4126,37 @@ html.boot-overview #apiOverviewPane.hidden { display: flex !important; }
 html.boot-overview #queryPane, html.boot-overview .results-pane, html.boot-overview #docsPane,
 html.boot-overview .action-bar, html.boot-overview .tabs-bar, html.boot-overview .workspace-grid .resize-handle { display: none !important; }
 html.boot-overview #nav-api-explorer.active { background: transparent; color: inherit; box-shadow: none; }
+
+/* WebGL (three.js) 3D view prototype */
+.overview-gl-host {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+}
+
+.overview-gl-canvas,
+.overview-gl-labels {
+    position: absolute;
+    inset: 0;
+}
+
+.overview-gl-labels {
+    cursor: grab;
+    touch-action: none;
+    overflow: hidden;
+}
+
+.overview-gl-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary, #6b7785);
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.overview-gl-label-date { transform: translateX(-100%); }
+
+.overview-gl-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
