@@ -1,0 +1,156 @@
+<title>Eurex OpenWiki Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one system diagram (click a box for its detail), then the six wiki pages and the tool list. */
+:root {
+  --bg: #f3f5f7; --surface: #ffffff; --ink: #14202e; --muted: #546273; --line: #c7d0da;
+  --accent: #0b5cad; --accent-soft: #dce9f6; --py: #1d6b4f; --py-soft: #d9efe5; --js: #8a5a00; --js-soft: #f6e9c8;
+  --ext: #3b4658; --ext-soft: #e4e8ee;
+  --font: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1722; --surface: #172230; --ink: #e6ecf3; --muted: #9aa8b8; --line: #2d3b4d;
+  --accent: #6db2f2; --accent-soft: #1b3550; --py: #6fd0a6; --py-soft: #163b2e; --js: #e8bb5a; --js-soft: #3b2f12;
+  --ext: #b7c2d0; --ext-soft: #243143; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1722; --surface: #172230; --ink: #e6ecf3; --muted: #9aa8b8; --line: #2d3b4d;
+  --accent: #6db2f2; --accent-soft: #1b3550; --py: #6fd0a6; --py-soft: #163b2e; --js: #e8bb5a; --js-soft: #3b2f12;
+  --ext: #b7c2d0; --ext-soft: #243143; color-scheme: dark; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.55; }
+main { max-width: 980px; margin: 0 auto; padding-block: 32px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 36px; }
+h1 { font-size: 1.9rem; line-height: 1.15; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+h2 { font-size: 1.05rem; margin: 0 0 12px; font-weight: 600; }
+.lede { color: var(--muted); margin: 0; max-width: 65ch; }
+code, .mono { font-family: var(--mono); font-size: .88em; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: .85rem; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1.5px solid currentColor; }
+.l-js::before { color: var(--js); background: var(--js-soft); } .l-py::before { color: var(--py); background: var(--py-soft); }
+.l-ext::before { color: var(--ext); background: var(--ext-soft); } .l-gen::before { color: var(--accent); background: var(--accent-soft); }
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; }
+svg { display: block; min-width: 720px; width: 100%; height: auto; }
+.node rect { stroke-width: 1.5; }
+.node text { font-family: var(--font); font-size: 13px; fill: var(--ink); }
+.node .sub { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); }
+.node { cursor: pointer; outline: none; }
+.node:hover rect, .node:focus-visible rect, .node.on rect { stroke-width: 3; }
+.js rect { fill: var(--js-soft); stroke: var(--js); } .py rect { fill: var(--py-soft); stroke: var(--py); }
+.ext rect { fill: var(--ext-soft); stroke: var(--ext); } .gen rect { fill: var(--accent-soft); stroke: var(--accent); }
+.edge { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.edge.dash { stroke-dasharray: 4 4; }
+.group { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 6 5; }
+.glabel { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+.colhead { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; fill: var(--muted); font-family: var(--font); }
+#arrow path { fill: var(--muted); }
+.detail { margin-top: 12px; padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--bg); border-radius: 0 6px 6px 0; min-height: 4.6em; }
+.detail strong { font-family: var(--mono); font-weight: 500; }
+.detail p { margin: 4px 0 0; color: var(--muted); max-width: 75ch; }
+.pages { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; }
+.pages a { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; color: inherit; text-decoration: none; }
+.pages a:hover, .pages a:focus-visible { border-color: var(--accent); outline: none; }
+.pages b { font-weight: 600; } .pages .file { font-family: var(--mono); font-size: .8rem; color: var(--accent); }
+.pages span { color: var(--muted); font-size: .9rem; }
+.tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.tools div { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; min-width: 0; }
+.tools h3 { margin: 0 0 6px; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.tools code { display: inline-block; margin: 2px 4px 2px 0; padding: 1px 6px; border-radius: 3px; background: var(--py-soft); color: var(--py); }
+@media (prefers-reduced-motion: no-preference) { .pages a { transition: border-color .15s; } }
+</style>
+<main>
+  <header>
+    <h1>Eurex OpenWiki Map</h1>
+    <p class="lede">How the eurex-api repository fits together: one read-only upstream API, reached by a browser app and by three routes for AI agents that share a single tool registry. Click a box for its role.</p>
+    <div class="legend"><span class="l-js">Browser (JavaScript)</span><span class="l-py">Python</span><span class="l-gen">Tool registry</span><span class="l-ext">External</span></div>
+  </header>
+
+  <section aria-labelledby="h-flow">
+    <h2 id="h-flow">Request flow</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 880 500" role="img" aria-label="Architecture diagram: clients reach the Eurex GraphQL API through the Explorer directly or through app.py endpoints and the MCP server, which all call the tool registry, then the HTTP client.">
+        <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path id="arrowp" d="M0 0 L8 4 L0 8 z" style="fill:var(--muted)"/></marker></defs>
+        <text class="colhead" x="20" y="22">Callers</text><text class="colhead" x="230" y="22">Entry points</text>
+        <text class="colhead" x="470" y="22">Shared core</text><text class="colhead" x="690" y="22">Upstream</text>
+        <rect class="group" x="215" y="28" width="200" height="292" rx="8"/><text class="glabel" x="226" y="316">served by app.py (Flask)</text>
+
+        <path class="edge" marker-end="url(#arrow)" d="M170 98 H230"/><path class="edge" marker-end="url(#arrow)" d="M170 188 H230"/>
+        <path class="edge" marker-end="url(#arrow)" d="M170 278 H230"/><path class="edge" marker-end="url(#arrow)" d="M170 368 H230"/>
+        <path class="edge" marker-end="url(#arrow)" d="M400 188 H470"/><path class="edge" marker-end="url(#arrow)" d="M400 278 H470"/><path class="edge" marker-end="url(#arrow)" d="M400 368 H470"/>
+        <path class="edge" marker-end="url(#arrow)" d="M400 98 H690"/>
+        <path class="edge" marker-end="url(#arrow)" d="M620 278 H690"/>
+        <path class="edge" marker-end="url(#arrow)" d="M775 250 V126"/>
+        <path class="edge" marker-end="url(#arrow)" d="M545 396 V420"/>
+        <text class="glabel" x="520" y="86">GraphQL, user's key, direct</text>
+
+        <g class="node ext" tabindex="0" role="button" data-k="browser"><rect x="20" y="70" width="150" height="56" rx="6"/><text x="32" y="94">Browser</text><text class="sub" x="32" y="112">Explorer user</text></g>
+        <g class="node ext" tabindex="0" role="button" data-k="stdio"><rect x="20" y="160" width="150" height="56" rx="6"/><text x="32" y="184">MCP client</text><text class="sub" x="32" y="202">local, stdio</text></g>
+        <g class="node ext" tabindex="0" role="button" data-k="hosted"><rect x="20" y="250" width="150" height="56" rx="6"/><text x="32" y="274">MCP client</text><text class="sub" x="32" y="292">hosted URL</text></g>
+        <g class="node ext" tabindex="0" role="button" data-k="nocode"><rect x="20" y="340" width="150" height="56" rx="6"/><text x="32" y="364">REST / no-code</text><text class="sub" x="32" y="382">Actions, Zapier, n8n</text></g>
+
+        <g class="node js" tabindex="0" role="button" data-k="explorer"><rect x="230" y="70" width="170" height="56" rx="6"/><text x="242" y="94">Explorer</text><text class="sub" x="242" y="112">index.html + explorer/*.js</text></g>
+        <g class="node py" tabindex="0" role="button" data-k="remote"><rect x="230" y="160" width="170" height="56" rx="6"/><text x="242" y="184">Hosted MCP</text><text class="sub" x="242" y="202">remote.py  POST /mcp</text></g>
+        <g class="node py" tabindex="0" role="button" data-k="rest"><rect x="230" y="250" width="170" height="56" rx="6"/><text x="242" y="274">REST wrapper</text><text class="sub" x="242" y="292">rest.py  /api/v1/tools</text></g>
+        <g class="node py" tabindex="0" role="button" data-k="server"><rect x="230" y="340" width="170" height="56" rx="6"/><text x="242" y="364">Local MCP server</text><text class="sub" x="242" y="382">server.py  stdio / HTTP</text></g>
+
+        <g class="node gen" tabindex="0" role="button" data-k="tools"><rect x="470" y="160" width="150" height="236" rx="6"/><text x="482" y="184">Tool registry</text><text class="sub" x="482" y="202">tools.py</text><text class="sub" x="482" y="236">14 tools</text><text class="sub" x="482" y="252">validate_args</text><text class="sub" x="482" y="268">call() → ok / error</text></g>
+        <g class="node py" tabindex="0" role="button" data-k="logic"><rect x="470" y="420" width="150" height="56" rx="6"/><text x="482" y="444">Rules</text><text class="sub" x="482" y="462">logic.py, no network</text></g>
+
+        <g class="node py" tabindex="0" role="button" data-k="client"><rect x="690" y="250" width="170" height="56" rx="6"/><text x="702" y="274">EurexClient</text><text class="sub" x="702" y="292">client.py  retry + cache</text></g>
+        <g class="node ext" tabindex="0" role="button" data-k="api"><rect x="690" y="70" width="170" height="56" rx="6"/><text x="702" y="94">Eurex GraphQL API</text><text class="sub" x="702" y="112">read-only, X-DBP-APIKEY</text></g>
+      </svg>
+    </div>
+    <div class="detail" id="detail" aria-live="polite"><strong>Select a box</strong><p>Every agent route ends in <code>tools.call</code>, so the MCP server, the hosted endpoint, the REST wrapper and the generated tool JSON cannot drift apart.</p></div>
+  </section>
+
+  <section aria-labelledby="h-pages">
+    <h2 id="h-pages">Wiki pages</h2>
+    <div class="pages">
+      <a href="https://github.com/ViktorHD/eurex-api/blob/main/openwiki/architecture.md"><span class="file">architecture.md</span><b>Architecture</b><span>Components, request flow, what app.py serves, how keys are handled.</span></a>
+      <a href="https://github.com/ViktorHD/eurex-api/blob/main/openwiki/tools-and-mcp.md"><span class="file">tools-and-mcp.md</span><b>Tool registry and MCP</b><span>Each eurex_mcp module, the 14 tools, guards, and how to add a tool.</span></a>
+      <a href="https://github.com/ViktorHD/eurex-api/blob/main/openwiki/explorer.md"><span class="file">explorer.md</span><b>Explorer front end</b><span>Build-less ES modules grouped by role, and the rules they follow.</span></a>
+      <a href="https://github.com/ViktorHD/eurex-api/blob/main/openwiki/generated-assets.md"><span class="file">generated-assets.md</span><b>Generated assets</b><span>ai/*.json, llms-full.txt and schema.graphql, with their scripts.</span></a>
+      <a href="https://github.com/ViktorHD/eurex-api/blob/main/openwiki/testing-and-ci.md"><span class="file">testing-and-ci.md</span><b>Testing and CI</b><span>pytest, Jest, the three workflows, and the eval harness.</span></a>
+      <a href="https://github.com/ViktorHD/eurex-api/blob/main/openwiki/conventions.md"><span class="file">conventions.md</span><b>Conventions and gotchas</b><span>Rules every change has to respect.</span></a>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-tools">
+    <h2 id="h-tools">The 14 tools</h2>
+    <div class="tools">
+      <div><h3>Find and describe</h3><code>get_api_info</code><code>search_products</code><code>get_product</code><code>get_schema</code></div>
+      <div><h3>Trading rules</h3><code>get_market_status</code><code>get_tick_size</code><code>get_tes_thresholds</code></div>
+      <div><h3>Calendar and series</h3><code>get_expirations</code><code>get_holidays</code><code>list_contracts</code><code>get_strikes</code></div>
+      <div><h3>History and escape hatch</h3><code>get_settlement_prices</code><code>get_changes</code><code>run_graphql</code></div>
+    </div>
+  </section>
+</main>
+<script>
+var INFO = {
+  browser: ['Browser', 'Runs the Explorer. Personal state (watchlist, tabs, history, saved queries) stays in localStorage.'],
+  stdio: ['MCP client, local', 'Claude Code, Claude Desktop or Cursor starting `uvx --from git+... eurex-mcp`. Key from EUREX_API_KEY, else the shared demo key.'],
+  hosted: ['MCP client, hosted', 'Any client that accepts a remote MCP URL. Sends X-DBP-APIKEY or a Bearer token; without a key the demo key applies at 20 calls a minute per address.'],
+  nocode: ['REST / no-code', 'OpenAI Actions, Zapier, n8n, Copilot Studio via /openapi.json. The key header is required; the host has no key of its own.'],
+  explorer: ['index.html + explorer/*.js', 'Plain ES modules, no build step. Talks to the GraphQL API straight from the browser. Trading status, tick and TES rules here have Python ports in logic.py.'],
+  remote: ['eurex_mcp/remote.py', 'Hand-written stateless JSON-RPC over POST /mcp: initialize, ping, tools/list, tools/call. Batches up to 20, 64 KiB body cap, CORS, demo-key rate limiter.'],
+  rest: ['eurex_mcp/rest.py', 'GET /api/v1/tools, POST /api/v1/tools/<name>, GET /openapi.json. Maps error kinds to HTTP: input 400, auth 401, rate_limit 429, anything else 502.'],
+  server: ['eurex_mcp/server.py', 'Builds a typed MCP wrapper per registry tool, plus the eurex_question prompt and the eurex://rules resource. Console script eurex-mcp; --http serves streamable HTTP.'],
+  tools: ['eurex_mcp/tools.py', 'Single source of truth. Every handler takes (client, args); call() validates arguments and always returns ok=true with data or ok=false with kind and hint. Also feeds definitions.py and the generated ai/*.json.'],
+  logic: ['eurex_mcp/logic.py', 'Pure rules: product ranking, open / tes / closed / holiday in Europe/Berlin, tick grid with Decimal, TES tiers by expiration index, strike grouping.'],
+  client: ['eurex_mcp/client.py', 'Standard-library urllib client. Retries 429/502/503/504 up to twice, honours Retry-After (max 10 s), caches 5 minutes, returns partial answers with _partial_errors.'],
+  api: ['Eurex GraphQL API', 'api.developer.deutsche-boerse.com/eurex-prod-graphql. Reference data only: products, contracts, trading hours, holidays, tick rules, TES, settlement prices. No live market data.']
+};
+var box = document.getElementById('detail');
+function show(g) {
+  var k = g.getAttribute('data-k'), d = INFO[k]; if (!d) return;
+  document.querySelectorAll('.node.on').forEach(function (n) { n.classList.remove('on'); });
+  g.classList.add('on');
+  box.textContent = '';
+  var s = document.createElement('strong'); s.textContent = d[0];
+  var p = document.createElement('p'); p.textContent = d[1];
+  box.appendChild(s); box.appendChild(p);
+}
+document.querySelectorAll('.node').forEach(function (g) {
+  g.addEventListener('click', function () { show(g); });
+  g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(g); } });
+});
+show(document.querySelector('[data-k="tools"]'));
+</script>
