@@ -8,6 +8,8 @@ import { getStatus, nextHoliday, buildHolidayMap, STATUS_LABELS, cetDate } from 
 import { selectionOptions, isValidPair, instrumentsFor, defaultSelection, resolveRules, checkPrice, normKey } from './ticks.js';
 import { profileGroups, tiers, allocate } from './tes.js';
 import { renderLineChart } from './linechart.js';
+import { renderRadar } from './radar.js';
+import { profileAxes } from './profile.js';
 import { groupSettlement, seriesFor, seriesStats } from './settlement.js';
 import { buildIcs } from './ics.js';
 import { formatNumber, formatDateString } from './displayformat.js';
@@ -98,7 +100,7 @@ export class ProductCard {
             warn.appendChild(ul);
             box.appendChild(warn);
         }
-        const cards = [this._overview(info), this._hours(), this._ticks(), this._tes(), this._calendar(), this._settlementSection(), this._vendor()].filter(Boolean);
+        const cards = [this._overview(info), this._profile(), this._hours(), this._ticks(), this._tes(), this._calendar(), this._settlementSection(), this._vendor()].filter(Boolean);
         const grid = el('div', 'pc-grid');
         box.appendChild(grid);
         this._pack(grid, cards);
@@ -200,6 +202,32 @@ export class ProductCard {
         });
         const more = this.data.ProductInfos.length > 1 ? el('p', 'pc-hint', `${this.data.ProductInfos.length} records exist for this code; the first is shown.`) : null;
         return this._section('Product data', this.dates.ProductInfos ? `valid ${formatDateString(this.dates.ProductInfos)}` : '', dl, more);
+    }
+
+    // ---------- Profile (radar) ----------
+
+    _profile() {
+        const today = cetDate();
+        const exps = this.data.Expirations;
+        const axes = profileAxes({
+            hours: this.data.TradingHours?.[0],
+            tes: this.data.TESProfiles,
+            ticks: this.data.TickRules,
+            expirations: exps ? exps.map(e => String(e.ExpirationDate || '').slice(0, 10)).filter(Boolean) : null,
+            holidays: this.data.Holidays ? this._holidays() : null,
+            today
+        });
+        if (axes.length < 3) return null;
+        const list = el('ul', 'pc-list rd-list');
+        axes.forEach(a => {
+            const li = el('li');
+            li.appendChild(el('strong', '', a.label));
+            li.appendChild(el('span', 'pc-hint', ` ${a.text}`));
+            list.appendChild(li);
+        });
+        return this._section('Profile', 'fixed scales, comparable between products',
+            renderRadar(axes, { label: `Profile of ${this.product}` }), list,
+            el('p', 'pc-hint', 'Derived from the data on this card. Outer ring: 24 h open, 24 upcoming expirations, no holidays, block trades from 1 contract, 6 TES types, a single tick size.'));
     }
 
     // ---------- Trading hours ----------
