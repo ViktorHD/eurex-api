@@ -64,6 +64,19 @@ python app.py                      # http://localhost:8080
 
 The app is static, so it also works from GitHub Pages; `app.py` only serves the same files. `DATABRICKS_APP_PORT` sets the port (default `8080`).
 
+## Android app
+
+`android/` is an Android app (Kotlin, minSdk 29) that bundles this front end in a WebView, so all views work as in the browser
+and data comes from the Eurex API. A Gradle task copies `index.html` and `explorer/` into the APK at build time;
+there is no second copy to maintain. Exports (CSV, Excel, `.ics`) are saved to Downloads and Print opens the Android print dialog.
+External links open in the browser. Like the web app, it loads three.js, icons and fonts from CDNs, so it needs a network connection.
+
+```bash
+cd android && ./gradlew assembleDebug    # needs JDK 17 and the Android SDK; APK in app/build/outputs/apk/debug/
+```
+
+The `android` workflow builds the debug APK on every relevant change and uploads it as an artifact. In Android Studio, open `android/`.
+
 ## Test
 
 ```bash
