@@ -2238,7 +2238,6 @@ th.sticky-col { z-index: 30; }
 }
 
 .overview-3d-presets button:hover { background: var(--eurex-mint-light); }
-.overview-3d-scroll:focus-visible { outline: 2px solid var(--neon-green); outline-offset: -2px; }
 
 @media (max-width: 768px) {
     .overview-legend-note { display: none; }
@@ -2420,35 +2419,14 @@ th.sticky-col { z-index: 30; }
     stroke-width: 2;
 }
 
-.overview-3d-floor {
-    fill: rgba(30, 136, 229, 0.06);
-    stroke: var(--border-color);
-    stroke-width: 1;
-}
 
-.overview-3d-gridline {
-    stroke: var(--border-color);
-    stroke-width: 1;
-}
 
-.overview-3d-scroll {
-    cursor: grab;
-    touch-action: none;
-    user-select: none;
-}
 
-.overview-3d-scroll.dragging {
-    cursor: grabbing;
-}
 
 .overview-3d-wrap {
     position: relative;
 }
 
-.overview-3d-wrap .overview-3d-scroll {
-    overflow: hidden;
-    padding: 0;
-}
 
 .overview-3d-controls {
     position: absolute;

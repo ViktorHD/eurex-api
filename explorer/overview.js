@@ -944,7 +944,7 @@ export class OverviewManager {
             this._renderDeltaChart(allRows || [...normalRows, ...lepoRows], product);
             return;
         }
-        if (viewMode === '3d' || viewMode === '3d-gl') {
+        if (viewMode === '3d') {
             // LEPO strikes sit near 0 and would stretch the moneyness axis, so they stay out of the 3D view.
             this._render3DChart(normalRows, product);
             return;
@@ -1407,9 +1407,8 @@ export class OverviewManager {
         if (window.feather) window.feather.replace();
     }
 
-    // 3D View: isometric projection with Moneyness (strike / forward) x Contract Date as the floor plane and Options Delta as elevation.
-    _render3DChart(rows, product, { forceSvg = false } = {}) {
-        const useGl = !forceSvg && this.els.viewSelect?.value === '3d-gl';
+    // 3D View (three.js): with Moneyness (strike / forward) x Contract Date as the floor plane and Options Delta as elevation.
+    _render3DChart(rows, product) {
         const forwards = this._forwardByDate(rows);
         const points = rows
             .map(r => {
@@ -1453,17 +1452,13 @@ export class OverviewManager {
         const domainMaxDelta = maxDelta + deltaPad;
 
         // Cached so drag-to-rotate can re-project without refetching or re-filtering the data.
-        this._chart3D = {
+        const chart3D = {
             points,
-            product,
             domainMinStrike, domainMaxStrike,
             dates,
             domainMinDelta, domainMaxDelta
         };
-        if (!this.rotation3D) this.rotation3D = { azimuth: Math.PI / 4, pitch: Math.PI / 6 };
-        if (!this.zoom3D) this.zoom3D = 1;
-        if (!this.pan3D) this.pan3D = { x: 0, y: 0 };
-        const legend = this._buildLegend(points, [], 'Drag to rotate · Shift+drag to pan · Scroll or +/− to zoom · Arrow keys rotate');
+        const legend = this._buildLegend(points, [], 'Drag to rotate · Right-drag to pan · Scroll to zoom · Hover a point for details');
 
         const deltas3 = points.filter(p => !this.hiddenCycles.has((p.ContractCycle || '').toUpperCase())).map(p => p.delta);
         const stats = [
@@ -1482,55 +1477,7 @@ export class OverviewManager {
         const chartWrap = document.createElement('div');
         chartWrap.className = 'overview-3d-wrap';
         this.els.content.appendChild(chartWrap);
-        if (useGl) {
-            this._mountGl(chartWrap, rows, product, { points, dates, d: this._chart3D });
-            return;
-        }
-
-        const controls = document.createElement('div');
-        controls.className = 'overview-3d-controls';
-        controls.innerHTML = `
-            <button type="button" class="icon-btn" data-action="zoom-in" title="Zoom in" aria-label="Zoom in"><i data-feather="plus"></i></button>
-            <button type="button" class="icon-btn" data-action="zoom-out" title="Zoom out" aria-label="Zoom out"><i data-feather="minus"></i></button>
-            <button type="button" class="icon-btn" data-action="reset" title="Reset view" aria-label="Reset 3D view"><i data-feather="refresh-ccw"></i></button>
-        `;
-        controls.addEventListener('click', (e) => {
-            const btn = e.target.closest('button[data-action]');
-            if (!btn) return;
-            if (btn.dataset.action === 'zoom-in') this._zoom3D(1.2);
-            else if (btn.dataset.action === 'zoom-out') this._zoom3D(1 / 1.2);
-            else if (btn.dataset.action === 'reset') this._reset3DView();
-        });
-        chartWrap.appendChild(controls);
-
-        // Camera presets: each flattens one axis so a 2D relationship can be read exactly
-        const presets = document.createElement('div');
-        presets.className = 'overview-3d-presets';
-        presets.setAttribute('role', 'group');
-        presets.setAttribute('aria-label', 'Camera presets');
-        Object.entries(VIEW_PRESETS_3D).forEach(([key, preset]) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = preset.label;
-            btn.title = preset.title;
-            btn.dataset.preset = key;
-            btn.addEventListener('click', () => {
-                this.rotation3D = { azimuth: preset.azimuth, pitch: preset.pitch };
-                this.pan3D = { x: 0, y: 0 };
-                this._redraw3DScene();
-            });
-            presets.appendChild(btn);
-        });
-        chartWrap.appendChild(presets);
-
-        const scrollWrap = document.createElement('div');
-        scrollWrap.className = 'overview-chart-scroll overview-3d-scroll';
-        chartWrap.appendChild(scrollWrap);
-        this._chart3DScrollWrap = scrollWrap;
-        scrollWrap.tabIndex = 0;
-        scrollWrap.setAttribute('aria-label', '3D chart: arrow keys rotate, plus and minus zoom, 0 resets');
-        this._bind3DDrag(scrollWrap);
-        this._redraw3DScene();
+        this._mountGl(chartWrap, { points, d: chart3D });
 
         if (window.feather) window.feather.replace();
     }
@@ -1544,8 +1491,8 @@ export class OverviewManager {
         }
     }
 
-    // WebGL variant of the 3D view (three.js, loaded lazily). Falls back to the SVG view if it can't start.
-    async _mountGl(chartWrap, rows, product, { points, d }) {
+    // Renders the 3D view with three.js (loaded lazily on first use).
+    async _mountGl(chartWrap, { points, d }) {
         const token = ++this._glToken;
         const hidden = this.hiddenCycles || new Set();
         const nStrike = (s) => (s - d.domainMinStrike) / (d.domainMaxStrike - d.domainMinStrike);
@@ -1608,8 +1555,13 @@ export class OverviewManager {
             this._gl = gl;
         } catch (err) {
             if (token !== this._glToken) return;
-            console.warn('WebGL 3D view unavailable, falling back to SVG:', err);
-            this._render3DChart(rows, product, { forceSvg: true });
+            console.warn('WebGL 3D view unavailable:', err);
+            host.remove();
+            chartWrap.insertAdjacentHTML('beforeend', this._emptyState(
+                '3D view unavailable',
+                'It needs WebGL and the three.js library (loaded from a CDN). Check your connection and browser settings, or use the Strike Window or Delta Coverage view.'
+            ));
+            if (window.feather) window.feather.replace();
             return;
         }
 
@@ -1644,348 +1596,5 @@ export class OverviewManager {
         });
         chartWrap.appendChild(presets);
         if (window.feather) window.feather.replace();
-    }
-
-    _zoom3D(factor) {
-        this.zoom3D = Math.min(4, Math.max(0.3, this.zoom3D * factor));
-        this._redraw3DScene();
-    }
-
-    _reset3DView() {
-        this.rotation3D = { azimuth: Math.PI / 4, pitch: Math.PI / 6 };
-        this.zoom3D = 1;
-        this.pan3D = { x: 0, y: 0 };
-        this._redraw3DScene();
-    }
-
-    // Re-projects the cached 3D data at the current rotation and swaps the <svg> in place (header/legend untouched).
-    _redraw3DScene() {
-        if (!this._chart3DScrollWrap || !this._chart3D) return;
-        const svg = this._build3DSvg();
-        this._chart3DScrollWrap.innerHTML = '';
-        this._chart3DScrollWrap.appendChild(svg);
-    }
-
-    _bind3DDrag(scrollWrap) {
-        let dragging = false;
-        let panning = false;
-        let startX = 0, startY = 0, startAzimuth = 0, startPitch = 0;
-        let startPanX = 0, startPanY = 0;
-        let rafScheduled = false;
-        const minPitch = 0.05;
-        const maxPitch = Math.PI / 2 - 0.05;
-
-        const scheduleRedraw = () => {
-            if (rafScheduled) return;
-            rafScheduled = true;
-            requestAnimationFrame(() => {
-                rafScheduled = false;
-                this._redraw3DScene();
-            });
-        };
-
-        scrollWrap.addEventListener('pointerdown', (e) => {
-            panning = e.shiftKey || e.button === 1 || e.button === 2;
-            dragging = !panning;
-            startX = e.clientX;
-            startY = e.clientY;
-            startAzimuth = this.rotation3D.azimuth;
-            startPitch = this.rotation3D.pitch;
-            startPanX = this.pan3D.x;
-            startPanY = this.pan3D.y;
-            scrollWrap.setPointerCapture(e.pointerId);
-            scrollWrap.classList.add('dragging');
-            e.preventDefault();
-        });
-        scrollWrap.addEventListener('pointermove', (e) => {
-            if (!dragging && !panning) return;
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            if (panning) {
-                this.pan3D.x = startPanX + dx;
-                this.pan3D.y = startPanY + dy;
-            } else {
-                const sensitivity = 0.01;
-                this.rotation3D.azimuth = startAzimuth + dx * sensitivity;
-                this.rotation3D.pitch = Math.min(maxPitch, Math.max(minPitch, startPitch - dy * sensitivity));
-            }
-            scheduleRedraw();
-        });
-        const endDrag = () => {
-            dragging = false;
-            panning = false;
-            scrollWrap.classList.remove('dragging');
-        };
-        scrollWrap.addEventListener('pointerup', endDrag);
-        scrollWrap.addEventListener('pointercancel', endDrag);
-        scrollWrap.addEventListener('contextmenu', (e) => e.preventDefault());
-        scrollWrap.addEventListener('keydown', (e) => {
-            const step = 0.1;
-            const r = this.rotation3D;
-            if (e.key === 'ArrowLeft') r.azimuth -= step;
-            else if (e.key === 'ArrowRight') r.azimuth += step;
-            else if (e.key === 'ArrowUp') r.pitch = Math.min(maxPitch, r.pitch + step);
-            else if (e.key === 'ArrowDown') r.pitch = Math.max(minPitch, r.pitch - step);
-            else if (e.key === '+' || e.key === '=') this.zoom3D = Math.min(4, this.zoom3D * 1.2);
-            else if (e.key === '-') this.zoom3D = Math.max(0.3, this.zoom3D / 1.2);
-            else if (e.key === '0') { this._reset3DView(); e.preventDefault(); return; }
-            else return;
-            e.preventDefault();
-            scheduleRedraw();
-        });
-        scrollWrap.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            this.zoom3D = Math.min(4, Math.max(0.3, this.zoom3D * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
-            scheduleRedraw();
-        }, { passive: false });
-    }
-
-    _build3DSvg() {
-        const d = this._chart3D;
-        const hidden = this.hiddenCycles || new Set();
-        const points = hidden.size > 0
-            ? d.points.filter(p => !hidden.has((p.ContractCycle || '').toUpperCase()))
-            : d.points;
-        const { azimuth, pitch } = this.rotation3D;
-
-        // "Strike" in the names below is the depth axis, which holds moneyness (strike / forward).
-        const nStrike = (s) => (s - d.domainMinStrike) / (d.domainMaxStrike - d.domainMinStrike);
-        const nDate = (date) => d.dates.length > 1 ? d.dates.indexOf(date) / (d.dates.length - 1) : 0;
-        const nDelta = (v) => (v - d.domainMinDelta) / (d.domainMaxDelta - d.domainMinDelta);
-
-        const containerWidth = Math.max(this.els.container.clientWidth, 300);
-        const reservedHeight = 110;
-        const containerHeight = Math.max(this.els.container.clientHeight - reservedHeight, 300);
-        const planeSize = Math.max(Math.min(containerWidth - 100, containerHeight - 60), 240);
-        // Same magnitude as planeSize so Delta/Strike/Contract Date form a cube rather than a flattened box.
-        const elevationScale = planeSize;
-
-        // X = Delta (puts negative, calls positive), Z = Strike (depth), Y = Contract Date (height, short-dated at the bottom).
-        const worldX = (delta) => nDelta(delta) * planeSize - planeSize / 2;
-        const worldZ = (s) => nStrike(s) * planeSize - planeSize / 2;
-        const worldY = (date) => nDate(date) * elevationScale;
-
-        // Orthographic projection: azimuth spins around the vertical (contract date) axis, pitch tilts the camera.
-        const project = (x, y, z) => {
-            const xr = x * Math.cos(azimuth) + z * Math.sin(azimuth);
-            const zr = -x * Math.sin(azimuth) + z * Math.cos(azimuth);
-            // depth: larger = closer to the camera
-            return { sx: xr, sy: y * Math.cos(pitch) - zr * Math.sin(pitch), depth: y * Math.sin(pitch) + zr * Math.cos(pitch) };
-        };
-
-        // Floor corners (earliest Contract Date, i.e. world Y = 0) span Delta x Strike.
-        const corners = [
-            [d.domainMinDelta, d.domainMinStrike],
-            [d.domainMaxDelta, d.domainMinStrike],
-            [d.domainMaxDelta, d.domainMaxStrike],
-            [d.domainMinDelta, d.domainMaxStrike]
-        ].map(([delta, s]) => project(worldX(delta), 0, worldZ(s)));
-
-        const deltaStep = this._niceTickStep(0.1, d.domainMaxDelta - d.domainMinDelta, 8);
-        const firstDeltaTick = Math.ceil(d.domainMinDelta / deltaStep) * deltaStep;
-        const deltaAxisTicks = [];
-        for (let v = firstDeltaTick; v <= d.domainMaxDelta; v += deltaStep) deltaAxisTicks.push(v);
-        const deltaGrid = deltaAxisTicks.map(v => ({
-            value: v,
-            p1: project(worldX(v), 0, worldZ(d.domainMinStrike)),
-            p2: project(worldX(v), 0, worldZ(d.domainMaxStrike))
-        }));
-
-        const strikeStep = this._niceTickStep(0.05, d.domainMaxStrike - d.domainMinStrike, 6);
-        const firstStrikeTick = Math.ceil(d.domainMinStrike / strikeStep - 1e-9) * strikeStep;
-        const strikeTicks = [];
-        for (let s = firstStrikeTick; s <= d.domainMaxStrike + 1e-9; s += strikeStep) strikeTicks.push(s);
-        const strikeGrid = strikeTicks.map(s => ({
-            value: s,
-            p1: project(worldX(d.domainMinDelta), 0, worldZ(s)),
-            p2: project(worldX(d.domainMaxDelta), 0, worldZ(s))
-        }));
-
-        const dateBaseX = worldX(d.domainMinDelta);
-        const dateBaseZ = worldZ(d.domainMinStrike);
-        const dateTicks = this._sampleTicks(d.dates, 8).map(date => ({
-            value: date,
-            p: project(dateBaseX, worldY(date), dateBaseZ)
-        }));
-        const dateAxisTop = project(dateBaseX, elevationScale, dateBaseZ);
-        const dateAxisBase = project(dateBaseX, 0, dateBaseZ);
-
-        const deltaTitlePos = project(worldX((d.domainMinDelta + d.domainMaxDelta) / 2), 0, worldZ(d.domainMaxStrike));
-        const strikeTitlePos = project(worldX(d.domainMaxDelta), 0, worldZ((d.domainMinStrike + d.domainMaxStrike) / 2));
-
-        const projectedPoints = points.map(p => ({
-            p,
-            proj: project(worldX(p.delta), worldY(p.ContractDate), worldZ(p.moneyness))
-        }));
-
-        // Fit whatever is currently visible into the available viewport, regardless of rotation.
-        const all = [
-            ...corners,
-            ...deltaGrid.flatMap(g => [g.p1, g.p2]),
-            ...strikeGrid.flatMap(g => [g.p1, g.p2]),
-            ...dateTicks.map(t => t.p),
-            dateAxisTop, dateAxisBase,
-            deltaTitlePos, strikeTitlePos,
-            ...projectedPoints.map(pp => pp.proj)
-        ];
-        const xs = all.map(a => a.sx);
-        const ys = all.map(a => a.sy);
-        const minSx = Math.min(...xs), maxSx = Math.max(...xs);
-        const maxSy = Math.max(...ys), minSy = Math.min(...ys);
-        const bboxW = Math.max(maxSx - minSx, 1);
-        const bboxH = Math.max(maxSy - minSy, 1);
-
-        const padding = 60;
-        const labelRoom = 80; // contract date labels are drawn left of the vertical axis
-        const availW = Math.max(containerWidth - padding * 2 - labelRoom, 100);
-        const availH = Math.max(containerHeight - padding * 2, 100);
-        const fitScale = Math.min(availW / bboxW, availH / bboxH, 1.4);
-        const scale = fitScale * (this.zoom3D || 1);
-        const centerSx = (minSx + maxSx) / 2;
-        const centerSy = (minSy + maxSy) / 2;
-        const svgWidth = containerWidth;
-        const svgHeight = containerHeight;
-        const panX = this.pan3D?.x || 0;
-        const panY = this.pan3D?.y || 0;
-        const toSvg = (proj) => ({
-            x: svgWidth / 2 + labelRoom / 2 + panX + (proj.sx - centerSx) * scale,
-            y: svgHeight / 2 + panY - (proj.sy - centerSy) * scale
-        });
-
-        const svgNS = 'http://www.w3.org/2000/svg';
-        const svg = document.createElementNS(svgNS, 'svg');
-        svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
-        svg.setAttribute('width', '100%');
-        svg.setAttribute('height', svgHeight);
-        svg.classList.add('overview-chart-svg');
-
-        const floorPts = corners.map(c => toSvg(c));
-        const floor = document.createElementNS(svgNS, 'polygon');
-        floor.setAttribute('points', floorPts.map(c => `${c.x},${c.y}`).join(' '));
-        floor.setAttribute('class', 'overview-3d-floor');
-        svg.appendChild(floor);
-
-        // An axis seen edge-on (e.g. strike in the front preset) collapses: hide its labels instead of stacking them
-        const spacing = (grid) => grid.length > 1 ? Math.hypot(toSvg(grid[1].p1).x - toSvg(grid[0].p1).x, toSvg(grid[1].p1).y - toSvg(grid[0].p1).y) : Infinity;
-        const showDeltaLabels = spacing(deltaGrid) >= 28;
-        const showStrikeLabels = spacing(strikeGrid) >= 18;
-        const showDateLabels = dateTicks.length < 2 || Math.abs(toSvg(dateTicks[1].p).y - toSvg(dateTicks[0].p).y) >= 12;
-
-        deltaGrid.forEach(g => {
-            const p1 = toSvg(g.p1), p2 = toSvg(g.p2);
-            const line = document.createElementNS(svgNS, 'line');
-            line.setAttribute('x1', p1.x); line.setAttribute('y1', p1.y);
-            line.setAttribute('x2', p2.x); line.setAttribute('y2', p2.y);
-            line.setAttribute('class', 'overview-3d-gridline');
-            svg.appendChild(line);
-
-            const label = document.createElementNS(svgNS, 'text');
-            label.setAttribute('x', p1.x);
-            label.setAttribute('y', p1.y + 14);
-            label.setAttribute('class', 'overview-tick-label');
-            label.setAttribute('text-anchor', 'middle');
-            label.textContent = g.value.toFixed(2);
-            if (showDeltaLabels) svg.appendChild(label);
-        });
-
-        strikeGrid.forEach(g => {
-            const p1 = toSvg(g.p1), p2 = toSvg(g.p2);
-            const line = document.createElementNS(svgNS, 'line');
-            line.setAttribute('x1', p1.x); line.setAttribute('y1', p1.y);
-            line.setAttribute('x2', p2.x); line.setAttribute('y2', p2.y);
-            line.setAttribute('class', 'overview-3d-gridline');
-            svg.appendChild(line);
-
-            const label = document.createElementNS(svgNS, 'text');
-            label.setAttribute('x', p1.x - 6);
-            label.setAttribute('y', p1.y + 4);
-            label.setAttribute('class', 'overview-date-label');
-            label.setAttribute('text-anchor', 'end');
-            label.textContent = g.value.toFixed(2);
-            if (showStrikeLabels) svg.appendChild(label);
-        });
-
-        const deltaTitleSvg = toSvg(deltaTitlePos);
-        const deltaTitle = document.createElementNS(svgNS, 'text');
-        deltaTitle.setAttribute('x', deltaTitleSvg.x);
-        deltaTitle.setAttribute('y', deltaTitleSvg.y - 10);
-        deltaTitle.setAttribute('class', 'overview-axis-title');
-        deltaTitle.setAttribute('text-anchor', 'middle');
-        deltaTitle.textContent = 'Delta';
-        if (showDeltaLabels) svg.appendChild(deltaTitle);
-
-        const strikeTitleSvg = toSvg(strikeTitlePos);
-        const strikeTitle = document.createElementNS(svgNS, 'text');
-        strikeTitle.setAttribute('x', strikeTitleSvg.x + 10);
-        strikeTitle.setAttribute('y', strikeTitleSvg.y);
-        strikeTitle.setAttribute('class', 'overview-axis-title');
-        strikeTitle.textContent = 'Moneyness (K/F)';
-        if (showStrikeLabels) svg.appendChild(strikeTitle);
-
-        dateTicks.forEach(tick => {
-            const p = toSvg(tick.p);
-            const tickLine = document.createElementNS(svgNS, 'line');
-            tickLine.setAttribute('x1', p.x - 6); tickLine.setAttribute('y1', p.y);
-            tickLine.setAttribute('x2', p.x); tickLine.setAttribute('y2', p.y);
-            tickLine.setAttribute('class', 'overview-3d-gridline');
-            svg.appendChild(tickLine);
-
-            const label = document.createElementNS(svgNS, 'text');
-            label.setAttribute('x', p.x - 10);
-            label.setAttribute('y', p.y + 4);
-            label.setAttribute('class', 'overview-date-label');
-            label.setAttribute('text-anchor', 'end');
-            label.textContent = formatDateToDDMMYYYY(tick.value);
-            if (showDateLabels) svg.appendChild(label);
-        });
-
-        const axisBaseSvg = toSvg(dateAxisBase);
-        const axisTopSvg = toSvg(dateAxisTop);
-        const dateAxisLine = document.createElementNS(svgNS, 'line');
-        dateAxisLine.setAttribute('x1', axisBaseSvg.x); dateAxisLine.setAttribute('y1', axisBaseSvg.y);
-        dateAxisLine.setAttribute('x2', axisTopSvg.x); dateAxisLine.setAttribute('y2', axisTopSvg.y);
-        dateAxisLine.setAttribute('class', 'overview-3d-gridline');
-        svg.appendChild(dateAxisLine);
-        const dateTitle = document.createElementNS(svgNS, 'text');
-        dateTitle.setAttribute('x', axisTopSvg.x - 10);
-        dateTitle.setAttribute('y', axisTopSvg.y - 10);
-        dateTitle.setAttribute('class', 'overview-axis-title');
-        dateTitle.setAttribute('text-anchor', 'end');
-        dateTitle.textContent = 'Contract date';
-        if (showDateLabels) svg.appendChild(dateTitle);
-
-        // Points, sorted so ones further from the camera draw first (painter's algorithm) and fade with distance.
-        const depths = projectedPoints.map(pp => pp.proj.depth);
-        const minDepth = Math.min(...depths);
-        const depthRange = Math.max(...depths) - minDepth || 1;
-        const radius = Math.max(2.2, Math.min(5, 6.5 - Math.log10(Math.max(points.length, 1)))) * Math.sqrt(this.zoom3D || 1);
-        projectedPoints
-            .slice()
-            .sort((a, b) => a.proj.depth - b.proj.depth)
-            .forEach(({ p, proj }) => {
-                const top = toSvg(proj);
-                const cycle = (p.ContractCycle || '').toUpperCase();
-                const color = CYCLE_COLORS[cycle] || DEFAULT_CYCLE_COLOR;
-                const isFlex = cycle === 'FLEXIBLE';
-
-                const circle = document.createElementNS(svgNS, 'circle');
-                circle.setAttribute('cx', top.x);
-                circle.setAttribute('cy', top.y);
-                circle.setAttribute('r', isFlex ? Math.max(radius, 4) : radius);
-                circle.setAttribute('fill', color);
-                circle.setAttribute('class', isFlex ? 'overview-point overview-point-flex' : 'overview-point');
-                circle.style.opacity = (0.35 + 0.65 * (proj.depth - minDepth) / depthRange).toFixed(2);
-                svg.appendChild(circle);
-
-                this._addTooltip(circle, [
-                    `Strike: ${p.strike.toLocaleString('en-US')} ${p.CallPut === 'P' ? 'Put' : p.CallPut === 'C' ? 'Call' : ''}`.trim(),
-                    `Moneyness (K/F): ${p.moneyness.toFixed(3)} (F ≈ ${Math.round(p.forward).toLocaleString('en-US')})`,
-                    `Options Delta: ${p.Delta}`,
-                    `Contract Date: ${formatDateToDDMMYYYY(p.ContractDate)}${Number.isFinite(p.dtm) ? ` (${p.dtm}d)` : ''}`,
-                    `Contract Cycle: ${p.ContractCycle || '-'}`
-                ].join('\n'));
-            });
-
-        return svg;
     }
 }
