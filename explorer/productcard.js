@@ -9,7 +9,8 @@ import { selectionOptions, isValidPair, instrumentsFor, defaultSelection, resolv
 import { profileGroups, tiers, allocate } from './tes.js';
 import { renderLineChart } from './linechart.js';
 import { renderRadar } from './radar.js';
-import { profileAxes } from './profile.js';
+import { axesFromData, compareAxes } from './profile.js';
+import { calendarMonths, renderHeatmap } from './heatmap.js';
 import { groupSettlement, seriesFor, seriesStats } from './settlement.js';
 import { buildIcs } from './ics.js';
 import { formatNumber, formatDateString } from './displayformat.js';
@@ -49,29 +50,31 @@ export class ProductCard {
         }
         box.appendChild(el('p', 'pc-loading', `Loading ${code}…`));
 
-        let query;
-        let roots;
         try {
-            if (!this.index && this.options.getSchema) {
-                try { this.index = buildSchemaIndex(await this.options.getSchema()); } catch (e) { this.index = null; }
-            }
-            ({ query, roots } = buildProductQuery(code, this.index));
-            this.query = query;
-            this.roots = roots;
-            const res = await this.client.request(query, null, false, { fresh });
+            const loaded = await this._fetch(code, fresh);
             if (token !== this.loadToken) return; // another product was opened meanwhile
-            this.data = {};
-            roots.forEach(r => { this.data[r] = res?.[r]?.data ?? null; });
-            this.dates = {};
-            roots.forEach(r => { this.dates[r] = res?.[r]?.date ?? null; });
-            this.partialErrors = res?.partialErrors || [];
+            Object.assign(this, loaded);
             this.settlement = null;
+            this.compare = null;
             this.render();
         } catch (err) {
             if (token !== this.loadToken) return;
             box.innerHTML = '';
             box.appendChild(this._message('The product could not be loaded', err.message));
         }
+    }
+
+    // The card queries of one product: { data, dates, partialErrors, query, roots }
+    async _fetch(code, fresh = false) {
+        if (!this.index && this.options.getSchema) {
+            try { this.index = buildSchemaIndex(await this.options.getSchema()); } catch (e) { this.index = null; }
+        }
+        const { query, roots } = buildProductQuery(code, this.index);
+        const res = await this.client.request(query, null, false, { fresh });
+        const data = {};
+        const dates = {};
+        roots.forEach(r => { data[r] = res?.[r]?.data ?? null; dates[r] = res?.[r]?.date ?? null; });
+        return { data, dates, partialErrors: res?.partialErrors || [], query, roots };
     }
 
     refresh() { return this.open(this.product, { fresh: true }); }
@@ -100,7 +103,7 @@ export class ProductCard {
             warn.appendChild(ul);
             box.appendChild(warn);
         }
-        const cards = [this._overview(info), this._profile(), this._hours(), this._ticks(), this._tes(), this._calendar(), this._settlementSection(), this._vendor()].filter(Boolean);
+        const cards = [this._overview(info), this._profile(), this._hours(), this._ticks(), this._tes(), this._calendar(), this._heatmap(), this._settlementSection(), this._vendor()].filter(Boolean);
         const grid = el('div', 'pc-grid');
         box.appendChild(grid);
         this._pack(grid, cards);
@@ -208,26 +211,107 @@ export class ProductCard {
 
     _profile() {
         const today = cetDate();
-        const exps = this.data.Expirations;
-        const axes = profileAxes({
-            hours: this.data.TradingHours?.[0],
-            tes: this.data.TESProfiles,
-            ticks: this.data.TickRules,
-            expirations: exps ? exps.map(e => String(e.ExpirationDate || '').slice(0, 10)).filter(Boolean) : null,
-            holidays: this.data.Holidays ? this._holidays() : null,
-            today
+        const own = axesFromData(this.data, this.product, today);
+        if (own.length < 3) return null;
+        const holder = el('div', 'pc-profile');
+        const form = el('form', 'pc-check');
+        form.setAttribute('autocomplete', 'off');
+        const label = el('label', '', 'Compare with');
+        const input = el('input');
+        input.type = 'text';
+        input.autocomplete = 'off';
+        input.placeholder = 'e.g. FDAX';
+        input.setAttribute('aria-label', 'Product to compare with');
+        label.appendChild(input);
+        const go = button('Compare', { className: 'pc-btn' });
+        go.type = 'submit';
+        const clear = button('Clear', { className: 'pc-btn', onClick: () => { this.compare = null; input.value = ''; draw(); } });
+        const out = el('output', 'pc-check-out');
+        out.setAttribute('role', 'status');
+        form.append(label, go, clear, out);
+
+        const draw = () => {
+            holder.querySelectorAll('.pc-profile-view').forEach(n => n.remove());
+            const view = el('div', 'pc-profile-view');
+            const cmp = this.compare;
+            const axes = cmp ? compareAxes(own, cmp.axes) : own;
+            clear.hidden = !cmp;
+            if (cmp && axes.length < 3) {
+                out.textContent = `${cmp.code} and ${this.product} have fewer than 3 axes in common.`;
+                out.className = 'pc-check-out bad';
+                this.compare = null;
+                clear.hidden = true;
+                view.appendChild(renderRadar(own, { label: `Profile of ${this.product}` }));
+            } else {
+                if (cmp) { out.textContent = `Comparing with ${cmp.code}.`; out.className = 'pc-check-out ok'; }
+                const names = [this.product, cmp?.code];
+                view.appendChild(renderRadar(axes, { label: cmp ? `Profile of ${this.product} compared with ${cmp.code}` : `Profile of ${this.product}`, names }));
+                if (cmp) {
+                    const legend = el('p', 'rd-legend');
+                    legend.appendChild(el('span', 'rd-key rd-a', this.product));
+                    legend.appendChild(el('span', 'rd-key rd-b', cmp.code));
+                    view.appendChild(legend);
+                }
+                const list = el('ul', 'pc-list rd-list');
+                axes.forEach(a => {
+                    const li = el('li');
+                    li.appendChild(el('strong', '', a.label));
+                    li.appendChild(el('span', 'pc-hint', cmp ? ` ${this.product}: ${a.text} · ${cmp.code}: ${a.compare.text}` : ` ${a.text}`));
+                    list.appendChild(li);
+                });
+                view.appendChild(list);
+            }
+            holder.appendChild(view);
+        };
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code = input.value.trim().toUpperCase();
+            out.className = 'pc-check-out';
+            if (!code) { out.textContent = ''; return; }
+            if (code === this.product) { out.textContent = 'Pick a different product.'; out.classList.add('bad'); return; }
+            out.textContent = `Loading ${code}…`;
+            try {
+                const loaded = await this._fetch(code);
+                const info = loaded.data.ProductInfos;
+                if (info && !info.length) throw new Error(`No product ${code}.`);
+                this.compare = { code, axes: axesFromData(loaded.data, code, today) };
+                draw();
+            } catch (err) {
+                out.textContent = err.message;
+                out.className = 'pc-check-out bad';
+            }
         });
-        if (axes.length < 3) return null;
-        const list = el('ul', 'pc-list rd-list');
-        axes.forEach(a => {
-            const li = el('li');
-            li.appendChild(el('strong', '', a.label));
-            li.appendChild(el('span', 'pc-hint', ` ${a.text}`));
-            list.appendChild(li);
-        });
-        return this._section('Profile', 'fixed scales, comparable between products',
-            renderRadar(axes, { label: `Profile of ${this.product}` }), list,
+        holder.appendChild(form);
+        draw();
+        return this._section('Profile', 'fixed scales, comparable between products', holder,
             el('p', 'pc-hint', 'Derived from the data on this card. Outer ring: 24 h open, 24 upcoming expirations, no holidays, block trades from 1 contract, 6 TES types, a single tick size.'));
+    }
+
+    // ---------- Expiration calendar (heatmap) ----------
+
+    _heatmap() {
+        const exps = this.data.Expirations;
+        const holidays = this.data.Holidays ? this._holidays() : null;
+        if (!exps && !holidays) return null;
+        const today = cetDate();
+        const input = {
+            today,
+            expirations: (exps || []).filter(e => e.ExpirationDate).map(e => ({ date: String(e.ExpirationDate).slice(0, 10), index: e.ExpirationIndex })),
+            holidays: holidays || []
+        };
+        let count = 12;
+        const holder = el('div', 'pc-heat');
+        const draw = () => {
+            holder.innerHTML = '';
+            const months = calendarMonths({ ...input, count });
+            holder.appendChild(renderHeatmap(months));
+            const legend = el('p', 'hm-legend');
+            [['exp', 'Expiration'], ['hol', 'Exchange holiday'], ['both', 'Both on one day']].forEach(([k, t]) => legend.appendChild(el('span', `hm-key ${k}`, t)));
+            holder.appendChild(legend);
+            holder.appendChild(button(count === 12 ? 'Show 24 months' : 'Show 12 months', { className: 'dt-link', onClick: () => { count = count === 12 ? 24 : 12; draw(); } }));
+        };
+        draw();
+        return this._section('Expiration calendar', 'CET', holder);
     }
 
     // ---------- Trading hours ----------

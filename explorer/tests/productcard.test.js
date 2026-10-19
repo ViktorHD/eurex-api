@@ -47,7 +47,7 @@ describe('ProductCard', () => {
         expect(query).toContain('ProductInfos(filter: { Product: { eq: "FESX" } })');
         expect(box.querySelector('.pc-title h2').textContent).toBe('FESX');
         expect(box.querySelector('.pc-name').textContent).toBe('Euro STOXX 50 Index Futures');
-        expect(titles(box)).toEqual(['Product data', 'Profile', 'Trading hours', 'Tick rules', 'TES (block trades)', 'Expirations and holidays', 'Settlement prices']);
+        expect(titles(box)).toEqual(['Product data', 'Profile', 'Trading hours', 'Tick rules', 'TES (block trades)', 'Expirations and holidays', 'Expiration calendar', 'Settlement prices']);
     });
 
     test('product data skips empty values and splits camel case labels', async () => {
@@ -252,7 +252,7 @@ describe('ProductCard layout', () => {
         await card.open('FESX');
         const grid = box.querySelector('.pc-grid');
         expect(grid.querySelectorAll('.pc-col').length).toBeGreaterThanOrEqual(1);
-        expect(grid.querySelectorAll('.pc-card')).toHaveLength(7);
+        expect(grid.querySelectorAll('.pc-card')).toHaveLength(8);
     });
 
     test('with several columns each card goes to the shortest one', () => {
@@ -271,5 +271,45 @@ describe('ProductCard layout', () => {
         card._pack(grid, cards);
         const cols = [...grid.querySelectorAll('.pc-col')].map(col => [...col.children].map(c => c.id));
         expect(cols).toEqual([['c0'], ['c1', 'c3', 'c5'], ['c2', 'c4']]); // the tall card stays alone, the others fill the shorter columns
+    });
+
+    describe('profile comparison and expiration calendar', () => {
+        const other = { ...DATA, TradingHours: { data: [{ StartContinuousTrading: '08:00:00', EndContinuousTrading: '20:00:00', StartTES: '08:00:00', EndTES: '18:00:00' }] } };
+        const submit = (box, code) => {
+            const input = box.querySelector('.pc-profile input');
+            input.value = code;
+            box.querySelector('.pc-profile form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        };
+
+        test('compares with a second product and clears again', async () => {
+            const { card, client, box } = make();
+            await card.open('FESX');
+            client.request.mockResolvedValueOnce(other);
+            submit(box, 'fdax');
+            await wait();
+            expect(client.request.mock.calls[1][0]).toContain('"FDAX"');
+            expect(box.querySelectorAll('.rd-area.rd-b')).toHaveLength(1);
+            expect(box.querySelector('.rd-legend').textContent).toContain('FDAX');
+            expect(box.querySelector('.pc-profile .pc-check-out').textContent).toBe('Comparing with FDAX.');
+            [...box.querySelectorAll('.pc-profile button')].find(b => b.textContent.includes('Clear')).click();
+            expect(box.querySelectorAll('.rd-area.rd-b')).toHaveLength(0);
+        });
+
+        test('reports a product that does not exist', async () => {
+            const { card, client, box } = make();
+            await card.open('FESX');
+            client.request.mockResolvedValueOnce({ ProductInfos: { data: [] } });
+            submit(box, 'NOPE');
+            await wait();
+            expect(box.querySelector('.pc-profile .pc-check-out').textContent).toBe('No product NOPE.');
+            expect(box.querySelectorAll('.rd-area.rd-b')).toHaveLength(0);
+        });
+
+        test('shows the calendar heatmap with expirations and holidays', async () => {
+            const { card, box } = make({ ...DATA, Expirations: { data: [{ ExpirationIndex: 1, ExpirationDate: new Date().toISOString().slice(0, 10) }] } });
+            await card.open('FESX');
+            expect(box.querySelectorAll('.hm-month')).toHaveLength(12);
+            expect(box.querySelectorAll('.hm-day.exp, .hm-day.both').length).toBeGreaterThanOrEqual(1);
+        });
     });
 });

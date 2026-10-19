@@ -1,3 +1,5 @@
+import { buildHolidayMap } from './tradingstatus.js';
+
 // Profile of a product for the radar chart on the product card, derived only from data the card has already loaded.
 // Every axis has a fixed scale (1 = outer ring) so products can be compared with each other.
 // Axes without data are left out.
@@ -62,4 +64,23 @@ export function profileAxes({ hours, tes, ticks, expirations, holidays, today })
         if (bands) add('ticks', 'Tick bands', 1 - (bands - 1) / 5, `${plural(bands, 'order book tick band')}${bands === 1 ? ' (one tick size)' : ''}`);
     }
     return axes;
+}
+
+/** The axes of one product from its loaded card data ({ TradingHours, TESProfiles, TickRules, Expirations, Holidays }). */
+export function axesFromData(data, product, today) {
+    const exps = data.Expirations;
+    return profileAxes({
+        hours: data.TradingHours?.[0],
+        tes: data.TESProfiles,
+        ticks: data.TickRules,
+        expirations: exps ? exps.map(e => String(e.ExpirationDate || '').slice(0, 10)).filter(Boolean) : null,
+        holidays: data.Holidays ? buildHolidayMap(data.Holidays.map(r => ({ ...r, Product: product }))).get(product) || [] : null,
+        today
+    });
+}
+
+/** Axes both products have, each carrying the second product's value as `compare`. */
+export function compareAxes(first, second) {
+    const other = new Map(second.map(a => [a.key, a]));
+    return first.filter(a => other.has(a.key)).map(a => ({ ...a, compare: { value: other.get(a.key).value, text: other.get(a.key).text } }));
 }

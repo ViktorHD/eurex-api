@@ -49,3 +49,15 @@ describe('renderRadar', () => {
         expect(renderRadar([{ label: 'a', value: 1, text: '' }]).querySelector('.rd-empty')).not.toBeNull();
     });
 });
+
+describe('compareAxes', () => {
+    test('keeps the axes both products have and carries the second value', async () => {
+        const { compareAxes } = await import('../profile.js');
+        const a = profileAxes(base);
+        const b = profileAxes({ ...base, tes: null });
+        const both = compareAxes(a, b);
+        expect(both.map(x => x.key)).toEqual(['book', 'tes-window', 'depth', 'open', 'ticks']);
+        expect(both[0].compare.value).toBe(b[0].value);
+        expect(renderRadar(both, { names: ['A', 'B'] }).querySelectorAll('.rd-area.rd-b')).toHaveLength(1);
+    });
+});
