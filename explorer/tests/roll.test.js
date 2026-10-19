@@ -83,7 +83,7 @@ describe('RollView', () => {
         const client = {
             endpoint: 'e', apiKey: 'k',
             request: jest.fn(async (q) => {
-                if (q.includes('ProductInfos')) return { data: [{ Product: 'FESX', Name: 'Euro STOXX 50', ProductType: 'INDEX FUTURES' }, { Product: 'OESX', ProductType: 'INDEX OPTIONS' }, { Product: 'FGBL', Name: 'Bund', ProductType: 'FIXED INCOME FUTURES' }] };
+                if (q.includes('ProductInfos')) return { data: [{ Product: 'FESX', Name: 'Euro STOXX 50', ProductType: 'INDEX FUTURES', ProductLine: 'Equity Index' }, { Product: 'OESX', ProductType: 'INDEX OPTIONS' }, { Product: 'FGBL', Name: 'Bund', ProductType: 'FIXED INCOME FUTURES', ProductLine: 'Euro Bond' }, { Product: 'FXXP', ProductType: 'INDEX FUTURES' }] };
                 return { Contracts: { date: '2026-10-19', data: [
                     { Contract: 'A', ExpirationDate: future, OpenInterest: 700, CallPut: null },
                     { Contract: 'B', ExpirationDate: later, OpenInterest: 300, CallPut: null }] } };
@@ -106,7 +106,8 @@ describe('RollView', () => {
         const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
         await view.show();
         await wait();
-        expect([...box.querySelectorAll('option')].map(o => o.value)).toEqual(['FESX', 'FGBL']);
+        expect([...box.querySelectorAll('optgroup')].map(g => g.label)).toEqual(['Equity Index', 'Euro Bond', 'INDEX FUTURES']);
+        expect([...box.querySelectorAll('option')].map(o => o.value)).toEqual(['FESX', 'FGBL', 'FXXP']);
         expect(client.request.mock.calls[1][0]).toContain('Contracts(filter: { Product: { eq: "FESX" } })');
         expect(client.request.mock.calls[1][0]).toContain('OpenInterest');
         expect(box.querySelector('.rt-status').textContent).toContain('Rolling');

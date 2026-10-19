@@ -71,18 +71,18 @@ export class RollView {
         refreshIcons();
     }
 
+    // Grouped by product line (falls back to the product type), so e.g. equity index and bond futures are told apart
     _fillProducts() {
         this.select.innerHTML = '';
         const groups = new Map();
         (this.catalog || []).forEach(p => {
-            if (!groups.has(p.ProductType)) groups.set(p.ProductType, el('optgroup'));
-            const g = groups.get(p.ProductType);
-            g.label = p.ProductType;
+            const line = p.ProductLine || p.ProductType || 'Other';
+            if (!groups.has(line)) { const g = el('optgroup'); g.label = line; groups.set(line, g); }
             const o = el('option', '', `${p.Product}${p.Name ? ` · ${p.Name}` : ''}`);
             o.value = p.Product;
-            g.appendChild(o);
+            groups.get(line).appendChild(o);
         });
-        groups.forEach(g => this.select.appendChild(g));
+        [...groups].sort(([a], [b]) => a.localeCompare(b)).forEach(([, g]) => this.select.appendChild(g));
     }
 
     _message(text, bad = false) {
