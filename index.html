@@ -40,6 +40,10 @@
                     <i data-feather="bar-chart-2"></i>
                     <span class="nav-label">Strike Window</span>
                 </button>
+                <button class="nav-btn" id="nav-roll-tracker" title="Roll Tracker">
+                    <i data-feather="repeat"></i>
+                    <span class="nav-label">Roll Tracker</span>
+                </button>
                 <button class="nav-btn" id="nav-trading-hours" title="Trading Hours">
                     <i data-feather="clock"></i>
                     <span class="nav-label">Trading Hours</span>
@@ -286,6 +290,14 @@
                         <span>Calendar</span>
                     </div>
                     <div class="pc-scroll"><div id="calendarContent" class="pc-container"></div></div>
+                </section>
+
+                <!-- Roll tracker -->
+                <section class="pane hidden" id="rollPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span>Roll Tracker</span>
+                    </div>
+                    <div class="pc-scroll"><div id="rollContent" class="pc-container"></div></div>
                 </section>
 
                 <!-- Info & Status Pane -->
@@ -582,6 +594,7 @@ query {
             <button class="menu-item" data-view="api-overview"><i data-feather="compass"></i> API Overview</button>
             <button class="menu-item" data-view="products"><i data-feather="search"></i> Products</button>
             <button class="menu-item" data-view="eurex-overview"><i data-feather="bar-chart-2"></i> Strike Window</button>
+            <button class="menu-item" data-view="roll-tracker"><i data-feather="repeat"></i> Roll Tracker</button>
             <button class="menu-item" data-view="trading-hours"><i data-feather="clock"></i> Trading Hours</button>
             <button class="menu-item" data-view="calendar"><i data-feather="calendar"></i> Calendar</button>
             <button class="menu-item" data-view="api-explorer"><i data-feather="terminal"></i> API Explorer</button>

@@ -1,0 +1,208 @@
+// Roll tracker: for index and fixed income futures, how far open interest has moved from the front contract to the
+// next one (pace of roll), from OpenInterest on Contracts.
+import { el, button, refreshIcons } from './dom.js';
+import { fetchProductCatalog } from './catalog.js';
+import { buildSchemaIndex, membersOf, baseName } from './schemacheck.js';
+import { isRollProduct, rollSnapshot, rollStatus, recordSnapshot, cycleEntries, pace, daysToComplete } from './roll.js';
+import { renderLineChart } from './linechart.js';
+import { cetDate } from './tradingstatus.js';
+import { formatNumber, formatDateString } from './displayformat.js';
+
+const WANTED = ['Contract', 'ContractDate', 'ExpirationDate', 'LastTradingDate', 'CallPut', 'OpenInterest'];
+const LAST_KEY = 'eurexExplorer.rollProduct';
+const DEFAULTS = ['FESX', 'FGBL'];
+const pct = (v) => `${(v * 100).toFixed(1)}%`;
+
+const remember = (code) => { try { localStorage.setItem(LAST_KEY, code); } catch (e) { /* storage unavailable */ } };
+const recall = () => { try { return localStorage.getItem(LAST_KEY) || ''; } catch (e) { return ''; } };
+
+export class RollView {
+    /** els: { content }; options: { getSchema, onOpenProduct(code) } */
+    constructor(client, els, options = {}) {
+        this.client = client;
+        this.els = els;
+        this.options = options;
+        this.built = false;
+        this.catalog = null;
+        this.product = '';
+        this.token = 0;
+    }
+
+    async show() {
+        if (!this.built) this._build();
+        if (this.catalog) return;
+        this.status.textContent = 'Loading products…';
+        try {
+            const all = await fetchProductCatalog(this.client);
+            this.catalog = all.filter(isRollProduct).sort((a, b) => a.Product.localeCompare(b.Product));
+            this.status.textContent = '';
+            this._fillProducts();
+            if (!this.catalog.length) { this._message('No index or fixed income futures were found in the product list.'); return; }
+            const wanted = [recall(), ...DEFAULTS].find(c => c && this.catalog.some(p => p.Product === c)) || this.catalog[0].Product;
+            this.select.value = wanted;
+            this.load(wanted);
+        } catch (err) {
+            this.status.textContent = '';
+            this._message(`The product list could not be loaded: ${err.message}`, true);
+        }
+    }
+
+    _build() {
+        this.built = true;
+        const box = this.els.content;
+        box.innerHTML = '';
+        const bar = el('div', 'ps-bar');
+        const label = el('label', 'pc-field');
+        label.appendChild(el('span', 'pc-hint', 'Future'));
+        this.select = el('select', 'pc-select');
+        this.select.setAttribute('aria-label', 'Index or fixed income future');
+        this.select.addEventListener('change', () => this.load(this.select.value));
+        label.appendChild(this.select);
+        bar.appendChild(label);
+        this.refreshBtn = button('Refresh', { className: 'pc-btn', iconName: 'refresh-cw', onClick: () => this.product && this.load(this.product, { fresh: true }) });
+        this.cardBtn = button('Product card', { className: 'pc-btn', iconName: 'layers', onClick: () => this.product && this.options.onOpenProduct?.(this.product) });
+        bar.append(this.refreshBtn, this.cardBtn);
+        box.appendChild(bar);
+        this.status = el('p', 'pc-hint ps-status');
+        this.status.setAttribute('role', 'status');
+        box.appendChild(this.status);
+        this.out = el('div', 'rt');
+        box.appendChild(this.out);
+        refreshIcons();
+    }
+
+    _fillProducts() {
+        this.select.innerHTML = '';
+        const groups = new Map();
+        (this.catalog || []).forEach(p => {
+            if (!groups.has(p.ProductType)) groups.set(p.ProductType, el('optgroup'));
+            const g = groups.get(p.ProductType);
+            g.label = p.ProductType;
+            const o = el('option', '', `${p.Product}${p.Name ? ` · ${p.Name}` : ''}`);
+            o.value = p.Product;
+            g.appendChild(o);
+        });
+        groups.forEach(g => this.select.appendChild(g));
+    }
+
+    _message(text, bad = false) {
+        this.out.innerHTML = '';
+        this.out.appendChild(el('p', `pc-empty${bad ? ' bad' : ''}`, text));
+    }
+
+    // Contracts query with the fields the schema offers; null OpenInterest means the API does not have it
+    async _query(code) {
+        let fields = WANTED;
+        try {
+            const index = buildSchemaIndex(await this.options.getSchema?.());
+            const root = index && membersOf(index, index.queryTypeName).find(f => f.name === 'Contracts');
+            if (index && !root) return { error: 'This API does not offer Contracts.' };
+            if (root) {
+                const outer = index.types.get(baseName(root.type));
+                const rowType = baseName(outer?.fields?.find(f => f.name === 'data')?.type) || outer?.name;
+                const available = membersOf(index, rowType).map(f => f.name);
+                if (!available.includes('OpenInterest')) return { error: 'Contracts has no OpenInterest field in this API yet, so the roll cannot be tracked.' };
+                fields = WANTED.filter(f => available.includes(f));
+            }
+        } catch (e) { /* no schema: ask for the standard fields */ }
+        return { query: `query {\n  Contracts(filter: { Product: { eq: "${code}" } }) {\n    date\n    data {\n      ${fields.join('\n      ')}\n    }\n  }\n}` };
+    }
+
+    async load(code, { fresh = false } = {}) {
+        this.product = code;
+        remember(code);
+        const token = ++this.token;
+        this.out.innerHTML = '';
+        this.out.appendChild(el('p', 'pc-loading', `Loading ${code}…`));
+        try {
+            const { query, error } = await this._query(code);
+            if (token !== this.token) return;
+            if (error) { this._message(error, true); return; }
+            const res = await this.client.request(query, null, false, { fresh });
+            if (token !== this.token) return;
+            const rows = res?.Contracts?.data || [];
+            const date = String(res?.Contracts?.date || '').slice(0, 10) || cetDate();
+            this._draw(code, rows, date);
+        } catch (err) {
+            if (token !== this.token) return;
+            this._message(err.message, true);
+            this.out.appendChild(button('Try again', { className: 'pc-btn', onClick: () => this.load(code) }));
+        }
+    }
+
+    _draw(code, rows, date) {
+        const snap = rollSnapshot(rows, cetDate());
+        this.out.innerHTML = '';
+        if (!snap) { this._message(`No open interest is listed for the futures of ${code}.`); return; }
+        const history = snap.next ? recordSnapshot(code, snap, date) : [];
+        const cycle = snap.next ? cycleEntries(history, snap.front.label) : [];
+        const perDay = pace(cycle);
+        const status = rollStatus(snap.share);
+
+        const head = el('div', `rt-status ${status.key}`);
+        head.appendChild(el('span', 'rt-dot'));
+        head.appendChild(el('strong', '', status.label));
+        head.appendChild(el('span', 'pc-hint', `open interest as of ${formatDateString(date)}`));
+        this.out.appendChild(head);
+
+        const tiles = el('div', 'pc-stats');
+        const tile = (k, v) => { const s = el('div', 'pc-stat'); s.appendChild(el('span', 'pc-hint', k)); s.appendChild(el('strong', '', v)); tiles.appendChild(s); };
+        tile('Front future', `${snap.front.label} · ${formatDateString(snap.front.expiration)}`);
+        tile('Days to expiry', String(snap.front.daysLeft));
+        if (snap.next) {
+            tile('Rolled to next', snap.share === null ? '–' : pct(snap.share));
+            tile('Next future', snap.next.label);
+            tile('Pace', perDay === null ? 'needs 2 days' : `${perDay >= 0 ? '+' : ''}${perDay.toFixed(1)} pp/day`);
+            const done = daysToComplete(snap.share, perDay);
+            if (done !== null) tile('Full roll in', done === 0 ? 'done' : `~${done} days${done > snap.front.daysLeft ? ' (after expiry)' : ''}`);
+        }
+        this.out.appendChild(tiles);
+
+        this.out.appendChild(this._bar(snap));
+        this.out.appendChild(this._table(snap));
+
+        if (snap.next) {
+            const sec = el('section', 'pc-card rt-history');
+            const h = el('div', 'pc-card-head');
+            h.appendChild(el('h3', '', 'Roll progress'));
+            h.appendChild(el('span', 'pc-hint', `${snap.front.label} → ${snap.next.label}`));
+            sec.appendChild(h);
+            sec.appendChild(renderLineChart(cycle.map(e => ({ x: e.date, y: e.share * 100 })), { format: (y) => `${y.toFixed(0)}%`, label: `Roll progress of ${code}` }));
+            sec.appendChild(el('p', 'pc-hint', 'The API returns the open interest of the latest day. The chart is built from the days this view was opened in this browser, so it fills up with use.'));
+            this.out.appendChild(sec);
+        }
+        refreshIcons();
+    }
+
+    // Stacked bar: share of open interest per upcoming future
+    _bar(snap) {
+        const wrap = el('div', 'rt-bar');
+        wrap.setAttribute('role', 'img');
+        wrap.setAttribute('aria-label', snap.contracts.map(c => `${c.label} ${pct(c.share)}`).join(', '));
+        snap.contracts.forEach((c, i) => {
+            if (c.share <= 0) return;
+            const seg = el('span', `rt-seg s${Math.min(i, 3)}`, c.share >= 0.08 ? `${c.label} ${pct(c.share)}` : '');
+            seg.style.flexGrow = String(c.share);
+            seg.title = `${c.label}: ${formatNumber(c.oi)} (${pct(c.share)})`;
+            wrap.appendChild(seg);
+        });
+        return wrap;
+    }
+
+    _table(snap) {
+        const table = el('table', 'pc-table pc-num rt-table');
+        const hr = el('tr');
+        ['Contract', 'Expiration', 'Days left', 'Open interest', 'Share'].forEach(t => hr.appendChild(el('th', '', t)));
+        const head = el('thead');
+        head.appendChild(hr);
+        table.appendChild(head);
+        const body = el('tbody');
+        snap.contracts.forEach(c => {
+            const tr = el('tr');
+            [c.label, formatDateString(c.expiration), String(c.daysLeft), formatNumber(c.oi), pct(c.share)].forEach(v => tr.appendChild(el('td', '', v)));
+            body.appendChild(tr);
+        });
+        table.appendChild(body);
+        return table;
+    }
+}
