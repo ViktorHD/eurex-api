@@ -140,42 +140,43 @@ describe('RollView', () => {
 
     beforeEach(() => localStorage.clear());
 
-    test('lists only index and fixed income futures and draws the roll', async () => {
+    test('has a product type and a symbol filter only, and draws the roll of the default future', async () => {
         const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'ContractCycle', 'OpenInterest']));
         await view.show();
         await wait();
-        const types = box.querySelectorAll('select')[0];
-        const products = box.querySelectorAll('select')[1];
-        expect([...types.options].map(o => o.value)).toEqual(['FIXED INCOME FUTURES', 'INDEX FUTURES']);
-        expect(types.value).toBe('INDEX FUTURES');
-        expect([...products.options].map(o => o.value)).toEqual(['FESX', 'FXXP']);
+        const selects = box.querySelectorAll('select');
+        expect(selects).toHaveLength(1); // no separate future dropdown
+        expect([...selects[0].options].map(o => o.value)).toEqual(['', 'FIXED INCOME FUTURES', 'INDEX FUTURES']);
+        expect(selects[0].value).toBe('');
+        expect(box.querySelector('input[aria-label="Future symbol"]').value).toBe('FESX');
+        expect([...box.querySelectorAll('datalist option')].map(o => o.value)).toEqual(['FESX', 'FGBL', 'FXXP']);
         expect(client.request.mock.calls[1][0]).toContain('Contracts(filter: { Product: { eq: "FESX" } })');
         expect(client.request.mock.calls[1][0]).toContain('OpenInterest');
+        expect(client.request.mock.calls[1][0]).toContain('ContractCycle');
         expect(box.querySelector('.rt-status').textContent).toContain('Rolling');
         expect(box.querySelectorAll('.rt-seg')).toHaveLength(2);
         expect(box.querySelectorAll('.rt-table tbody tr')).toHaveLength(2);
         expect(box.textContent).toContain('30.0%');
-        expect(client.request.mock.calls[1][0]).toContain('ContractCycle');
         expect(box.textContent).toContain('Primary contracts only: 1 daily, weekly or flexible contract left out.');
     });
 
-    test('choosing another product type lists its futures and loads the first', async () => {
+    test('the product type narrows the symbol suggestions', async () => {
         const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'ContractCycle', 'OpenInterest']));
         await view.show();
         await wait();
-        const [types, products] = box.querySelectorAll('select');
+        const types = box.querySelector('select');
+        const calls = client.request.mock.calls.length;
         types.value = 'FIXED INCOME FUTURES';
         types.dispatchEvent(new Event('change'));
-        for (let i = 0; i < 5; i++) await wait();
-        expect([...products.options].map(o => o.value)).toEqual(['FGBL']);
-        expect(client.request.mock.calls.at(-1)[0]).toContain('"FGBL"');
+        expect([...box.querySelectorAll('datalist option')].map(o => o.value)).toEqual(['FGBL']);
+        expect(client.request.mock.calls.length).toBe(calls); // only a filter: nothing is loaded
     });
 
     test('the symbol filter accepts a future and rejects options, unknown and invalid codes', async () => {
         const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'ContractCycle', 'OpenInterest']));
         await view.show();
         for (let i = 0; i < 4; i++) await wait();
-        const [types, products] = box.querySelectorAll('select');
+        const types = box.querySelector('select');
         const input = box.querySelector('input[aria-label="Future symbol"]');
         const alert = box.querySelector('[role="alert"]');
         const submit = (v) => { input.value = v; box.querySelector('.rt-symbol').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); };
@@ -189,14 +190,27 @@ describe('RollView', () => {
         submit('bad code!');
         expect(alert.textContent).toContain('only letters');
         expect(client.request.mock.calls.length).toBe(before); // nothing was loaded
-        expect(products.value).toBe('FESX');
 
         submit('fgbl');
         for (let i = 0; i < 5; i++) await wait();
         expect(alert.hidden).toBe(true);
-        expect(types.value).toBe('FIXED INCOME FUTURES');
-        expect(products.value).toBe('FGBL');
+        expect(input.value).toBe('FGBL');
+        expect(types.value).toBe(''); // "All types" stays
         expect(client.request.mock.calls.at(-1)[0]).toContain('"FGBL"');
+    });
+
+    test('a chosen product type follows the symbol', async () => {
+        const { view, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'ContractCycle', 'OpenInterest']));
+        await view.show();
+        await wait();
+        const types = box.querySelector('select');
+        types.value = 'INDEX FUTURES';
+        types.dispatchEvent(new Event('change'));
+        const input = box.querySelector('input[aria-label="Future symbol"]');
+        input.value = 'fgbl';
+        box.querySelector('.rt-symbol').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        await wait();
+        expect(types.value).toBe('FIXED INCOME FUTURES');
     });
 
     test('options never appear in the lists', async () => {
@@ -206,7 +220,6 @@ describe('RollView', () => {
         const listed = [...box.querySelectorAll('option')].map(o => o.value);
         expect(listed).not.toContain('OESX');
         expect(listed).not.toContain('INDEX OPTIONS');
-        expect([...box.querySelectorAll('datalist option')].map(o => o.value)).toEqual(['FESX', 'FGBL', 'FXXP']);
     });
 
     test('says so when Contracts has no OpenInterest', async () => {

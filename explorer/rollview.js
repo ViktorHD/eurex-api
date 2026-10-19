@@ -37,12 +37,12 @@ export class RollView {
             const all = await fetchProductCatalog(this.client);
             this.all = all;
             this.catalog = all.filter(isRollProduct).sort((a, b) => a.Product.localeCompare(b.Product));
+            this._fillTypes();
             this._fillSymbols();
             this.status.textContent = '';
-            if (!this.catalog.length) { this._fillTypes(); this._fillProducts(); this._message('No futures (product line Future) were found in the product list.'); return; }
+            if (!this.catalog.length) { this._message('No futures (product line Future) were found in the product list.'); return; }
             const wanted = [recall(), ...DEFAULTS].find(c => c && this.catalog.some(p => p.Product === c)) || this.catalog[0].Product;
-            this._fillTypes(this.catalog.find(p => p.Product === wanted).ProductType || 'Other');
-            this._fillProducts(wanted);
+            this.symbol.value = wanted;
             this.load(wanted);
         } catch (err) {
             this.status.textContent = '';
@@ -59,19 +59,9 @@ export class RollView {
         typeLabel.appendChild(el('span', 'pc-hint', 'Product type'));
         this.typeSelect = el('select', 'pc-select');
         this.typeSelect.setAttribute('aria-label', 'Product type');
-        this.typeSelect.addEventListener('change', () => {
-            this._fillProducts();
-            if (this.select.value) this.load(this.select.value);
-        });
+        this.typeSelect.addEventListener('change', () => this._fillSymbols());
         typeLabel.appendChild(this.typeSelect);
         bar.appendChild(typeLabel);
-        const label = el('label', 'pc-field');
-        label.appendChild(el('span', 'pc-hint', 'Future'));
-        this.select = el('select', 'pc-select');
-        this.select.setAttribute('aria-label', 'Index or fixed income future');
-        this.select.addEventListener('change', () => this.load(this.select.value));
-        label.appendChild(this.select);
-        bar.appendChild(label);
         const form = el('form', 'pc-field rt-symbol');
         form.setAttribute('autocomplete', 'off');
         form.appendChild(el('span', 'pc-hint', 'Symbol'));
@@ -104,36 +94,28 @@ export class RollView {
         refreshIcons();
     }
 
-    _fillTypes(current) {
+    // "All types" plus the product types of the futures; the type narrows the symbol suggestions
+    _fillTypes(current = '') {
         this.typeSelect.innerHTML = '';
+        const all = el('option', '', 'All types');
+        all.value = '';
+        this.typeSelect.appendChild(all);
         [...new Set((this.catalog || []).map(p => p.ProductType || 'Other'))].sort().forEach(t => {
             const o = el('option', '', t);
             o.value = t;
             this.typeSelect.appendChild(o);
         });
-        if (current) this.typeSelect.value = current;
+        this.typeSelect.value = current;
     }
 
     _fillSymbols() {
         this.symbols.innerHTML = '';
-        (this.catalog || []).forEach(p => {
+        const type = this.typeSelect.value;
+        (this.catalog || []).filter(p => !type || (p.ProductType || 'Other') === type).forEach(p => {
             const o = el('option', '', p.Name || '');
             o.value = p.Product;
             this.symbols.appendChild(o);
         });
-    }
-
-    // The futures of the chosen product type
-    _fillProducts(current) {
-        this.select.innerHTML = '';
-        const type = this.typeSelect.value;
-        (this.catalog || []).filter(p => (p.ProductType || 'Other') === type).forEach(p => {
-            const o = el('option', '', `${p.Product}${p.Name ? ` · ${p.Name}` : ''}`);
-            o.value = p.Product;
-            this.select.appendChild(o);
-        });
-        if (current) this.select.value = current;
-        else if (this.select.options.length) this.select.selectedIndex = 0;
     }
 
     // Typed symbol: only futures are accepted; anything else is rejected and the current view stays
@@ -145,8 +127,8 @@ export class RollView {
         this.alert.textContent = reason;
         this.symbol.classList.toggle('invalid', Boolean(reason));
         if (reason || !code) return;
-        this._fillTypes(this.catalog.find(p => p.Product === code).ProductType || 'Other');
-        this._fillProducts(code);
+        // A chosen product type follows the symbol
+        if (this.typeSelect.value) this._fillTypes(this.catalog.find(p => p.Product === code).ProductType || 'Other');
         this.load(code);
     }
 
@@ -177,6 +159,8 @@ export class RollView {
         const reason = rejectReason(code, this.all);
         if (reason) { this.alert.hidden = false; this.alert.textContent = reason; return; }
         this.alert.hidden = true;
+        this.symbol.value = code;
+        this.symbol.classList.remove('invalid');
         this.product = code;
         remember(code);
         const token = ++this.token;
