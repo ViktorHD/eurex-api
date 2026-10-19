@@ -83,7 +83,7 @@ describe('RollView', () => {
         const client = {
             endpoint: 'e', apiKey: 'k',
             request: jest.fn(async (q) => {
-                if (q.includes('ProductInfos')) return { data: [{ Product: 'FESX', Name: 'Euro STOXX 50', ProductType: 'INDEX FUTURES' }, { Product: 'OESX', ProductType: 'INDEX OPTIONS' }, { Product: 'FGBL', Name: 'Bund', ProductType: 'FIXED INCOME FUTURES' }] };
+                if (q.includes('ProductInfos')) return { data: [{ Product: 'FESX', Name: 'Euro STOXX 50', ProductType: 'INDEX FUTURES', ProductLine: 'Equity Index' }, { Product: 'OESX', ProductType: 'INDEX OPTIONS' }, { Product: 'FGBL', Name: 'Bund', ProductType: 'FIXED INCOME FUTURES', ProductLine: 'Euro Bond' }, { Product: 'FXXP', ProductType: 'INDEX FUTURES' }] };
                 return { Contracts: { date: '2026-10-19', data: [
                     { Contract: 'A', ExpirationDate: future, OpenInterest: 700, CallPut: null },
                     { Contract: 'B', ExpirationDate: later, OpenInterest: 300, CallPut: null }] } };
@@ -106,13 +106,31 @@ describe('RollView', () => {
         const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
         await view.show();
         await wait();
-        expect([...box.querySelectorAll('option')].map(o => o.value)).toEqual(['FESX', 'FGBL']);
+        const types = box.querySelectorAll('select')[0];
+        const products = box.querySelectorAll('select')[1];
+        expect([...types.options].map(o => o.value)).toEqual(['FIXED INCOME FUTURES', 'INDEX FUTURES']);
+        expect(types.value).toBe('INDEX FUTURES');
+        expect([...products.querySelectorAll('optgroup')].map(g => g.label)).toEqual(['Equity Index', 'INDEX FUTURES']);
+        expect([...products.options].map(o => o.value)).toEqual(['FESX', 'FXXP']);
         expect(client.request.mock.calls[1][0]).toContain('Contracts(filter: { Product: { eq: "FESX" } })');
         expect(client.request.mock.calls[1][0]).toContain('OpenInterest');
         expect(box.querySelector('.rt-status').textContent).toContain('Rolling');
         expect(box.querySelectorAll('.rt-seg')).toHaveLength(2);
         expect(box.querySelectorAll('.rt-table tbody tr')).toHaveLength(2);
         expect(box.textContent).toContain('30.0%');
+    });
+
+    test('choosing another product type lists its futures and loads the first', async () => {
+        const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
+        await view.show();
+        await wait();
+        const [types, products] = box.querySelectorAll('select');
+        types.value = 'FIXED INCOME FUTURES';
+        types.dispatchEvent(new Event('change'));
+        for (let i = 0; i < 5; i++) await wait();
+        expect([...products.options].map(o => o.value)).toEqual(['FGBL']);
+        expect(products.querySelector('optgroup').label).toBe('Euro Bond');
+        expect(client.request.mock.calls.at(-1)[0]).toContain('"FGBL"');
     });
 
     test('says so when Contracts has no OpenInterest', async () => {

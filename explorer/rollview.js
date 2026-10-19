@@ -36,10 +36,10 @@ export class RollView {
             const all = await fetchProductCatalog(this.client);
             this.catalog = all.filter(isRollProduct).sort((a, b) => a.Product.localeCompare(b.Product));
             this.status.textContent = '';
-            this._fillProducts();
-            if (!this.catalog.length) { this._message('No index or fixed income futures were found in the product list.'); return; }
+            if (!this.catalog.length) { this._fillTypes(); this._fillProducts(); this._message('No index or fixed income futures were found in the product list.'); return; }
             const wanted = [recall(), ...DEFAULTS].find(c => c && this.catalog.some(p => p.Product === c)) || this.catalog[0].Product;
-            this.select.value = wanted;
+            this._fillTypes(this.catalog.find(p => p.Product === wanted).ProductType);
+            this._fillProducts(wanted);
             this.load(wanted);
         } catch (err) {
             this.status.textContent = '';
@@ -52,6 +52,16 @@ export class RollView {
         const box = this.els.content;
         box.innerHTML = '';
         const bar = el('div', 'ps-bar');
+        const typeLabel = el('label', 'pc-field');
+        typeLabel.appendChild(el('span', 'pc-hint', 'Product type'));
+        this.typeSelect = el('select', 'pc-select');
+        this.typeSelect.setAttribute('aria-label', 'Product type');
+        this.typeSelect.addEventListener('change', () => {
+            this._fillProducts();
+            if (this.select.value) this.load(this.select.value);
+        });
+        typeLabel.appendChild(this.typeSelect);
+        bar.appendChild(typeLabel);
         const label = el('label', 'pc-field');
         label.appendChild(el('span', 'pc-hint', 'Future'));
         this.select = el('select', 'pc-select');
@@ -71,18 +81,31 @@ export class RollView {
         refreshIcons();
     }
 
-    _fillProducts() {
+    _fillTypes(current) {
+        this.typeSelect.innerHTML = '';
+        [...new Set((this.catalog || []).map(p => p.ProductType || 'Other'))].sort().forEach(t => {
+            const o = el('option', '', t);
+            o.value = t;
+            this.typeSelect.appendChild(o);
+        });
+        if (current) this.typeSelect.value = current;
+    }
+
+    // The futures of the chosen product type, grouped by product line so e.g. equity index and bond futures are told apart
+    _fillProducts(current) {
         this.select.innerHTML = '';
+        const type = this.typeSelect.value;
         const groups = new Map();
-        (this.catalog || []).forEach(p => {
-            if (!groups.has(p.ProductType)) groups.set(p.ProductType, el('optgroup'));
-            const g = groups.get(p.ProductType);
-            g.label = p.ProductType;
+        (this.catalog || []).filter(p => (p.ProductType || 'Other') === type).forEach(p => {
+            const line = p.ProductLine || type;
+            if (!groups.has(line)) { const g = el('optgroup'); g.label = line; groups.set(line, g); }
             const o = el('option', '', `${p.Product}${p.Name ? ` · ${p.Name}` : ''}`);
             o.value = p.Product;
-            g.appendChild(o);
+            groups.get(line).appendChild(o);
         });
-        groups.forEach(g => this.select.appendChild(g));
+        [...groups].sort(([a], [b]) => a.localeCompare(b)).forEach(([, g]) => this.select.appendChild(g));
+        if (current) this.select.value = current;
+        else if (this.select.options.length) this.select.selectedIndex = 0;
     }
 
     _message(text, bad = false) {
