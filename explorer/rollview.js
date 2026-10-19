@@ -8,7 +8,7 @@ import { renderLineChart } from './linechart.js';
 import { cetDate } from './tradingstatus.js';
 import { formatNumber, formatDateString } from './displayformat.js';
 
-const WANTED = ['Contract', 'ContractDate', 'ExpirationDate', 'LastTradingDate', 'CallPut', 'ContractCycle', 'OpenInterest'];
+const WANTED = ['Contract', 'ContractDate', 'ExpirationDate', 'LastTradingDate', 'CallPut', 'PrimaryContract', 'ContractCycle', 'OpenInterest'];
 const LAST_KEY = 'eurexExplorer.rollProduct';
 const DEFAULTS = ['FESX', 'FGBL'];
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
@@ -210,7 +210,7 @@ export class RollView {
         }
         this.out.appendChild(tiles);
 
-        if (snap.excluded) this.out.appendChild(el('p', 'pc-hint', `Primary contracts only: ${snap.excluded} daily, weekly or flexible contract${snap.excluded === 1 ? '' : 's'} left out.`));
+        if (snap.excluded) this.out.appendChild(el('p', 'pc-hint', `Primary contracts only: ${snap.excluded} non-primary contract${snap.excluded === 1 ? '' : 's'} (daily, weekly, flexible) left out.`));
         this.out.appendChild(this._bar(snap));
         this.out.appendChild(this._table(snap));
 

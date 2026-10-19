@@ -1,5 +1,5 @@
 // Roll tracker logic: how far open interest has moved from the front future to the next one.
-// Contract row: { Contract, ContractDate?, ExpirationDate, LastTradingDate?, CallPut?, ContractCycle?, OpenInterest }
+// Contract row: { Contract, ContractDate?, ExpirationDate, LastTradingDate?, CallPut?, PrimaryContract?, ContractCycle?, OpenInterest }
 
 // Futures are the products of product line "Future". Options are told apart by their product type code (O...), as in
 // the Strike Window; a product without a product line is judged by its type code (F...).
@@ -40,10 +40,23 @@ const dayNumber = (iso) => {
     return Date.UTC(y, m - 1, d) / 86400000;
 };
 
-// Primary contracts are the regular listings (monthly, quarterly, yearly cycle). Dailies, weeklies and flexible
-// contracts are rolled differently and would distort the front / next split. Rows without a cycle count as primary.
-const NON_PRIMARY = /DAIL|DAY|WEEK|FLEX/;
-export const isPrimaryContract = (row) => !NON_PRIMARY.test(String(row?.ContractCycle || '').toUpperCase());
+// The API flags primary contracts (PrimaryContract). Booleans and the usual text / number spellings are understood;
+// a row without the flag falls back to its ContractCycle: dailies, weeklies and flexible contracts are not primary,
+// monthly, quarterly and yearly ones are, and a row with neither counts as primary.
+const asFlag = (v) => {
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return v !== 0;
+    const t = String(v ?? '').trim().toUpperCase();
+    if (['TRUE', 'Y', 'YES', '1', 'PRIMARY'].includes(t)) return true;
+    if (['FALSE', 'N', 'NO', '0', 'NON-PRIMARY', 'NONPRIMARY'].includes(t)) return false;
+    return null;
+};
+const NON_PRIMARY_CYCLE = /DAIL|DAY|WEEK|FLEX/;
+export const isPrimaryContract = (row) => {
+    const flag = asFlag(row?.PrimaryContract);
+    if (flag !== null) return flag;
+    return !NON_PRIMARY_CYCLE.test(String(row?.ContractCycle || '').toUpperCase());
+};
 
 /**
  * Open interest per upcoming primary future, nearest expiry first.
