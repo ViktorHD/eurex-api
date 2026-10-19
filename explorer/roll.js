@@ -1,5 +1,5 @@
 // Roll tracker logic: how far open interest has moved from the front future to the next one.
-// Contract row: { Contract, ContractDate?, ExpirationDate, LastTradingDate?, CallPut?, OpenInterest }
+// Contract row: { Contract, ContractDate?, ExpirationDate, LastTradingDate?, CallPut?, ContractCycle?, OpenInterest }
 
 // Futures are the products of product line "Future". Options are told apart by their product type code (O...), as in
 // the Strike Window; a product without a product line is judged by its type code (F...).
@@ -40,14 +40,20 @@ const dayNumber = (iso) => {
     return Date.UTC(y, m - 1, d) / 86400000;
 };
 
+// Primary contracts are the regular listings (monthly, quarterly, yearly cycle). Dailies, weeklies and flexible
+// contracts are rolled differently and would distort the front / next split. Rows without a cycle count as primary.
+const NON_PRIMARY = /DAIL|DAY|WEEK|FLEX/;
+export const isPrimaryContract = (row) => !NON_PRIMARY.test(String(row?.ContractCycle || '').toUpperCase());
+
 /**
- * Open interest per upcoming future, nearest expiry first.
+ * Open interest per upcoming primary future, nearest expiry first.
  * Returns null when no future with open interest is left; otherwise
- * { contracts: [{ label, expiration, daysLeft, oi, share }], front, next, total, share (next / (front + next)) }.
+ * { excluded (daily / weekly / flexible contracts left out), contracts: [{ label, expiration, daysLeft, oi, share }], front, next, total, share (next / (front + next)) }.
  */
 export function rollSnapshot(rows, today) {
-    const futures = (rows || [])
-        .filter(r => !r.CallPut)
+    const futuresAll = (rows || []).filter(r => !r.CallPut);
+    const futures = futuresAll
+        .filter(isPrimaryContract)
         .map(r => ({ label: r.Contract || String(r.ContractDate || ''), expiration: String(r.ExpirationDate || r.LastTradingDate || '').slice(0, 10), oi: Number(r.OpenInterest) }))
         .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.expiration) && r.expiration >= today && Number.isFinite(r.oi) && r.oi >= 0)
         .sort((a, b) => a.expiration.localeCompare(b.expiration));
@@ -56,7 +62,8 @@ export function rollSnapshot(rows, today) {
     const contracts = futures.map(r => ({ ...r, daysLeft: dayNumber(r.expiration) - dayNumber(today), share: total > 0 ? r.oi / total : 0 }));
     const front = contracts[0];
     const next = contracts[1] || null;
-    return { contracts, front, next, total, share: next ? rollShare(front.oi, next.oi) : null };
+    const excluded = futuresAll.length - futuresAll.filter(isPrimaryContract).length;
+    return { excluded, contracts, front, next, total, share: next ? rollShare(front.oi, next.oi) : null };
 }
 
 // ---------- History: the API gives today's open interest, so the pace is built from the days seen in this browser ----------

@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import { jest } from '@jest/globals';
-import { isRollProduct, rejectReason, rollShare, rollStatus, rollSnapshot, recordSnapshot, loadHistory, cycleEntries, pace, daysToComplete } from '../roll.js';
+import { isPrimaryContract, isRollProduct, rejectReason, rollShare, rollStatus, rollSnapshot, recordSnapshot, loadHistory, cycleEntries, pace, daysToComplete } from '../roll.js';
 import { RollView } from '../rollview.js';
 import { resetProductCatalog } from '../catalog.js';
 
@@ -43,6 +43,25 @@ describe('products and shares', () => {
         expect(rollStatus(0.7).key).toBe('late');
         expect(rollStatus(0.95).key).toBe('done');
         expect(rollStatus(null).key).toBe('none');
+    });
+});
+
+describe('primary contracts', () => {
+    test('dailies, weeklies and flexible contracts are not primary', () => {
+        ['WEEKLY', 'weekly', 'DAILY', 'Daily', 'FLEXIBLE', 'WEEK 2'].forEach(c => expect(isPrimaryContract({ ContractCycle: c })).toBe(false));
+        ['MONTHLY', 'QUARTERLY', 'YEARLY', '', null, undefined].forEach(c => expect(isPrimaryContract({ ContractCycle: c })).toBe(true));
+    });
+    test('they are left out of the roll and counted', () => {
+        const mixed = [
+            { Contract: 'Q1', ExpirationDate: '2026-12-18', OpenInterest: 600, ContractCycle: 'QUARTERLY' },
+            { Contract: 'Q2', ExpirationDate: '2027-03-19', OpenInterest: 400, ContractCycle: 'QUARTERLY' },
+            { Contract: 'W1', ExpirationDate: '2026-10-23', OpenInterest: 5000, ContractCycle: 'WEEKLY' },
+            { Contract: 'D1', ExpirationDate: '2026-10-20', OpenInterest: 9000, ContractCycle: 'DAILY' }];
+        const s = rollSnapshot(mixed, '2026-10-19');
+        expect(s.contracts.map(c => c.label)).toEqual(['Q1', 'Q2']);
+        expect(s.excluded).toBe(2);
+        expect(s.share).toBe(0.4);
+        expect(rollSnapshot(mixed.slice(2), '2026-10-19')).toBeNull();
     });
 });
 
@@ -103,8 +122,9 @@ describe('RollView', () => {
                     { Product: 'FGBL', Name: 'Bund', ProductType: 'FIXED INCOME FUTURES', ProductLine: 'Future', ProductTypeCode: 'FF' },
                     { Product: 'FXXP', ProductType: 'INDEX FUTURES', ProductLine: 'Future', ProductTypeCode: 'FI' }] };
                 return { Contracts: { date: '2026-10-19', data: [
-                    { Contract: 'A', ExpirationDate: future, OpenInterest: 700, CallPut: null },
-                    { Contract: 'B', ExpirationDate: later, OpenInterest: 300, CallPut: null }] } };
+                    { Contract: 'A', ExpirationDate: future, OpenInterest: 700, CallPut: null, ContractCycle: 'QUARTERLY' },
+                    { Contract: 'W', ExpirationDate: future, OpenInterest: 99999, CallPut: null, ContractCycle: 'WEEKLY' },
+                    { Contract: 'B', ExpirationDate: later, OpenInterest: 300, CallPut: null, ContractCycle: 'QUARTERLY' }] } };
             })
         };
         const view = new RollView(client, { content: document.getElementById('c') }, { getSchema: async () => schema, onOpenProduct: jest.fn() });
@@ -121,7 +141,7 @@ describe('RollView', () => {
     beforeEach(() => localStorage.clear());
 
     test('lists only index and fixed income futures and draws the roll', async () => {
-        const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
+        const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'ContractCycle', 'OpenInterest']));
         await view.show();
         await wait();
         const types = box.querySelectorAll('select')[0];
@@ -135,10 +155,12 @@ describe('RollView', () => {
         expect(box.querySelectorAll('.rt-seg')).toHaveLength(2);
         expect(box.querySelectorAll('.rt-table tbody tr')).toHaveLength(2);
         expect(box.textContent).toContain('30.0%');
+        expect(client.request.mock.calls[1][0]).toContain('ContractCycle');
+        expect(box.textContent).toContain('Primary contracts only: 1 daily, weekly or flexible contract left out.');
     });
 
     test('choosing another product type lists its futures and loads the first', async () => {
-        const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
+        const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'ContractCycle', 'OpenInterest']));
         await view.show();
         await wait();
         const [types, products] = box.querySelectorAll('select');
@@ -150,7 +172,7 @@ describe('RollView', () => {
     });
 
     test('the symbol filter accepts a future and rejects options, unknown and invalid codes', async () => {
-        const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
+        const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'ContractCycle', 'OpenInterest']));
         await view.show();
         for (let i = 0; i < 4; i++) await wait();
         const [types, products] = box.querySelectorAll('select');
@@ -178,7 +200,7 @@ describe('RollView', () => {
     });
 
     test('options never appear in the lists', async () => {
-        const { view, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
+        const { view, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'ContractCycle', 'OpenInterest']));
         await view.show();
         await wait();
         const listed = [...box.querySelectorAll('option')].map(o => o.value);
