@@ -10,7 +10,8 @@ const svg = (tag, attrs = {}, text) => {
 };
 
 /**
- * axes: [{ label, value: 0..1, text: 'shown value' }]; needs at least 3. Returns the <svg> element.
+ * axes: [{ label, value: 0..1, text: 'shown value', compare?: { value, text } }]; needs at least 3. When the axes carry
+ * `compare`, a second polygon is drawn over the first. Returns the <svg> element.
  * options: { rings: number of grid rings (default 4), label: accessible description }
  */
 export function renderRadar(axes, options = {}) {
@@ -40,12 +41,17 @@ export function renderRadar(axes, options = {}) {
         root.appendChild(svg('text', { x: lx.toFixed(1), y: (ly + 4).toFixed(1), 'text-anchor': anchor, class: 'rd-label' }, a.label));
     });
     const clamp = (v) => Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
-    root.appendChild(svg('polygon', { points: poly(i => clamp(axes[i].value)), class: 'rd-area' }));
-    axes.forEach((a, i) => {
-        const [x, y] = point(i, clamp(a.value));
-        const dot = svg('circle', { cx: x.toFixed(1), cy: y.toFixed(1), r: 4, class: 'rd-dot', tabindex: 0 });
-        dot.appendChild(svg('title', {}, `${a.label}: ${a.text}`));
-        root.appendChild(dot);
-    });
+    const layer = (pick, cls, name) => {
+        root.appendChild(svg('polygon', { points: poly(i => clamp(pick(axes[i]).value)), class: `rd-area ${cls}` }));
+        axes.forEach((a, i) => {
+            const [x, y] = point(i, clamp(pick(a).value));
+            const dot = svg('circle', { cx: x.toFixed(1), cy: y.toFixed(1), r: 4, class: `rd-dot ${cls}`, tabindex: 0 });
+            dot.appendChild(svg('title', {}, `${name ? `${name} · ` : ''}${a.label}: ${pick(a).text}`));
+            root.appendChild(dot);
+        });
+    };
+    const second = axes.every(a => a.compare);
+    layer(a => a, 'rd-a', second ? options.names?.[0] : '');
+    if (second) layer(a => a.compare, 'rd-b', options.names?.[1]);
     return root;
 }
