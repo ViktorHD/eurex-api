@@ -106,14 +106,31 @@ describe('RollView', () => {
         const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
         await view.show();
         await wait();
-        expect([...box.querySelectorAll('optgroup')].map(g => g.label)).toEqual(['Equity Index', 'Euro Bond', 'INDEX FUTURES']);
-        expect([...box.querySelectorAll('option')].map(o => o.value)).toEqual(['FESX', 'FGBL', 'FXXP']);
+        const types = box.querySelectorAll('select')[0];
+        const products = box.querySelectorAll('select')[1];
+        expect([...types.options].map(o => o.value)).toEqual(['FIXED INCOME FUTURES', 'INDEX FUTURES']);
+        expect(types.value).toBe('INDEX FUTURES');
+        expect([...products.querySelectorAll('optgroup')].map(g => g.label)).toEqual(['Equity Index', 'INDEX FUTURES']);
+        expect([...products.options].map(o => o.value)).toEqual(['FESX', 'FXXP']);
         expect(client.request.mock.calls[1][0]).toContain('Contracts(filter: { Product: { eq: "FESX" } })');
         expect(client.request.mock.calls[1][0]).toContain('OpenInterest');
         expect(box.querySelector('.rt-status').textContent).toContain('Rolling');
         expect(box.querySelectorAll('.rt-seg')).toHaveLength(2);
         expect(box.querySelectorAll('.rt-table tbody tr')).toHaveLength(2);
         expect(box.textContent).toContain('30.0%');
+    });
+
+    test('choosing another product type lists its futures and loads the first', async () => {
+        const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
+        await view.show();
+        await wait();
+        const [types, products] = box.querySelectorAll('select');
+        types.value = 'FIXED INCOME FUTURES';
+        types.dispatchEvent(new Event('change'));
+        for (let i = 0; i < 5; i++) await wait();
+        expect([...products.options].map(o => o.value)).toEqual(['FGBL']);
+        expect(products.querySelector('optgroup').label).toBe('Euro Bond');
+        expect(client.request.mock.calls.at(-1)[0]).toContain('"FGBL"');
     });
 
     test('says so when Contracts has no OpenInterest', async () => {
