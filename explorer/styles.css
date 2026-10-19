@@ -3899,6 +3899,8 @@ button.close-tab { background: none; border: 0; color: inherit; font: inherit; c
 .rt-status.rolling .rt-dot { background: #f5a623; box-shadow: 0 0 0 3px rgba(245,166,35,0.2); }
 .rt-status.late .rt-dot { background: #7a73a6; }
 .rt-status.done .rt-dot { background: var(--navy-blue); }
+.rt-symbol input { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 5px 10px; font-size: 0.8rem; width: 170px; }
+.rt-symbol input.invalid { border-color: var(--error); }
 .rt-bar { display: flex; height: 28px; border-radius: 4px; overflow: hidden; margin: 14px 0; background: var(--eurex-surface); }
 .rt-seg { display: flex; align-items: center; justify-content: center; min-width: 2px; font-size: 0.72rem; color: #fff; white-space: nowrap; overflow: hidden; }
 .rt-seg.s0 { background: var(--navy-blue); }

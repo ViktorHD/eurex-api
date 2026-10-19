@@ -1,12 +1,28 @@
 // Roll tracker logic: how far open interest has moved from the front future to the next one.
 // Contract row: { Contract, ContractDate?, ExpirationDate, LastTradingDate?, CallPut?, OpenInterest }
 
-// Index and fixed income (interest rate, bond) futures: the products whose expiry cycles are rolled
+// Futures are the products of product line "Future". Options are told apart by their product type code (O...), as in
+// the Strike Window; a product without a product line is judged by its type code (F...).
+const isOptionCode = (p) => String(p?.ProductTypeCode || '').toUpperCase().startsWith('O');
+
 export const isRollProduct = (p) => {
-    const t = String(p?.ProductType || '').toUpperCase();
-    if (!t.includes('FUTURE') || t.includes('DIVIDEND')) return false;
-    return t.includes('INDEX') || t.includes('FIXED INCOME') || t.includes('INTEREST') || t.includes('BOND');
+    if (!p || isOptionCode(p)) return false;
+    const line = String(p.ProductLine || '').trim().toUpperCase();
+    if (line) return line === 'FUTURE' || line === 'FUTURES';
+    return String(p.ProductTypeCode || '').toUpperCase().startsWith('F');
 };
+
+// Why a typed product code cannot be tracked, or '' when it can. catalog: all products.
+export function rejectReason(code, catalog) {
+    const c = String(code ?? '').trim().toUpperCase();
+    if (!c) return '';
+    if (!/^[A-Z0-9_-]{1,32}$/.test(c)) return 'Product codes contain only letters, digits, "-" or "_" (e.g. FESX).';
+    const p = (catalog || []).find(x => x.Product === c);
+    if (!p) return `No product ${c} was found.`;
+    if (isOptionCode(p)) return `${c} is an options product. The roll tracker covers futures only; options have a Strike Window.`;
+    if (!isRollProduct(p)) return `${c} is not a future${p.ProductLine ? ` (product line ${p.ProductLine})` : ''}. The roll tracker covers futures only.`;
+    return '';
+}
 
 // Share of the next future in front + next open interest: 0 = nothing rolled yet, 1 = fully rolled
 export const rollShare = (frontOi, nextOi) => (frontOi + nextOi > 0 ? nextOi / (frontOi + nextOi) : null);
