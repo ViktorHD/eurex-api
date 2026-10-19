@@ -3,7 +3,7 @@
 import { el, button, refreshIcons } from './dom.js';
 import { fetchProductCatalog } from './catalog.js';
 import { buildSchemaIndex, membersOf, baseName } from './schemacheck.js';
-import { isRollProduct, rollSnapshot, rollStatus, recordSnapshot, cycleEntries, pace, daysToComplete } from './roll.js';
+import { isRollProduct, rejectReason, rollSnapshot, rollStatus, recordSnapshot, cycleEntries, pace, daysToComplete } from './roll.js';
 import { renderLineChart } from './linechart.js';
 import { cetDate } from './tradingstatus.js';
 import { formatNumber, formatDateString } from './displayformat.js';
@@ -24,6 +24,7 @@ export class RollView {
         this.options = options;
         this.built = false;
         this.catalog = null;
+        this.all = null;
         this.product = '';
         this.token = 0;
     }
@@ -34,11 +35,13 @@ export class RollView {
         this.status.textContent = 'Loading products…';
         try {
             const all = await fetchProductCatalog(this.client);
+            this.all = all;
             this.catalog = all.filter(isRollProduct).sort((a, b) => a.Product.localeCompare(b.Product));
+            this._fillSymbols();
             this.status.textContent = '';
-            if (!this.catalog.length) { this._fillTypes(); this._fillProducts(); this._message('No index or fixed income futures were found in the product list.'); return; }
+            if (!this.catalog.length) { this._fillTypes(); this._fillProducts(); this._message('No futures (product line Future) were found in the product list.'); return; }
             const wanted = [recall(), ...DEFAULTS].find(c => c && this.catalog.some(p => p.Product === c)) || this.catalog[0].Product;
-            this._fillTypes(this.catalog.find(p => p.Product === wanted).ProductType);
+            this._fillTypes(this.catalog.find(p => p.Product === wanted).ProductType || 'Other');
             this._fillProducts(wanted);
             this.load(wanted);
         } catch (err) {
@@ -69,10 +72,30 @@ export class RollView {
         this.select.addEventListener('change', () => this.load(this.select.value));
         label.appendChild(this.select);
         bar.appendChild(label);
+        const form = el('form', 'pc-field rt-symbol');
+        form.setAttribute('autocomplete', 'off');
+        form.appendChild(el('span', 'pc-hint', 'Symbol'));
+        this.symbol = el('input');
+        this.symbol.type = 'text';
+        this.symbol.maxLength = 32;
+        this.symbol.placeholder = 'Future, e.g. FESX';
+        this.symbol.setAttribute('aria-label', 'Future symbol');
+        this.symbol.setAttribute('list', 'rollSymbolList');
+        this.symbol.style.textTransform = 'uppercase';
+        this.symbols = el('datalist');
+        this.symbols.id = 'rollSymbolList';
+        form.append(this.symbol, this.symbols);
+        form.addEventListener('submit', (e) => { e.preventDefault(); this._pickSymbol(); });
+        this.symbol.addEventListener('change', () => this._pickSymbol());
+        bar.appendChild(form);
         this.refreshBtn = button('Refresh', { className: 'pc-btn', iconName: 'refresh-cw', onClick: () => this.product && this.load(this.product, { fresh: true }) });
         this.cardBtn = button('Product card', { className: 'pc-btn', iconName: 'layers', onClick: () => this.product && this.options.onOpenProduct?.(this.product) });
         bar.append(this.refreshBtn, this.cardBtn);
         box.appendChild(bar);
+        this.alert = el('p', 'pc-note bad');
+        this.alert.setAttribute('role', 'alert');
+        this.alert.hidden = true;
+        box.appendChild(this.alert);
         this.status = el('p', 'pc-hint ps-status');
         this.status.setAttribute('role', 'status');
         box.appendChild(this.status);
@@ -91,21 +114,40 @@ export class RollView {
         if (current) this.typeSelect.value = current;
     }
 
-    // The futures of the chosen product type, grouped by product line so e.g. equity index and bond futures are told apart
+    _fillSymbols() {
+        this.symbols.innerHTML = '';
+        (this.catalog || []).forEach(p => {
+            const o = el('option', '', p.Name || '');
+            o.value = p.Product;
+            this.symbols.appendChild(o);
+        });
+    }
+
+    // The futures of the chosen product type
     _fillProducts(current) {
         this.select.innerHTML = '';
         const type = this.typeSelect.value;
-        const groups = new Map();
         (this.catalog || []).filter(p => (p.ProductType || 'Other') === type).forEach(p => {
-            const line = p.ProductLine || type;
-            if (!groups.has(line)) { const g = el('optgroup'); g.label = line; groups.set(line, g); }
             const o = el('option', '', `${p.Product}${p.Name ? ` · ${p.Name}` : ''}`);
             o.value = p.Product;
-            groups.get(line).appendChild(o);
+            this.select.appendChild(o);
         });
-        [...groups].sort(([a], [b]) => a.localeCompare(b)).forEach(([, g]) => this.select.appendChild(g));
         if (current) this.select.value = current;
         else if (this.select.options.length) this.select.selectedIndex = 0;
+    }
+
+    // Typed symbol: only futures are accepted; anything else is rejected and the current view stays
+    _pickSymbol() {
+        const code = this.symbol.value.trim().toUpperCase();
+        this.symbol.value = code;
+        const reason = rejectReason(code, this.all);
+        this.alert.hidden = !reason;
+        this.alert.textContent = reason;
+        this.symbol.classList.toggle('invalid', Boolean(reason));
+        if (reason || !code) return;
+        this._fillTypes(this.catalog.find(p => p.Product === code).ProductType || 'Other');
+        this._fillProducts(code);
+        this.load(code);
     }
 
     _message(text, bad = false) {
@@ -132,6 +174,9 @@ export class RollView {
     }
 
     async load(code, { fresh = false } = {}) {
+        const reason = rejectReason(code, this.all);
+        if (reason) { this.alert.hidden = false; this.alert.textContent = reason; return; }
+        this.alert.hidden = true;
         this.product = code;
         remember(code);
         const token = ++this.token;

@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import { jest } from '@jest/globals';
-import { isRollProduct, rollShare, rollStatus, rollSnapshot, recordSnapshot, loadHistory, cycleEntries, pace, daysToComplete } from '../roll.js';
+import { isRollProduct, rejectReason, rollShare, rollStatus, rollSnapshot, recordSnapshot, loadHistory, cycleEntries, pace, daysToComplete } from '../roll.js';
 import { RollView } from '../rollview.js';
 import { resetProductCatalog } from '../catalog.js';
 
@@ -13,13 +13,27 @@ const rows = [
 ];
 
 describe('products and shares', () => {
-    test('index and fixed income futures only', () => {
-        expect(isRollProduct({ ProductType: 'INDEX FUTURES' })).toBe(true);
-        expect(isRollProduct({ ProductType: 'Fixed Income Futures' })).toBe(true);
-        expect(isRollProduct({ ProductType: 'INTEREST RATE FUTURES' })).toBe(true);
-        expect(isRollProduct({ ProductType: 'INDEX OPTIONS' })).toBe(false);
-        expect(isRollProduct({ ProductType: 'INDEX DIVIDEND FUTURES' })).toBe(false);
+    test('futures are the product line Future; options are excluded by their type code', () => {
+        expect(isRollProduct({ ProductLine: 'Future', ProductTypeCode: 'FI' })).toBe(true);
+        expect(isRollProduct({ ProductLine: ' futures ' })).toBe(true);
+        expect(isRollProduct({ ProductLine: 'Option', ProductTypeCode: 'OI' })).toBe(false);
+        expect(isRollProduct({ ProductLine: 'Future', ProductTypeCode: 'OF' })).toBe(false);
+        expect(isRollProduct({ ProductLine: 'Dividend' })).toBe(false);
+        expect(isRollProduct({ ProductTypeCode: 'FI' })).toBe(true); // no product line: judged by the type code
+        expect(isRollProduct({ ProductType: 'INDEX FUTURES' })).toBe(false);
         expect(isRollProduct({})).toBe(false);
+    });
+    test('typed codes: futures accepted, options and unknown codes rejected with a reason', () => {
+        const catalog = [
+            { Product: 'FESX', ProductLine: 'Future', ProductTypeCode: 'FI' },
+            { Product: 'OESX', ProductLine: 'Option', ProductTypeCode: 'OI' },
+            { Product: 'FDIV', ProductLine: 'Dividend', ProductTypeCode: 'FD' }];
+        expect(rejectReason('fesx', catalog)).toBe('');
+        expect(rejectReason('', catalog)).toBe('');
+        expect(rejectReason('OESX', catalog)).toContain('options product');
+        expect(rejectReason('FDIV', catalog)).toContain('not a future (product line Dividend)');
+        expect(rejectReason('ZZZZ', catalog)).toBe('No product ZZZZ was found.');
+        expect(rejectReason('FE SX', catalog)).toContain('only letters');
     });
     test('roll share and status', () => {
         expect(rollShare(600, 400)).toBe(0.4);
@@ -83,7 +97,11 @@ describe('RollView', () => {
         const client = {
             endpoint: 'e', apiKey: 'k',
             request: jest.fn(async (q) => {
-                if (q.includes('ProductInfos')) return { data: [{ Product: 'FESX', Name: 'Euro STOXX 50', ProductType: 'INDEX FUTURES', ProductLine: 'Equity Index' }, { Product: 'OESX', ProductType: 'INDEX OPTIONS' }, { Product: 'FGBL', Name: 'Bund', ProductType: 'FIXED INCOME FUTURES', ProductLine: 'Euro Bond' }, { Product: 'FXXP', ProductType: 'INDEX FUTURES' }] };
+                if (q.includes('ProductInfos')) return { data: [
+                    { Product: 'FESX', Name: 'Euro STOXX 50', ProductType: 'INDEX FUTURES', ProductLine: 'Future', ProductTypeCode: 'FI' },
+                    { Product: 'OESX', Name: 'Euro STOXX 50 options', ProductType: 'INDEX OPTIONS', ProductLine: 'Option', ProductTypeCode: 'OI' },
+                    { Product: 'FGBL', Name: 'Bund', ProductType: 'FIXED INCOME FUTURES', ProductLine: 'Future', ProductTypeCode: 'FF' },
+                    { Product: 'FXXP', ProductType: 'INDEX FUTURES', ProductLine: 'Future', ProductTypeCode: 'FI' }] };
                 return { Contracts: { date: '2026-10-19', data: [
                     { Contract: 'A', ExpirationDate: future, OpenInterest: 700, CallPut: null },
                     { Contract: 'B', ExpirationDate: later, OpenInterest: 300, CallPut: null }] } };
@@ -110,7 +128,6 @@ describe('RollView', () => {
         const products = box.querySelectorAll('select')[1];
         expect([...types.options].map(o => o.value)).toEqual(['FIXED INCOME FUTURES', 'INDEX FUTURES']);
         expect(types.value).toBe('INDEX FUTURES');
-        expect([...products.querySelectorAll('optgroup')].map(g => g.label)).toEqual(['Equity Index', 'INDEX FUTURES']);
         expect([...products.options].map(o => o.value)).toEqual(['FESX', 'FXXP']);
         expect(client.request.mock.calls[1][0]).toContain('Contracts(filter: { Product: { eq: "FESX" } })');
         expect(client.request.mock.calls[1][0]).toContain('OpenInterest');
@@ -129,8 +146,45 @@ describe('RollView', () => {
         types.dispatchEvent(new Event('change'));
         for (let i = 0; i < 5; i++) await wait();
         expect([...products.options].map(o => o.value)).toEqual(['FGBL']);
-        expect(products.querySelector('optgroup').label).toBe('Euro Bond');
         expect(client.request.mock.calls.at(-1)[0]).toContain('"FGBL"');
+    });
+
+    test('the symbol filter accepts a future and rejects options, unknown and invalid codes', async () => {
+        const { view, client, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
+        await view.show();
+        for (let i = 0; i < 4; i++) await wait();
+        const [types, products] = box.querySelectorAll('select');
+        const input = box.querySelector('input[aria-label="Future symbol"]');
+        const alert = box.querySelector('[role="alert"]');
+        const submit = (v) => { input.value = v; box.querySelector('.rt-symbol').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); };
+        const before = client.request.mock.calls.length;
+
+        submit('oesx');
+        expect(alert.hidden).toBe(false);
+        expect(alert.textContent).toContain('options product');
+        submit('nope');
+        expect(alert.textContent).toBe('No product NOPE was found.');
+        submit('bad code!');
+        expect(alert.textContent).toContain('only letters');
+        expect(client.request.mock.calls.length).toBe(before); // nothing was loaded
+        expect(products.value).toBe('FESX');
+
+        submit('fgbl');
+        for (let i = 0; i < 5; i++) await wait();
+        expect(alert.hidden).toBe(true);
+        expect(types.value).toBe('FIXED INCOME FUTURES');
+        expect(products.value).toBe('FGBL');
+        expect(client.request.mock.calls.at(-1)[0]).toContain('"FGBL"');
+    });
+
+    test('options never appear in the lists', async () => {
+        const { view, box } = make(schemaWith(['Contract', 'ExpirationDate', 'CallPut', 'OpenInterest']));
+        await view.show();
+        await wait();
+        const listed = [...box.querySelectorAll('option')].map(o => o.value);
+        expect(listed).not.toContain('OESX');
+        expect(listed).not.toContain('INDEX OPTIONS');
+        expect([...box.querySelectorAll('datalist option')].map(o => o.value)).toEqual(['FESX', 'FGBL', 'FXXP']);
     });
 
     test('says so when Contracts has no OpenInterest', async () => {
