@@ -14,7 +14,7 @@ import { fetchProductCatalog } from './catalog.js';
 import { ProductCard } from './productcard.js';
 import { ProductsView } from './productsview.js';
 import { CalendarView } from './calendarview.js?v=2';
-import { RollView } from './rollview.js?v=4';
+import { RollView } from './rollview.js?v=7';
 import { loadDisplay, setDisplay, getDisplay, NUMBER_MODES, DATE_MODES } from './displayformat.js';
 import { XLSX_MIME } from './xlsx.js';
 import { hardenSecretInput, isRevealed, setRevealed } from './secretinput.js';
