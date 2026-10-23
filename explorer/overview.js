@@ -688,6 +688,7 @@ export class OverviewManager {
               ContractCycle
               ExpirationDate
               SettlementPrice
+              SettlementDate
               OptionsDelta
               CallPut
             }
