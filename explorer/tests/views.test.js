@@ -180,10 +180,10 @@ describe('CalendarView month grid', () => {
         e2: { data: [{ ExpirationIndex: 3, ExpirationDate: `${month}-15` }] }, h2: { data: [] },
         e3: { data: [{ ExpirationIndex: 4, ExpirationDate: `${month}-15` }] }, h3: { data: [] }
     };
-    const make = async (mode = 'month') => {
+    const make = async (mode = 'month', data = response) => {
         localStorage.setItem('eurexExplorer.calendarMode', mode);
         setWatchlist(['FESX', 'FDAX', 'OESX', 'SAPG']);
-        const client = { request: jest.fn(async () => response), endpoint: 'e', apiKey: 'k' };
+        const client = { request: jest.fn(async () => data), endpoint: 'e', apiKey: 'k' };
         const onOpenProduct = jest.fn();
         const view = new CalendarView(client, { content: document.getElementById('c') }, { onOpenProduct });
         view.show();
@@ -194,7 +194,8 @@ describe('CalendarView month grid', () => {
     const cell = (box, day) => [...box.querySelectorAll('.cal-cell:not(.out)')].find(td => td.querySelector('.cal-daynum').textContent === String(day));
 
     test('the layout toggle switches between agenda and month grid and is remembered', async () => {
-        const { box } = await make('agenda');
+        // The agenda only lists upcoming days, so the event sits on today rather than on a fixed day of the month
+        const { box } = await make('agenda', { ...response, e0: { data: [{ ExpirationIndex: 1, ExpirationDate: cetDate() }] } });
         expect(box.querySelector('.cal-table')).toBeNull();
         expect(box.querySelectorAll('.cal-mode')).toHaveLength(2);
         box.querySelectorAll('.cal-mode')[1].click();

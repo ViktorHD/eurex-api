@@ -29,6 +29,7 @@ export const DOMAIN_QUERIES = {
       FirstTradingDate
       LastTradingDate
       SettlementPrice
+      SettlementDate
     }
   }
 }`,
@@ -146,6 +147,7 @@ export const DOMAIN_QUERIES = {
       Strike
       OptionsDelta
       SettlementPrice
+      SettlementDate
     }
   }
 }`

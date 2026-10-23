@@ -91,7 +91,7 @@ button { font:inherit; font-size:.85rem; padding:4px 10px; border:1px solid var(
 <table>
 <tr><th>Root query</th><th>Content</th><th>Useful fields</th></tr>
 <tr><td><code>ProductInfos</code></td><td>Product master data, one row per product</td><td>ProductID, Product, Name, ProductISIN, ProductType, ProductTypeCode, ProductLine, LiquidityClass, Currency, ContractSize, TickSize, TickValue, SettlementType, Underlying, UnderlyingISIN</td></tr>
-<tr><td><code>Contracts</code></td><td>Listed series (futures and options). <strong>Filter by Product.</strong></td><td>Contract, ISIN, ContractDate, ContractCycle, ExpirationDate, FirstTradingDate, LastTradingDate, CallPut, Strike, OptionsDelta, SettlementPrice</td></tr>
+<tr><td><code>Contracts</code></td><td>Listed series (futures and options). <strong>Filter by Product.</strong></td><td>Contract, ISIN, ContractDate, ContractCycle, ExpirationDate, FirstTradingDate, LastTradingDate, CallPut, Strike, OptionsDelta, SettlementPrice, SettlementDate</td></tr>
 <tr><td><code>FlexibleContracts</code></td><td>Flexible (customised) contracts. <strong>Filter by Product.</strong></td><td>ContractID, Contract, ISIN, CallPut, Strike, ExpirationDate, SettlementDate, SettlementPrice, OpenInterest, ExerciseStyle, SettlementType</td></tr>
 <tr><td><code>Expirations</code></td><td>Expiration calendar per product</td><td>ProductID, Product, MasterContract, ExpirationIndex, ExpirationDate</td></tr>
 <tr><td><code>TradingHours</code></td><td>Trading phases per product</td><td>Product, StartContinuousTrading, EndOpeningAuction, EndContinuousTrading, EndClosingAuction, StartTES, EndTES, LTDBook, LTDTES</td></tr>
