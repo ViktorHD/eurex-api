@@ -3388,10 +3388,17 @@ th.num .th-sort { flex-direction: row-reverse; }
 .faq-table th { background: #f5f7f9; color: var(--navy-blue); font-weight: 600; }
 .faq-support { margin: 16px 0 0; font-size: 0.78rem; color: var(--eurex-grey); }
 
-@media (min-width: 1200px) {
-    .info-layout { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; }
+/* Two columns: Data status + FAQ on top, Changelog below */
+@media (min-width: 900px) {
+    .info-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+    .info-layout .cl-card { grid-column: 1 / -1; }
+}
+
+/* Three columns: Data status | FAQ | Changelog side by side */
+@media (min-width: 1280px) {
+    .info-layout { grid-template-columns: minmax(0, 4fr) minmax(0, 5fr) minmax(0, 6fr); max-width: 1600px; }
+    .info-layout .cl-card { grid-column: auto; }
     .info-layout .status-grid { grid-template-columns: minmax(0, 1fr); }
-    .info-layout .faq-card { grid-column: 1 / -1; }
 }
 
 @media (max-width: 768px) {
