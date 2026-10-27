@@ -9,7 +9,7 @@
         // Land on the API Overview without a flash of the Explorer; share links open the Explorer directly
         if (location.search.indexOf('eurex-api-state=') < 0) document.documentElement.classList.add('boot-overview');
     </script>
-    <link rel="stylesheet" href="explorer/styles.css?v=21">
+    <link rel="stylesheet" href="explorer/styles.css?v=22">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script type="importmap">
@@ -319,19 +319,6 @@
                                 <div id="statusSummary" class="status-summary checking" role="status" aria-live="polite">Checking datasets…</div>
                                 <div id="statusGrid" class="status-grid"></div>
                             </section>
-                            <section class="info-card" aria-labelledby="changelogTitle">
-                                <div class="info-card-head">
-                                    <h3 id="changelogTitle">Changelog</h3>
-                                    <p>Announced and past changes to the API. Run the example query to see the affected data.</p>
-                                </div>
-                                <div id="changelogFilters" class="cl-filters"></div>
-                                <div id="changelogLoading" class="loading hidden">
-                                    <div class="skeleton skeleton-header"></div>
-                                    <div class="skeleton skeleton-row"></div>
-                                    <div class="skeleton skeleton-row"></div>
-                                </div>
-                                <div id="changelogContent" class="cl-list"></div>
-                            </section>
                             <section class="info-card faq-card" id="faq" aria-labelledby="faqTitle">
                                 <div class="info-card-head">
                                     <h3 id="faqTitle">Frequently asked questions</h3>
@@ -360,7 +347,7 @@
                                 <details class="faq-item">
                                     <summary>Where can I see changes to the API?</summary>
                                     <div class="faq-answer">
-                                        <p>In the <strong>Changelog</strong> above, or with the <code>Changelog</code> query. Both list new fields, renamed fields and removed fields with the date each change takes effect.</p>
+                                        <p>In the <strong>Changelog</strong> next to this section, or with the <code>Changelog</code> query. Both list new fields, renamed fields and removed fields with the date each change takes effect.</p>
                                     </div>
                                 </details>
 
@@ -408,7 +395,7 @@
                                             <li><code>SettlementPrices</code>: approx. <strong>01:00</strong></li>
                                             <li>All other queries: approx. <strong>03:00</strong></li>
                                         </ul>
-                                        <p>Use the <code>date</code> field in the response, or the <strong>Data status</strong> above, to check which business day you are looking at.</p>
+                                        <p>Use the <code>date</code> field in the response, or the <strong>Data status</strong> next to this section, to check which business day you are looking at.</p>
                                     </div>
                                 </details>
                                 <details class="faq-item">
@@ -456,6 +443,19 @@
                                 </details>
 
                                 <p class="faq-support">Further questions? Viktor Uvarov · Eurex Frankfurt AG | Trading Design · <a href="tel:+496921114282">+49 69 211 1 42 82</a> · <a href="mailto:Viktor.Uvarov@eurex.com">Viktor.Uvarov@eurex.com</a></p>
+                            </section>
+                            <section class="info-card cl-card" aria-labelledby="changelogTitle">
+                                <div class="info-card-head">
+                                    <h3 id="changelogTitle">Changelog</h3>
+                                    <p>Announced and past changes to the API. Run the example query to see the affected data.</p>
+                                </div>
+                                <div id="changelogFilters" class="cl-filters"></div>
+                                <div id="changelogLoading" class="loading hidden">
+                                    <div class="skeleton skeleton-header"></div>
+                                    <div class="skeleton skeleton-row"></div>
+                                    <div class="skeleton skeleton-row"></div>
+                                </div>
+                                <div id="changelogContent" class="cl-list"></div>
                             </section>
                         </div>
                     </div>
