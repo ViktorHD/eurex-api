@@ -6,7 +6,7 @@ import { Autocomplete } from './autocomplete.js?v=3';
 import { QueryEditor, addToHistory, loadHistory, clearHistory, timeAgo, rootFieldsOf, loadSaved, saveQuery, deleteSaved } from './editor.js?v=2';
 import { SchemaExplorer } from './schema.js?v=3';
 import { TimelineManager } from './timeline.js?v=4';
-import { InfoPanel } from './info.js?v=6';
+import { InfoPanel } from './info.js?v=7';
 import { DOMAIN_QUERIES } from './examples.js';
 import { shareUrl, stateFromSearch } from './share.js';
 import { buildSchemaIndex, validateAgainstSchema, completionsAt } from './schemacheck.js';
@@ -471,6 +471,9 @@ document.addEventListener('DOMContentLoaded', () => {
         changelogContent: document.getElementById('changelogContent'),
         changelogFilters: document.getElementById('changelogFilters'),
         changelogLoading: document.getElementById('changelogLoading'),
+        changelogToggle: document.getElementById('changelogToggle'),
+        changelogPanel: document.getElementById('changelogPanel'),
+        changelogSummary: document.getElementById('changelogSummary'),
         closeBtn: document.getElementById('closeInfoBtn'),
         refreshBtn: document.getElementById('refreshInfoBtn')
     }, {

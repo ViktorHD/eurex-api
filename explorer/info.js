@@ -160,18 +160,50 @@ export function changelogEvents(entries) {
         });
 }
 
+const CHANGELOG_OPEN_KEY = 'eurex-api.changelogOpen';
+
+// Whether the changelog was left expanded; collapsed by default so it does not dominate the Info view
+export function readChangelogOpen(storage = globalThis.localStorage) {
+    try { return storage?.getItem(CHANGELOG_OPEN_KEY) === '1'; } catch (e) { return false; }
+}
+
+export function writeChangelogOpen(open, storage = globalThis.localStorage) {
+    try { storage?.setItem(CHANGELOG_OPEN_KEY, open ? '1' : '0'); } catch (e) { /* storage unavailable */ }
+}
+
+// One-line overview shown while the changelog is collapsed, e.g. "2 upcoming · next 02.11.2026 (in 6 days) · 31 past changes"
+export function changelogSummaryText(entries, todayIso) {
+    const list = entries || [];
+    if (!list.length) return 'No changes published.';
+    const dated = list.filter(e => /^\d{4}-\d{2}-\d{2}/.test(String(e.Date || '')));
+    const upcoming = dated.filter(e => String(e.Date).slice(0, 10) > todayIso)
+        .sort((a, b) => String(a.Date).localeCompare(String(b.Date)));
+    const past = list.length - upcoming.length;
+    const parts = [];
+    if (upcoming.length) {
+        const next = String(upcoming[0].Date).slice(0, 10);
+        parts.push(`${upcoming.length} upcoming`, `next ${formatDate(next)} (${relativeDay(next, todayIso)})`);
+    } else {
+        parts.push('No upcoming changes');
+    }
+    if (past) parts.push(`${past} past change${past === 1 ? '' : 's'}`);
+    return parts.join(' · ');
+}
+
 export class InfoPanel {
     constructor(client, elements, options = {}) {
         this.client = client;
-        this.els = elements; // { panel, statusGrid, statusSummary, changelogContent, changelogFilters, changelogLoading, closeBtn, refreshBtn }
+        this.els = elements; // { panel, statusGrid, statusSummary, changelogContent, changelogFilters, changelogLoading, changelogToggle, changelogPanel, changelogSummary, closeBtn, refreshBtn }
         this.options = options; // { onRunQuery, onClose, getSchema }
         this.changelogData = null;
         this.typeFilter = 'all';
         this.searchText = '';
         this.showPast = true;
         this.onlyWatched = false;
+        this.changelogOpen = readChangelogOpen();
 
         this.bindEvents();
+        this._applyChangelogOpen();
         // Follow / unfollow a product elsewhere: the "My products" filter and its count change
         onWatchlistChange(() => { if (this.changelogData) this.renderChangelog(); });
     }
@@ -187,6 +219,36 @@ export class InfoPanel {
         if (this.els.refreshBtn) {
             this.els.refreshBtn.addEventListener('click', () => this.load({ fresh: true }));
         }
+
+        if (this.els.changelogToggle) {
+            this.els.changelogToggle.addEventListener('click', () => this.setChangelogOpen(!this.changelogOpen));
+        }
+    }
+
+    // Expand / collapse the changelog and remember the choice
+    setChangelogOpen(open) {
+        this.changelogOpen = !!open;
+        writeChangelogOpen(this.changelogOpen);
+        this._applyChangelogOpen();
+    }
+
+    _applyChangelogOpen() {
+        const open = this.changelogOpen;
+        if (this.els.changelogPanel) this.els.changelogPanel.hidden = !open;
+        const btn = this.els.changelogToggle;
+        if (btn) {
+            btn.setAttribute('aria-expanded', String(open));
+            btn.classList.toggle('open', open);
+            const label = btn.querySelector('.cl-toggle-label');
+            if (label) label.textContent = open ? 'Hide changes' : 'Show changes';
+        }
+        if (this.els.changelogSummary) this.els.changelogSummary.classList.toggle('open', open);
+    }
+
+    _renderChangelogSummary() {
+        const box = this.els.changelogSummary;
+        if (!box) return;
+        box.textContent = this.changelogData ? changelogSummaryText(this.changelogData, this._today()) : '';
     }
 
     _today() {
@@ -307,6 +369,7 @@ export class InfoPanel {
         } catch (err) {
             if (this.els.changelogFilters) this.els.changelogFilters.innerHTML = '';
             if (this.els.changelogContent) this._setContent(this.els.changelogContent, 'error', err.message);
+            if (this.els.changelogSummary) this.els.changelogSummary.textContent = 'Changelog could not be loaded.';
         } finally {
             if (this.els.changelogLoading) this.els.changelogLoading.classList.add('hidden');
         }
@@ -384,6 +447,7 @@ export class InfoPanel {
 
     renderChangelog() {
         if (!this.changelogData || !this.els.changelogContent) return;
+        this._renderChangelogSummary();
         this._renderFilters(this.changelogData);
         this._renderEntries();
     }
