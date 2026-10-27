@@ -89,3 +89,43 @@ describe('changelog helpers', () => {
         expect(e.summary.endsWith('...')).toBe(true);
     });
 });
+
+// ---- collapsible changelog ----
+import { changelogSummaryText, readChangelogOpen, writeChangelogOpen } from '../info.js';
+
+describe('collapsible changelog', () => {
+    const memory = () => {
+        const m = new Map();
+        return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
+    };
+
+    test('collapsed by default and remembers the choice', () => {
+        const s = memory();
+        expect(readChangelogOpen(s)).toBe(false);
+        writeChangelogOpen(true, s);
+        expect(readChangelogOpen(s)).toBe(true);
+        writeChangelogOpen(false, s);
+        expect(readChangelogOpen(s)).toBe(false);
+    });
+
+    test('unavailable storage falls back to collapsed', () => {
+        const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
+        expect(readChangelogOpen(broken)).toBe(false);
+        expect(() => writeChangelogOpen(true, broken)).not.toThrow();
+    });
+
+    test('summary names upcoming count, next date and past count', () => {
+        const entries = [
+            { Date: '2026-11-02', Type: 'New' },
+            { Date: '2026-12-01', Type: 'Change' },
+            { Date: '2026-10-19', Type: 'Change' },
+            { Date: '2023-03-13', Type: 'New' }
+        ];
+        expect(changelogSummaryText(entries, '2026-10-27')).toBe('2 upcoming · next 02.11.2026 (in 6 days) · 2 past changes');
+    });
+
+    test('summary without upcoming changes or entries', () => {
+        expect(changelogSummaryText([{ Date: '2026-10-19' }], '2026-10-27')).toBe('No upcoming changes · 1 past change');
+        expect(changelogSummaryText([], '2026-10-27')).toBe('No changes published.');
+    });
+});

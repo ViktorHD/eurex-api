@@ -3201,6 +3201,30 @@ th.num .th-sort { flex-direction: row-reverse; }
 .status-chip.error { background: #fdecec; color: #b42318; }
 .status-chip.static { background: #f0f2f4; color: var(--eurex-grey); }
 
+/* Changelog: collapsible card */
+.cl-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.cl-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: 5px 10px;
+    border: 1px solid var(--eurex-line);
+    border-radius: 999px;
+    background: white;
+    color: var(--navy-blue);
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.cl-toggle:hover { border-color: var(--navy-blue); }
+.cl-toggle:focus-visible { outline: 2px solid var(--neon-green); outline-offset: 2px; }
+.cl-toggle svg { width: 14px; height: 14px; transition: transform 0.15s ease; }
+.cl-toggle.open svg { transform: rotate(180deg); }
+.cl-summary { margin: 0; font-size: 0.8rem; color: var(--eurex-grey); }
+.cl-summary.open { margin-bottom: 14px; }
+.cl-panel[hidden] { display: none; }
+
 /* Changelog filters */
 .cl-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; }
 
