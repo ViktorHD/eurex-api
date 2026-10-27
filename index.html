@@ -9,7 +9,7 @@
         // Land on the API Overview without a flash of the Explorer; share links open the Explorer directly
         if (location.search.indexOf('eurex-api-state=') < 0) document.documentElement.classList.add('boot-overview');
     </script>
-    <link rel="stylesheet" href="explorer/styles.css?v=20">
+    <link rel="stylesheet" href="explorer/styles.css?v=21">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Feather Icons for lightweight modern icons -->
     <script type="importmap">
@@ -331,6 +331,131 @@
                                     <div class="skeleton skeleton-row"></div>
                                 </div>
                                 <div id="changelogContent" class="cl-list"></div>
+                            </section>
+                            <section class="info-card faq-card" id="faq" aria-labelledby="faqTitle">
+                                <div class="info-card-head">
+                                    <h3 id="faqTitle">Frequently asked questions</h3>
+                                    <p>General questions about the API, its relationship to T7 RDF / RDI, data availability and service level.</p>
+                                </div>
+
+                                <h4 class="faq-group">General</h4>
+                                <details class="faq-item">
+                                    <summary>What is the Eurex Reference Data API?</summary>
+                                    <div class="faq-answer">
+                                        <p>A free GraphQL API with reference data for products and contracts traded on Eurex. You can get product and contract details, trading hours, holidays, expirations, tick rules, TES profiles, flexible contracts, settlement prices, deliverable bonds, Eurex EnLight configuration and vendor codes, all from one endpoint: <code>https://api.developer.deutsche-boerse.com/eurex-prod-graphql/</code></p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Do I need an API key?</summary>
+                                    <div class="faq-answer">
+                                        <p>The Explorer works with a shared demo key that has a rate limit. For production use, or if you need more requests, create your own key in the <a href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082" target="_blank" rel="noopener">Deutsche Börse Developer Portal</a>. Send the key in the <code>X-DBP-APIKEY</code> HTTP header.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Which queries are available?</summary>
+                                    <div class="faq-answer">
+                                        <p><code>ProductInfos</code>, <code>Contracts</code>, <code>FlexibleContracts</code>, <code>Expirations</code>, <code>TradingHours</code>, <code>Holidays</code>, <code>TickRules</code>, <code>TESProfiles</code>, <code>SettlementPrices</code>, <code>DeliverableBonds</code>, <code>Enlight</code>, <code>EnlightResponders</code>, <code>VendorCodes</code> and <code>Changelog</code>. For all fields and their descriptions, see the <strong>Docs</strong> (Schema Explorer) in the API Explorer.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Where can I see changes to the API?</summary>
+                                    <div class="faq-answer">
+                                        <p>In the <strong>Changelog</strong> above, or with the <code>Changelog</code> query. Both list new fields, renamed fields and removed fields with the date each change takes effect.</p>
+                                    </div>
+                                </details>
+
+                                <h4 class="faq-group">Relationship to T7 RDF / RDI</h4>
+                                <details class="faq-item">
+                                    <summary>Can the API replace the T7 Reference Data File (RDF) or Reference Data Interface (RDI) for my trading application?</summary>
+                                    <div class="faq-answer">
+                                        <p><strong>No.</strong> RDF and RDI are, and will stay, the golden source of reference data for trading applications, with production SLAs. There are no plans to change or deprecate the RDF files. The API is designed as an <strong>add-on</strong> to RDF/RDI: it adds information such as trading hours, holidays, TES profiles and settlement prices. It does not replace them.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Do the IDs match RDF / RDI and ETI?</summary>
+                                    <div class="faq-answer">
+                                        <p><strong>Yes.</strong> The API was designed as an add-on to RDF/RDI, so all IDs match exactly and you can join the data directly:</p>
+                                        <table class="faq-table">
+                                            <thead><tr><th>API field</th><th>T7 RDF / RDI / ETI</th></tr></thead>
+                                            <tbody>
+                                                <tr><td><code>Contracts.InstrumentID</code></td><td>SecurityID</td></tr>
+                                                <tr><td><code>ProductInfos.ProductID</code></td><td>MarketSegmentID</td></tr>
+                                            </tbody>
+                                        </table>
+                                        <p>When you join the data, use API data and RDF data for the <strong>same business day</strong>. Each response has a <code>date</code> field that shows which business day the data belongs to.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Are complex instruments (futures spreads, strategies, packs &amp; bundles, inter-product spreads) available?</summary>
+                                    <div class="faq-answer">
+                                        <p>Not at the moment. The API covers <strong>simple instruments only</strong>: standard contracts (<code>SI</code>) in <code>Contracts</code> and flexible contracts (<code>FI</code>) in <code>FlexibleContracts</code>.</p>
+                                        <p>Complex instruments are on the roadmap. They will be provided as <strong>historical information</strong> and will not be suitable for intraday use. For complex instruments and their legs, use RDF/RDI. Complex instruments created during the day are also published in EMDI, MDI and EOBI.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Does the API provide intraday updates?</summary>
+                                    <div class="faq-answer">
+                                        <p>No. The API provides one dataset per business day. It does not include intraday changes such as newly created or deleted instruments. If you need intraday data, use RDF intraday files or RDI.</p>
+                                    </div>
+                                </details>
+
+                                <h4 class="faq-group">Data availability and service level</h4>
+                                <details class="faq-item">
+                                    <summary>When is the data for a business day available?</summary>
+                                    <div class="faq-answer">
+                                        <p>Usually at these times:</p>
+                                        <ul>
+                                            <li><code>SettlementPrices</code>: approx. <strong>01:00</strong></li>
+                                            <li>All other queries: approx. <strong>03:00</strong></li>
+                                        </ul>
+                                        <p>Use the <code>date</code> field in the response, or the <strong>Data status</strong> above, to check which business day you are looking at.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Is there an SLA for production use?</summary>
+                                    <div class="faq-answer">
+                                        <p><strong>No.</strong> The API has no production SLAs. Errors are fixed on a best-effort basis. If your application needs guaranteed availability, use RDF/RDI.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>How much history is available?</summary>
+                                    <div class="faq-answer">
+                                        <p>Most queries return only the current dataset. A few return more:</p>
+                                        <ul>
+                                            <li><code>SettlementPrices</code>: the last 5 trading days, for standard and flexible contracts</li>
+                                            <li><code>Holidays</code>: product holidays and exchange holidays for the next 2 years</li>
+                                        </ul>
+                                    </div>
+                                </details>
+
+                                <h4 class="faq-group">Data details</h4>
+                                <details class="faq-item">
+                                    <summary>Can the contract name (<code>Contract</code>) change?</summary>
+                                    <div class="faq-answer">
+                                        <p>In exceptional cases, yes. Examples are capital adjustments, which change the strike price in the name, or changes to the trading calendar, which change the contract date. Use <code>InstrumentID</code> or <code>ContractID</code> as a stable key. After a capital adjustment, the fields <code>PreviousContract</code>, <code>PreviousStrike</code>, <code>PreviousContractSize</code> and <code>PreviousProduct</code> show the values before the change.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>What is the difference between <code>InstrumentID</code> and <code>ContractID</code>?</summary>
+                                    <div class="faq-answer">
+                                        <ul>
+                                            <li><code>InstrumentID</code> is the T7 ID that ETI uses for trading requests (SecurityID).</li>
+                                            <li><code>ContractID</code> is Eurex's numeric ID for the contract across all of its systems.</li>
+                                        </ul>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Where do I find more examples?</summary>
+                                    <div class="faq-answer">
+                                        <ul>
+                                            <li><a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener">API examples notebook</a></li>
+                                            <li><a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/FAQ_cases.ipynb" target="_blank" rel="noopener">FAQ cases notebook</a>, for example how to apply product-level TES <code>MinLotSize</code> to individual contracts</li>
+                                            <li><a href="ai.html">Use it with your AI</a></li>
+                                        </ul>
+                                    </div>
+                                </details>
+
+                                <p class="faq-support">Further questions? Viktor Uvarov · Eurex Frankfurt AG | Trading Design · <a href="tel:+496921114282">+49 69 211 1 42 82</a> · <a href="mailto:Viktor.Uvarov@eurex.com">Viktor.Uvarov@eurex.com</a></p>
                             </section>
                         </div>
                     </div>

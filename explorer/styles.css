@@ -3348,6 +3348,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 @media (min-width: 1200px) {
     .info-layout { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; }
     .info-layout .status-grid { grid-template-columns: minmax(0, 1fr); }
+    .info-layout .faq-card { grid-column: 1 / -1; }
 }
 
 @media (max-width: 768px) {
