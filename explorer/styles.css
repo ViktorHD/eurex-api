@@ -3345,6 +3345,49 @@ th.num .th-sort { flex-direction: row-reverse; }
 
 .info-empty { color: var(--eurex-grey); font-size: 0.84rem; padding: 12px 0; }
 
+/* FAQ */
+.faq-group {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--eurex-grey);
+    margin: 18px 0 6px;
+}
+.faq-card .info-card-head + .faq-group { margin-top: 0; }
+.faq-item { border-bottom: 1px solid #eef0f2; }
+.faq-item summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 2px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--navy-blue);
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::before {
+    content: '+';
+    flex-shrink: 0;
+    width: 14px;
+    font-weight: 700;
+    color: var(--neon-green);
+}
+.faq-item[open] summary::before { content: '\2212'; }
+.faq-item summary:hover { color: #3a2e8a; }
+.faq-item summary:focus-visible { outline: 2px solid var(--neon-green); outline-offset: 2px; border-radius: 4px; }
+.faq-answer { padding: 0 2px 12px 26px; font-size: 0.82rem; color: #2b3640; line-height: 1.5; }
+.faq-answer p { margin: 0 0 8px; }
+.faq-answer ul { margin: 0 0 8px; padding-left: 18px; }
+.faq-answer code, .faq-item summary code { font-size: 0.78rem; background: #f1f3f5; padding: 1px 4px; border-radius: 3px; }
+.faq-answer a, .faq-support a { color: var(--navy-blue); text-decoration: underline; }
+.faq-table { border-collapse: collapse; margin: 4px 0 10px; font-size: 0.8rem; }
+.faq-table th, .faq-table td { border: 1px solid #eef0f2; padding: 5px 10px; text-align: left; }
+.faq-table th { background: #f5f7f9; color: var(--navy-blue); font-weight: 600; }
+.faq-support { margin: 16px 0 0; font-size: 0.78rem; color: var(--eurex-grey); }
+
 @media (min-width: 1200px) {
     .info-layout { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; }
     .info-layout .status-grid { grid-template-columns: minmax(0, 1fr); }
