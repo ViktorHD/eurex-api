@@ -461,6 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshBtn: document.getElementById('refreshTimelineBtn'),
         filterInput: document.getElementById('timelineFilter'),
         expandAllBtn: document.getElementById('timelineExpandAllBtn'),
+        partitionSelect: document.getElementById('timelinePartition'),
         watchOnlyBtn: document.getElementById('timelineWatchBtn')
     });
 

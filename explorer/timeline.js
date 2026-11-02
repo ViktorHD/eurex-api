@@ -13,6 +13,8 @@ export class TimelineManager {
         this.tooltipTimer = null;
         this.expandedGroups = new Set();
         this.watchOnly = false; // only products on the watchlist
+        this.partition = ''; // only products traded on this partition ('' = all)
+        this.partitionSupported = true; // false when the API has no Partition field
 
         this.bindEvents();
         onWatchlistChange(() => { if (this.data) this.render(); });
@@ -29,6 +31,12 @@ export class TimelineManager {
         if (this.els.filterInput) {
             this.els.filterInput.addEventListener('input', (e) => {
                 this.filterText = e.target.value.trim().toLowerCase();
+                this.render();
+            });
+        }
+        if (this.els.partitionSelect) {
+            this.els.partitionSelect.addEventListener('change', () => {
+                this.partition = this.els.partitionSelect.value;
                 this.render();
             });
         }
@@ -59,7 +67,7 @@ export class TimelineManager {
 
     // View settings for share links, and applying them
     getState() {
-        return { tz: this.timezone, f: this.filterText, w: this.watchOnly };
+        return { tz: this.timezone, f: this.filterText, w: this.watchOnly, p: this.partition };
     }
 
     setState(state = {}) {
@@ -70,8 +78,35 @@ export class TimelineManager {
         this.filterText = String(state.f || '').trim().toLowerCase();
         if (this.els.filterInput) this.els.filterInput.value = state.f || '';
         this.watchOnly = !!state.w;
+        this.partition = String(state.p || '');
+        this._syncPartitionSelect();
         this._syncWatchBtn();
         if (this.data) this.render();
+    }
+
+    // Rebuild the partition dropdown from the partitions present in the data
+    _syncPartitionSelect() {
+        const sel = this.els.partitionSelect;
+        if (!sel) return;
+        const values = this.data
+            ? [...new Set(Object.values(this.data).flat().map(p => p.Partition).filter(v => v != null && v !== ''))]
+                .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }))
+            : [];
+        const show = this.partitionSupported && values.length > 0;
+        sel.classList.toggle('hidden', !show);
+        if (this.data && this.partition && !values.map(String).includes(this.partition)) this.partition = '';
+        sel.innerHTML = '';
+        const all = document.createElement('option');
+        all.value = '';
+        all.textContent = 'All partitions';
+        sel.appendChild(all);
+        values.forEach(v => {
+            const o = document.createElement('option');
+            o.value = String(v);
+            o.textContent = `Partition ${v}`;
+            sel.appendChild(o);
+        });
+        sel.value = this.partition;
     }
 
     _createTooltip() {
@@ -86,14 +121,14 @@ export class TimelineManager {
         this.els.loading.classList.remove('hidden');
         this.els.content.innerHTML = '';
 
-        const query = `
+        const buildQuery = (withPartition) => `
         query {
           ProductInfos {
             data {
               ProductID
               Product
               ProductType
-              Name
+              Name${withPartition ? '\n              Partition' : ''}
             }
           }
           Holidays {
@@ -120,7 +155,13 @@ export class TimelineManager {
         `;
 
         try {
-            const response = await this.client.request(query, null, false, { fresh: options.fresh === true });
+            const request = (withPartition) => this.client.request(buildQuery(withPartition), null, false, { fresh: options.fresh === true });
+            let response = await request(this.partitionSupported);
+            // The API may not offer a Partition field: retry without it and hide the filter
+            if (this.partitionSupported && response.errors && /partition/i.test(response.errors[0].message || '')) {
+                this.partitionSupported = false;
+                response = await request(false);
+            }
             if (response.errors) throw new Error(response.errors[0].message);
 
             const products = response.ProductInfos?.data;
@@ -143,6 +184,7 @@ export class TimelineManager {
                 return acc;
             }, {});
 
+            this._syncPartitionSelect();
             this.render();
             this._scrollToNow();
         } catch (err) {
@@ -401,6 +443,10 @@ export class TimelineManager {
                 group = group.filter(p => watched.has(p.Product));
             }
 
+            if (this.partition) {
+                group = group.filter(p => String(p.Partition) === this.partition);
+            }
+
             // Apply filtering (product code, name or product type)
             if (this.filterText) {
                 const f = this.filterText;
@@ -411,10 +457,10 @@ export class TimelineManager {
             if (group.length === 0) return;
             shown += group.length;
 
-            const isExpanded = this.expandedGroups.has(name) || this.filterText !== '' || this.watchOnly;
+            const isExpanded = this.expandedGroups.has(name) || this.filterText !== '' || this.watchOnly || this.partition !== '';
 
             // Representing the group as a whole
-            if (!this.filterText && !this.watchOnly) {
+            if (!this.filterText && !this.watchOnly && !this.partition) {
                 this._renderGroupRow(this.els.content, name, group, isExpanded);
             }
 
@@ -433,6 +479,7 @@ export class TimelineManager {
             empty.className = 'timeline-empty';
             empty.textContent = this.watchOnly && !getWatchlist().length
                 ? 'Your watchlist is empty. Follow products with the star (here or in Products).'
+                            : this.partition ? `No products with trading hours on partition ${this.partition}.`
                 : this.filterText ? `No products match "${this.filterText}".` : this.watchOnly ? 'None of your watchlist products has trading hours.' : 'No trading hours available.';
             this.els.content.appendChild(empty);
         }
@@ -440,7 +487,7 @@ export class TimelineManager {
         if (this.els.expandAllBtn) {
             const allOpen = groupNames.every(n => this.expandedGroups.has(n));
             this.els.expandAllBtn.textContent = allOpen ? 'Collapse all' : 'Expand all';
-            this.els.expandAllBtn.disabled = this.filterText !== '' || this.watchOnly;
+            this.els.expandAllBtn.disabled = this.filterText !== '' || this.watchOnly || this.partition !== '';
         }
 
         this._updateNow();
