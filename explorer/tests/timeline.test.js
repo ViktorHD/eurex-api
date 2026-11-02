@@ -1,3 +1,4 @@
+/** @jest-environment jsdom */
 import { TimelineManager } from '../timeline.js';
 
 // Bypass the constructor, which needs a DOM
@@ -141,5 +142,41 @@ describe('TimelineManager joinHours', () => {
         const [p] = tm.joinHours([{ Product: 'FESX' }], hours);
         expect(p.allHours).toHaveLength(2);
         expect(p.hours).toBe(hours[0]);
+    });
+});
+
+describe('TimelineManager partition filter', () => {
+    const setup = () => {
+        const m = Object.create(TimelineManager.prototype);
+        const select = document.createElement('select');
+        m.els = { partitionSelect: select };
+        m.partitionSupported = true;
+        m.partition = '';
+        m.data = {
+            Futures: [{ Product: 'FESX', Partition: 10 }, { Product: 'FDAX', Partition: 2 }],
+            Options: [{ Product: 'OESX', Partition: 10 }]
+        };
+        return { m, select };
+    };
+
+    test('dropdown lists distinct partitions in numeric order', () => {
+        const { m, select } = setup();
+        m._syncPartitionSelect();
+        expect([...select.options].map(o => o.value)).toEqual(['', '2', '10']);
+        expect(select.classList.contains('hidden')).toBe(false);
+    });
+
+    test('hidden when the API has no partition data', () => {
+        const { m, select } = setup();
+        m.partitionSupported = false;
+        m._syncPartitionSelect();
+        expect(select.classList.contains('hidden')).toBe(true);
+    });
+
+    test('unknown partition from a share link is reset', () => {
+        const { m } = setup();
+        m.partition = '99';
+        m._syncPartitionSelect();
+        expect(m.partition).toBe('');
     });
 });
