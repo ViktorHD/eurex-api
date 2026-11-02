@@ -457,10 +457,10 @@ export class TimelineManager {
             if (group.length === 0) return;
             shown += group.length;
 
-            const isExpanded = this.expandedGroups.has(name) || this.filterText !== '' || this.watchOnly || this.partition !== '';
+            const isExpanded = this.expandedGroups.has(name) || this.filterText !== '' || this.watchOnly;
 
             // Representing the group as a whole
-            if (!this.filterText && !this.watchOnly && !this.partition) {
+            if (!this.filterText && !this.watchOnly) {
                 this._renderGroupRow(this.els.content, name, group, isExpanded);
             }
 
@@ -487,7 +487,7 @@ export class TimelineManager {
         if (this.els.expandAllBtn) {
             const allOpen = groupNames.every(n => this.expandedGroups.has(n));
             this.els.expandAllBtn.textContent = allOpen ? 'Collapse all' : 'Expand all';
-            this.els.expandAllBtn.disabled = this.filterText !== '' || this.watchOnly || this.partition !== '';
+            this.els.expandAllBtn.disabled = this.filterText !== '' || this.watchOnly;
         }
 
         this._updateNow();
