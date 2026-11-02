@@ -506,7 +506,8 @@ body {
 
 .timeline-search input::placeholder { color: rgba(255, 255, 255, 0.6); }
 
-#timezoneSelect {
+#timezoneSelect,
+#timelinePartition {
     height: 30px;
     padding: 0 8px;
     border-radius: 4px;
@@ -518,7 +519,8 @@ body {
     font-weight: 400;
 }
 
-#timezoneSelect option { color: var(--navy-blue); background: white; }
+#timezoneSelect option,
+#timelinePartition option { color: var(--navy-blue); background: white; }
 
 .timeline-text-btn {
     height: 30px;
@@ -869,7 +871,7 @@ body {
     .timeline-controls { width: 100%; }
     .timeline-search { flex: 1 1 100%; min-width: 0; }
     .timeline-search input { width: 100%; }
-    #timezoneSelect { flex: 1; }
+    #timezoneSelect, #timelinePartition { flex: 1; }
     #timelineContent { grid-template-columns: var(--tl-label-w) minmax(720px, 1fr); }
     .timeline-group-row .timeline-product-label { white-space: normal; line-height: 1.15; padding: 0 8px; letter-spacing: 0; font-size: 0.66rem; }
     .group-label > span:not(.timeline-count) { overflow: visible; }
