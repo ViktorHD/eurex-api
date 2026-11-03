@@ -1,5 +1,6 @@
 // Calendar heatmap of expirations and exchange holidays: one small month grid per month, days coloured by what
-// happens on them. An expiration that falls on an exchange holiday is marked as a clash.
+// happens on them. An expiration and an exchange holiday cannot share a day: if the product has an expiration on a day listed as a holiday,
+// the exchange is open and the product is not, so the day is shown as a product holiday.
 import { el } from './dom.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -9,7 +10,7 @@ const pad = (n) => String(n).padStart(2, '0');
 /**
  * expirations: [{ date: 'YYYY-MM-DD', index? }]; holidays: ['YYYY-MM-DD']; today: 'YYYY-MM-DD'.
  * Returns `count` months from the month of `today`: [{ year, month (1-12), title, offset (blank cells before day 1,
- * Monday first), days: [{ day, iso, kind: '' | 'exp' | 'hol' | 'both', weekend, today, title }] }].
+ * Monday first), days: [{ day, iso, kind: '' | 'exp' | 'hol' | 'prodhol', weekend, today, title }] }].
  */
 export function calendarMonths({ expirations = [], holidays = [], today, count = 12 }) {
     const exp = new Map();
@@ -27,11 +28,12 @@ export function calendarMonths({ expirations = [], holidays = [], today, count =
             const iso = `${year}-${pad(month)}-${pad(day)}`;
             const e = exp.get(iso);
             const h = hol.has(iso);
-            const kind = e && h ? 'both' : e ? 'exp' : h ? 'hol' : '';
+            const kind = e && h ? 'prodhol' : e ? 'exp' : h ? 'hol' : '';
             const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
             const parts = [];
-            if (e) parts.push(`expiration${e.index !== null && e.index !== undefined ? ` (index ${e.index})` : ''}`);
-            if (h) parts.push('exchange holiday');
+            if (e && h) parts.push('product holiday');
+            else if (e) parts.push(`expiration${e.index !== null && e.index !== undefined ? ` (index ${e.index})` : ''}`);
+            else if (h) parts.push('exchange holiday');
             days.push({ day, iso, kind, weekend: dow === 0 || dow === 6, today: iso === today, title: `${iso}${parts.length ? `: ${parts.join(', ')}` : ''}` });
         }
         months.push({ year, month, title: `${MONTHS[month - 1]} ${year}`, offset: (first.getUTCDay() + 6) % 7, days });
@@ -41,7 +43,7 @@ export function calendarMonths({ expirations = [], holidays = [], today, count =
 
 /** Number of days of each kind in the given months */
 export function countKinds(months) {
-    const n = { exp: 0, hol: 0, both: 0 };
+    const n = { exp: 0, hol: 0, prodhol: 0 };
     months.forEach(m => m.days.forEach(d => { if (d.kind) n[d.kind]++; }));
     return n;
 }
@@ -50,7 +52,7 @@ export function renderHeatmap(months) {
     const root = el('div', 'hm');
     const counts = countKinds(months);
     root.setAttribute('role', 'group');
-    root.setAttribute('aria-label', `Calendar of ${months.length} months: ${counts.exp + counts.both} expirations, ${counts.hol + counts.both} exchange holidays, ${counts.both} on the same day`);
+    root.setAttribute('aria-label', `Calendar of ${months.length} months: ${counts.exp} expirations, ${counts.hol} exchange holidays, ${counts.prodhol} product holidays`);
     months.forEach(m => {
         const box = el('div', 'hm-month');
         box.appendChild(el('div', 'hm-title', m.title));

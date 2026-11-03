@@ -18,16 +18,17 @@ describe('calendarMonths', () => {
         expect(months[0].offset).toBe(3); // 1 Oct 2026 is a Thursday
         expect(months[3].offset).toBe(4); // 1 Jan 2027 is a Friday
     });
-    test('marks expirations, holidays and clashes', () => {
+    test('marks expirations, exchange holidays and product holidays', () => {
         const dec = Object.fromEntries(months[2].days.map(d => [d.day, d]));
         expect(dec[18].kind).toBe('exp');
         expect(dec[18].title).toBe('2026-12-18: expiration (index 3)');
         expect(dec[24].kind).toBe('hol');
-        expect(dec[25].kind).toBe('both');
+        expect(dec[25].kind).toBe('prodhol');
+        expect(dec[25].title).toBe('2026-12-25: product holiday');
         expect(dec[25].weekend).toBe(false);
         expect(dec[19].weekend).toBe(true);
         expect(months[0].days[18].today).toBe(true);
-        expect(countKinds(months)).toEqual({ exp: 2, hol: 2, both: 1 });
+        expect(countKinds(months)).toEqual({ exp: 2, hol: 2, prodhol: 1 });
     });
     test('wraps over the new year', () => {
         expect(calendarMonths({ today: '2026-12-01', count: 2 }).map(m => m.title)).toEqual(['December 2026', 'January 2027']);
@@ -38,8 +39,8 @@ describe('renderHeatmap', () => {
     test('draws one grid per month with a summary label', () => {
         const root = renderHeatmap(months);
         expect(root.querySelectorAll('.hm-month')).toHaveLength(6);
-        expect(root.querySelectorAll('.hm-day.both')).toHaveLength(1);
-        expect(root.getAttribute('aria-label')).toBe('Calendar of 6 months: 3 expirations, 3 exchange holidays, 1 on the same day');
+        expect(root.querySelectorAll('.hm-day.prodhol')).toHaveLength(1);
+        expect(root.getAttribute('aria-label')).toBe('Calendar of 6 months: 2 expirations, 2 exchange holidays, 1 product holidays');
         expect(root.querySelector('.hm-day.exp').title).toContain('expiration');
     });
 });

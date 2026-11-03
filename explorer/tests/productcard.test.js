@@ -309,7 +309,7 @@ describe('ProductCard layout', () => {
             const { card, box } = make({ ...DATA, Expirations: { data: [{ ExpirationIndex: 1, ExpirationDate: new Date().toISOString().slice(0, 10) }] } });
             await card.open('FESX');
             expect(box.querySelectorAll('.hm-month')).toHaveLength(12);
-            expect(box.querySelectorAll('.hm-day.exp, .hm-day.both').length).toBeGreaterThanOrEqual(1);
+            expect(box.querySelectorAll('.hm-day.exp, .hm-day.prodhol').length).toBeGreaterThanOrEqual(1);
         });
     });
 });

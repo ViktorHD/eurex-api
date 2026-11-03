@@ -306,7 +306,7 @@ export class ProductCard {
             const months = calendarMonths({ ...input, count });
             holder.appendChild(renderHeatmap(months));
             const legend = el('p', 'hm-legend');
-            [['exp', 'Expiration'], ['hol', 'Exchange holiday'], ['both', 'Both on one day']].forEach(([k, t]) => legend.appendChild(el('span', `hm-key ${k}`, t)));
+            [['exp', 'Expiration'], ['hol', 'Exchange holiday'], ['prodhol', 'Product holiday']].forEach(([k, t]) => legend.appendChild(el('span', `hm-key ${k}`, t)));
             holder.appendChild(legend);
             holder.appendChild(button(count === 12 ? 'Show 24 months' : 'Show 12 months', { className: 'dt-link', onClick: () => { count = count === 12 ? 24 : 12; draw(); } }));
         };
