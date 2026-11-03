@@ -291,7 +291,7 @@ export class ProductCard {
 
     _heatmap() {
         const exps = this.data.Expirations;
-        const holidays = this.data.Holidays ? this._holidays() : null;
+        const holidays = this.data.Holidays ? this._holidayRows() : null;
         if (!exps && !holidays) return null;
         const today = cetDate();
         const input = {
@@ -315,6 +315,17 @@ export class ProductCard {
     }
 
     // ---------- Trading hours ----------
+
+    // [{ date, exchange }]: exchange is false for a product holiday (the exchange is open, this product is not)
+    _holidayRows() {
+        const off = (v) => v === false || v === 0 || v === '0' || v === 'false';
+        const flag = new Map();
+        (this.data.Holidays || []).forEach(r => {
+            const date = String(r.Holiday ?? '').slice(0, 10);
+            flag.set(date, !off(r.ExchangeHoliday) && flag.get(date) !== false);
+        });
+        return this._holidays().map(date => ({ date, exchange: flag.get(date) !== false }));
+    }
 
     _holidays() {
         const rows = this.data.Holidays || [];
@@ -551,7 +562,7 @@ export class ProductCard {
         const today = cetDate();
         const upcoming = (exps || []).filter(e => e.ExpirationDate && String(e.ExpirationDate).slice(0, 10) >= today)
             .sort((a, b) => String(a.ExpirationDate).localeCompare(String(b.ExpirationDate)));
-        const holidays = this._holidays().filter(d => d >= today);
+        const holidays = this._holidayRows().filter(h => h.date >= today);
         if (!exps && !this.data.Holidays) return this._section('Expirations and holidays', '', this._unavailable('Expirations'));
 
         const wrap = el('div', 'pc-two');
@@ -571,10 +582,10 @@ export class ProductCard {
         right.appendChild(el('h4', 'pc-sub', 'Next holidays'));
         if (holidays.length) {
             const ul = el('ul', 'pc-list');
-            holidays.slice(0, 12).forEach(d => {
+            holidays.slice(0, 12).forEach(({ date: d, exchange }) => {
                 const li = el('li');
                 li.appendChild(el('strong', '', formatDateString(d)));
-                li.appendChild(el('span', 'pc-hint', ` ${inDays(daysUntil(d, today))}`));
+                li.appendChild(el('span', 'pc-hint', ` ${inDays(daysUntil(d, today))}${exchange ? '' : ' · product holiday'}`));
                 ul.appendChild(li);
             });
             right.appendChild(ul);
@@ -583,7 +594,7 @@ export class ProductCard {
 
         const events = [
             ...upcoming.map((e, i) => ({ uid: `exp-${this.product}-${String(e.ExpirationDate).slice(0, 10)}-${i}`, date: String(e.ExpirationDate).slice(0, 10), summary: `${this.product} expiration${e.ExpirationIndex != null ? ` (index ${e.ExpirationIndex})` : ''}` })),
-            ...holidays.map(d => ({ uid: `hol-${this.product}-${d}`, date: d, summary: `${this.product}: exchange holiday` }))
+            ...holidays.map(({ date: d, exchange }) => ({ uid: `hol-${this.product}-${d}`, date: d, summary: `${this.product}: ${exchange ? 'exchange' : 'product'} holiday` }))
         ];
         const ics = events.length
             ? button('Add to calendar (.ics)', { className: 'pc-btn', iconName: 'calendar', onClick: () => downloadText(buildIcs(events, { name: `${this.product} expirations and holidays` }), `${this.product}-calendar.ics`, 'text/calendar') })

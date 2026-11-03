@@ -4,7 +4,7 @@ import { calendarMonths, countKinds, renderHeatmap } from '../heatmap.js';
 const months = calendarMonths({
     today: '2026-10-19',
     expirations: [{ date: '2026-12-18', index: 3 }, { date: '2026-12-25', index: 4 }, { date: '2027-03-19' }],
-    holidays: ['2026-12-25', '2026-12-24', '2027-01-01'],
+    holidays: ['2026-12-24', '2027-01-01', { date: '2026-12-25', exchange: false }],
     count: 6
 });
 
@@ -24,7 +24,8 @@ describe('calendarMonths', () => {
         expect(dec[18].title).toBe('2026-12-18: expiration (index 3)');
         expect(dec[24].kind).toBe('hol');
         expect(dec[25].kind).toBe('prodhol');
-        expect(dec[25].title).toBe('2026-12-25: product holiday');
+        expect(dec[25].title).toBe('2026-12-25: expiration (index 4), product holiday');
+        expect(dec[24].title).toBe('2026-12-24: exchange holiday');
         expect(dec[25].weekend).toBe(false);
         expect(dec[19].weekend).toBe(true);
         expect(months[0].days[18].today).toBe(true);

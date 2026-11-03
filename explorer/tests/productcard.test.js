@@ -305,6 +305,14 @@ describe('ProductCard layout', () => {
             expect(box.querySelectorAll('.rd-area.rd-b')).toHaveLength(0);
         });
 
+        test('marks holidays with ExchangeHoliday false as product holidays', async () => {
+            const { card, box } = make({ ...DATA, Holidays: { data: [{ Holiday: '2099-12-24', ExchangeHoliday: true }, { Holiday: '2099-12-25', ExchangeHoliday: false }] } });
+            await card.open('FESX');
+            const cal = [...box.querySelectorAll('.pc-card')].find(c => c.querySelector('h3').textContent === 'Expirations and holidays');
+            expect(cal.textContent).toContain('product holiday');
+            expect(cal.textContent.match(/product holiday/g)).toHaveLength(1);
+        });
+
         test('shows the calendar heatmap with expirations and holidays', async () => {
             const { card, box } = make({ ...DATA, Expirations: { data: [{ ExpirationIndex: 1, ExpirationDate: new Date().toISOString().slice(0, 10) }] } });
             await card.open('FESX');
