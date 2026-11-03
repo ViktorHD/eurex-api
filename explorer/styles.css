@@ -3971,7 +3971,7 @@ button.close-tab { background: none; border: 0; color: inherit; font: inherit; c
 .hm-day.today { outline: 1px solid var(--navy-blue); }
 .hm-day.exp, .hm-key.exp { background: var(--navy-blue); color: #fff; }
 .hm-day.hol, .hm-key.hol { background: #f5a623; color: #3a2600; }
-.hm-day.both, .hm-key.both { background: #c0392b; color: #fff; }
+.hm-day.prodhol, .hm-key.prodhol { background: #c0392b; color: #fff; }
 .hm-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 6px; font-size: 0.78rem; }
 .hm-key { padding: 1px 8px; border-radius: 2px; }
 .rd-dot:hover, .rd-dot:focus { fill: var(--neon-green); outline: none; }
