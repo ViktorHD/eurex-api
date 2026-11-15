@@ -1,0 +1,25 @@
+name: extension
+on:
+  push:
+    branches: [main]
+    paths: ['extension/**', 'scripts/build_extension.mjs', 'index.html', 'explorer/**', 'package.json', '.github/workflows/extension.yml']
+  pull_request:
+    paths: ['extension/**', 'scripts/build_extension.mjs', 'index.html', 'explorer/**', 'package.json', '.github/workflows/extension.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node scripts/build_extension.mjs --zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eurex-explorer-extension
+          path: extension/eurex-explorer-extension.zip
