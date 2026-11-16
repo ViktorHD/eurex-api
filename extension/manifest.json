@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Eurex API Explorer",
+  "description": "Eurex reference data in your browser: products, trading hours, strikes, expirations, calendar and a GraphQL explorer.",
+  "version": "1.0.0",
+  "minimum_chrome_version": "110",
+  "action": { "default_title": "Open Eurex API Explorer" },
+  "background": { "service_worker": "background.js" },
+  "host_permissions": ["https://api.developer.deutsche-boerse.com/*"],
+  "permissions": ["contextMenus"],
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}

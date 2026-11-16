@@ -77,6 +77,18 @@ cd android && ./gradlew assembleDebug    # needs JDK 17 and the Android SDK; APK
 
 The `android` workflow builds the debug APK on every relevant change, uploads it as an artifact and commits it as `android/eurex-explorer.apk`, ready to install (allow "install unknown apps" for your file manager or browser). It is signed with the fixed debug key in `android/debug.keystore`, so updates install over older builds. In Android Studio, open `android/`.
 
+## Chrome / Edge extension
+
+`extension/` packages the same front end as a Manifest V3 extension (Chrome, Edge, other Chromium browsers). The toolbar button opens the Explorer in a tab (an open one is focused); all views work as on the web, and requests to the Eurex API need no CORS setup. Selecting a product code on any page and choosing "Open Eurex product card" from the context menu opens its card. Settings, watchlist, tabs and history are stored in the extension's own browser storage.
+
+There is no second copy of the app: `scripts/build_extension.mjs` assembles `extension/dist` from `index.html` and `explorer/` and, because extension pages may not load remote or inline scripts, vendors three.js and feather-icons from `node_modules`, replaces the import map and drops the web font. The `extension` workflow builds it on every front-end change and uploads the zip.
+
+```bash
+npm ci && node scripts/build_extension.mjs --zip   # extension/dist and extension/eurex-explorer-extension.zip
+```
+
+Load it: open `chrome://extensions` (or `edge://extensions`), enable Developer mode, "Load unpacked", choose `extension/dist`. The zip is what you upload to the Chrome Web Store or Edge Add-ons.
+
 ## Test
 
 ```bash
@@ -88,6 +100,7 @@ pip install -r requirements-dev.txt && pytest   # server, MCP tools, REST wrappe
 
 - `index.html`, `explorer/`: the front end (plain ES modules, no build step). `app.js` wires the views;
   each view and helper is its own module with tests in `explorer/tests/`.
+- `extension/`, `scripts/build_extension.mjs`: Chrome / Edge extension shell and the build that bundles the front end into it.
 - `app.py`: serves the front end, the AI instructions, the hosted MCP endpoint (`/mcp`) and the REST tools (`/api/v1/tools`, `/openapi.json`).
 - `ai.md`, `ai.html`, `llms.txt`: instructions for AI agents (keep `ai.md` and `ai.html` in sync; a test checks the key facts).
 - `eurex_mcp/`: tool registry (`tools.py`), GraphQL client, pure logic ported from the Explorer, MCP server (stdio/HTTP, `pyproject.toml` installs it as `eurex-mcp`), hosted `/mcp` endpoint (`remote.py`), REST blueprint, tool definitions.
