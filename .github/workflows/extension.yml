@@ -7,13 +7,15 @@ on:
     paths: ['extension/**', 'scripts/build_extension.mjs', 'index.html', 'explorer/**', 'package.json', '.github/workflows/extension.yml']
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -23,3 +25,11 @@ jobs:
         with:
           name: eurex-explorer-extension
           path: extension/eurex-explorer-extension.zip
+      # Keep the loadable extension in the repo (extension/dist), like the Android APK
+      - name: Commit extension/dist
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extension/dist
+          git diff --cached --quiet || { git commit -m "Update extension build [skip ci]" && git push; }
