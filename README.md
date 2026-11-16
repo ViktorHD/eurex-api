@@ -81,13 +81,13 @@ The `android` workflow builds the debug APK on every relevant change, uploads it
 
 `extension/` packages the same front end as a Manifest V3 extension (Chrome, Edge, other Chromium browsers). The toolbar button opens the Explorer in a tab (an open one is focused); all views work as on the web, and requests to the Eurex API need no CORS setup. Selecting a product code on any page and choosing "Open Eurex product card" from the context menu opens its card. Settings, watchlist, tabs and history are stored in the extension's own browser storage.
 
-There is no second copy of the app: `scripts/build_extension.mjs` assembles `extension/dist` from `index.html` and `explorer/` and, because extension pages may not load remote or inline scripts, vendors three.js and feather-icons from `node_modules`, replaces the import map and drops the web font. The `extension` workflow builds it on every front-end change and uploads the zip.
+There is no second copy of the app: `scripts/build_extension.mjs` assembles `extension/dist` from `index.html` and `explorer/` and, because extension pages may not load remote or inline scripts, vendors three.js and feather-icons from `node_modules`, replaces the import map and drops the web font. The `extension` workflow rebuilds it on every front-end change, commits the result to `extension/dist` (ready to load, like the Android APK) and uploads the zip as an artifact.
 
 ```bash
 npm ci && node scripts/build_extension.mjs --zip   # extension/dist and extension/eurex-explorer-extension.zip
 ```
 
-Load it: open `chrome://extensions` (or `edge://extensions`), enable Developer mode, "Load unpacked", choose `extension/dist`. The zip is what you upload to the Chrome Web Store or Edge Add-ons.
+Load it from a clone, no build needed: open `chrome://extensions` (or `edge://extensions`), enable Developer mode, "Load unpacked", choose `extension/dist`. `extension/dist` is always current; to build it yourself run the command above. The zip is what you upload to the Chrome Web Store or Edge Add-ons.
 
 ## Test
 

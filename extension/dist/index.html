@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eurex API Explorer</title>
+    <meta name="description" content="Query the Deutsche Börse Eurex GraphQL API and visualize results in an interactive table.">
+    <script src="ext/boot.js"></script>
+    <link rel="stylesheet" href="explorer/styles.css?v=22">
+    <!-- Feather Icons for lightweight modern icons -->
+    <script src="vendor/feather.min.js"></script>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Global Sidebar Navigation -->
+        <nav class="app-nav">
+            <div class="nav-branding">EX</div>
+            
+            <div class="nav-section-title">Functional</div>
+            <div class="nav-items">
+                <button class="nav-btn" id="nav-api-overview" title="API Overview">
+                    <i data-feather="compass"></i>
+                    <span class="nav-label">API Overview</span>
+                </button>
+                <button class="nav-btn" id="nav-products" title="Products">
+                    <i data-feather="search"></i>
+                    <span class="nav-label">Products</span>
+                </button>
+                <button class="nav-btn" id="nav-eurex-overview" title="Strike Window">
+                    <i data-feather="bar-chart-2"></i>
+                    <span class="nav-label">Strike Window</span>
+                </button>
+                <button class="nav-btn" id="nav-roll-tracker" title="Roll Tracker">
+                    <i data-feather="repeat"></i>
+                    <span class="nav-label">Roll Tracker</span>
+                </button>
+                <button class="nav-btn" id="nav-trading-hours" title="Trading Hours">
+                    <i data-feather="clock"></i>
+                    <span class="nav-label">Trading Hours</span>
+                </button>
+                <button class="nav-btn" id="nav-calendar" title="Calendar">
+                    <i data-feather="calendar"></i>
+                    <span class="nav-label">Calendar</span>
+                </button>
+            </div>
+
+            <div class="nav-section-title">Developer</div>
+            <div class="nav-items">
+                <button class="nav-btn active" id="nav-api-explorer" title="API Explorer">
+                    <i data-feather="terminal"></i>
+                    <span class="nav-label">API Explorer</span>
+                </button>
+                <button class="nav-btn" id="nav-info" title="Info">
+                    <i data-feather="info"></i>
+                    <span class="nav-label">Info</span>
+                </button>
+            </div>
+
+            <div class="nav-section-title">Notebooks</div>
+            <div class="nav-items">
+                <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="nav-btn" title="API examples" style="text-decoration: none;">
+                    <i data-feather="code"></i>
+                    <span class="nav-label">API examples</span>
+                </a>
+                <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/ESMA_FIRDS_Eurex_instruments_search.ipynb" target="_blank" rel="noopener" class="nav-btn" title="ESMA search" style="text-decoration: none;">
+                    <i data-feather="search"></i>
+                    <span class="nav-label">ESMA search</span>
+                </a>
+                <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/FAQ_cases.ipynb" target="_blank" rel="noopener" class="nav-btn" title="FAQ cases" style="text-decoration: none;">
+                    <i data-feather="help-circle"></i>
+                    <span class="nav-label">FAQ cases</span>
+                </a>
+            </div>
+        </nav>
+
+        <div class="app-main">
+            <!-- Tabs Bar -->
+            <div class="tabs-bar" id="tabsBar">
+
+                <button class="add-tab-btn" id="addTabBtn" aria-label="Add new tab" title="Add new tab"><i data-feather="plus"></i></button>
+            </div>
+
+            <!-- Header Action Bar -->
+            <header class="action-bar">
+                <div class="url-input-group">
+                    <input type="text" id="apiUrl" value="https://api.developer.deutsche-boerse.com/eurex-prod-graphql/" placeholder="Enter Endpoint here...">
+                </div>
+
+                <div class="action-right">
+                    <div class="pane-toggles hide-mobile" role="group" aria-label="Show or hide panes">
+                        <button id="toggleQueryBtn" class="pane-toggle active" type="button" aria-pressed="true" title="Show or hide the query editor">
+                            <i data-feather="edit-3"></i> Query
+                        </button>
+                        <button id="toggleDocsBtn" class="pane-toggle" type="button" aria-pressed="false" title="Show or hide the schema documentation">
+                            <i data-feather="book"></i> Docs
+                        </button>
+                    </div>
+                    <button id="moreMenuBtn" class="icon-btn show-mobile-flex hidden" aria-label="More options" title="More options"><i data-feather="more-vertical"></i></button>
+                </div>
+            </header>
+
+            <!-- More Menu Overlay (Mobile) -->
+            <div id="moreMenu" class="more-menu hidden-menu">
+                <div class="more-menu-content">
+                    <a class="menu-item" href="ai.html" target="_blank" rel="noopener"><i data-feather="cpu"></i> For AI agents</a>
+                    <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener" class="menu-item"><i data-feather="code"></i> API examples</a>
+                    <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/ESMA_FIRDS_Eurex_instruments_search.ipynb" target="_blank" rel="noopener" class="menu-item"><i data-feather="search"></i> ESMA search</a>
+                    <a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/FAQ_cases.ipynb" target="_blank" rel="noopener" class="menu-item"><i data-feather="help-circle"></i> FAQ cases</a>
+                    <button id="mobileShareBtn" class="menu-item"><i data-feather="share-2"></i> Share Results</button>
+                    <button id="mobileCsvBtn" class="menu-item"><i data-feather="download"></i> Download CSV</button>
+                    <button id="mobileXlsxBtn" class="menu-item"><i data-feather="file"></i> Download Excel</button>
+                    <button id="mobileMdBtn" class="menu-item"><i data-feather="file-text"></i> Download Markdown</button>
+                </div>
+            </div>
+
+            <!-- Three Pane Split Layout -->
+            <div class="workspace-grid">
+
+                <!-- API Overview Pane (Default Landing Page) -->
+                <section class="pane hidden api-overview" id="apiOverviewPane">
+
+                    <!-- Hero -->
+                    <header class="ao-hero">
+                        <div class="ao-container ao-hero-inner">
+                            <div class="ao-hero-copy">
+                                <span class="ao-eyebrow">Eurex data</span>
+                                <h1 class="ao-title">Eurex API</h1>
+                                <p class="ao-lead">Access Eurex product parameters, contracts and trading information through one central GraphQL endpoint.</p>
+                                <div class="ao-hero-actions">
+                                    <a class="ao-btn ao-btn-primary" href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082" target="_blank" rel="noopener">Get started in the Developer Portal <i data-feather="external-link" aria-hidden="true"></i></a>
+                                    <button type="button" class="ao-btn ao-btn-ghost" id="overviewOpenExplorerBtn">Open API Explorer <i data-feather="arrow-right" aria-hidden="true"></i></button>
+                                </div>
+                                <p class="ao-note"><i data-feather="key" aria-hidden="true"></i> Anonymous access uses a shared, rate-limited API key. Create a dedicated key in the Deutsche Boerse Developer Portal for higher throughput.</p>
+                            </div>
+                            <pre class="ao-snippet" aria-label="Example query"><code><span class="ao-k">query</span> {
+  <span class="ao-f">ProductInfos</span>(filter: { Product: { eq: <span class="ao-s">"FESX"</span> } }) {
+    data { Product Name Currency TickSize }
+  }
+}</code></pre>
+                        </div>
+                    </header>
+
+                    <div class="ao-container">
+
+                        <!-- Data domains -->
+                        <section class="ao-section" aria-labelledby="aoDomainsTitle">
+                            <div class="ao-section-head">
+                                <h2 class="ao-h2" id="aoDomainsTitle">Data domains</h2>
+                                <p class="ao-section-sub">Pick a domain to load a ready-made example query into the API Explorer and run it.</p>
+                            </div>
+                            <div class="ao-domain-grid">
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="layers" aria-hidden="true"></i></span><span class="ao-card-num">01</span></div>
+                                    <h3 class="ao-card-title">Products and contracts</h3>
+                                    <p class="ao-card-text">Identify instruments, contract specifications and product relationships for a Eurex product.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>ProductInfos</li><li>Contracts</li><li class="ao-chip-product">FESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="products">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="calendar" aria-hidden="true"></i></span><span class="ao-card-num">02</span></div>
+                                    <h3 class="ao-card-title">Trading calendar</h3>
+                                    <p class="ao-card-text">Retrieve trading phases, trading hours and holidays for market operations and scheduling.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>TradingHours</li><li>Holidays</li><li class="ao-chip-product">FESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="calendar">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="sliders" aria-hidden="true"></i></span><span class="ao-card-num">03</span></div>
+                                    <h3 class="ao-card-title">Trading parameters</h3>
+                                    <p class="ao-card-text">Review tick-price bands and price steps alongside TES validation, approval, broker, lot-size, expiry-range and disclosure settings.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>TickRules</li><li>TESProfiles</li><li class="ao-chip-product">FESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="parameters">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="shuffle" aria-hidden="true"></i></span><span class="ao-card-num">04</span></div>
+                                    <h3 class="ao-card-title">Flexible contracts</h3>
+                                    <p class="ao-card-text">Retrieve flexible contracts with strike, maturity, settlement and open interest, alongside settlement prices for flexible contracts only.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>FlexibleContracts</li><li>SettlementPrices</li><li class="ao-chip-product">OESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="flexible">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                                <article class="ao-card">
+                                    <div class="ao-card-top"><span class="ao-card-icon"><i data-feather="bar-chart-2" aria-hidden="true"></i></span><span class="ao-card-num">05</span></div>
+                                    <h3 class="ao-card-title">Option series and expirations</h3>
+                                    <p class="ao-card-text">List the expiration calendar of an options product and its listed series with strike, call/put, delta and previous-day settlement price.</p>
+                                    <ul class="ao-chips" aria-label="Queried types"><li>Expirations</li><li>Contracts</li><li class="ao-chip-product">OESX</li></ul>
+                                    <button class="ao-card-btn domain-query-btn" data-domain="options">Run query <i data-feather="play" aria-hidden="true"></i></button>
+                                </article>
+                            </div>
+                        </section>
+
+                        <!-- Request additional strikes module -->
+                        <section class="ao-strike" aria-labelledby="aoStrikeTitle">
+                            <div class="ao-strike-copy">
+                                <h2 class="ao-h2" id="aoStrikeTitle">Request additional strikes</h2>
+                                <p>Open the Strike Window for an options product to review listed strikes per contract date and select the missing strike ranges you want to request.</p>
+                            </div>
+                            <form id="apiOverviewStrikeForm" class="ao-strike-form">
+                                <label for="apiOverviewStrikeProduct">Option product symbol</label>
+                                <div class="ao-strike-row">
+                                    <input type="text" id="apiOverviewStrikeProduct" placeholder="e.g. OESX" maxlength="32" autocomplete="off" pattern="[A-Za-z0-9_\-]{1,32}" required>
+                                    <button type="submit" class="ao-btn ao-btn-navy">Open Strike Window</button>
+                                </div>
+                            </form>
+                        </section>
+
+                        <!-- Resources -->
+                        <section class="ao-section" aria-labelledby="aoResourcesTitle">
+                            <h2 class="ao-h2" id="aoResourcesTitle">Resources</h2>
+                            <div class="ao-resource-grid">
+                                <a class="ao-resource" href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082" target="_blank" rel="noopener">
+                                    <i data-feather="book-open" aria-hidden="true"></i>
+                                    <span><strong>Developer Portal</strong><small>API keys, documentation and terms of use</small></span>
+                                </a>
+                                <a class="ao-resource" href="ai.html" target="_blank" rel="noopener" id="overviewAiLink">
+                                    <i data-feather="cpu" aria-hidden="true"></i>
+                                    <span><strong>Use it with your AI</strong><small>Prompt and instructions for ChatGPT, Claude &amp; co. Works with the demo key</small></span>
+                                </a>
+                                <a class="ao-resource" href="#" id="overviewLiveSchemaLink">
+                                    <i data-feather="code" aria-hidden="true"></i>
+                                    <span><strong>Live schema</strong><small>Browse types and fields in the Explorer</small></span>
+                                </a>
+                                <div class="ao-resource ao-contact">
+                                    <i data-feather="user" aria-hidden="true"></i>
+                                    <span>
+                                        <strong>API support</strong>
+                                        <small>Viktor Uvarov &middot; Eurex Frankfurt AG | Trading Design</small>
+                                        <small><a href="tel:+496921114282">+49 69 211 1 42 82</a> &middot; <a href="mailto:Viktor.Uvarov@eurex.com">Viktor.Uvarov@eurex.com</a></small>
+                                    </span>
+                                </div>
+                            </div>
+                        </section>
+
+                    </div>
+                </section>
+
+                <!-- Eurex Overview Pane: Strike Window / Delta Coverage / 3D View -->
+                <section class="pane hidden" id="overviewPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span>Strike Window</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <select id="overviewViewSelect" title="View" aria-label="View" style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;">
+                                <option value="strike" selected>Strike Window</option>
+                                <option value="delta">Delta Coverage</option>
+                                <option value="3d">3D View</option>
+                            </select>
+                            <input type="text" id="overviewProductInput" list="overviewProductList" maxlength="32" placeholder="Option product, e.g. OESX" aria-label="Option product" autocomplete="off" style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 10px; font-size: 0.8rem; width: 190px; text-transform: uppercase;">
+                            <datalist id="overviewProductList"></datalist>
+                            <button id="refreshOverviewBtn" class="icon-btn" title="Refresh" aria-label="Refresh Overview"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                            <button id="shareOverviewBtn" class="icon-btn" title="Share View" aria-label="Share Eurex Overview"><i data-feather="share-2" style="width: 14px; height: 14px;"></i></button>
+                        </div>
+                    </div>
+                    <div id="overviewContainer" class="overview-container">
+                        <div id="overviewLoading" class="loading hidden" style="padding: 24px;">
+                            <div class="skeleton skeleton-header"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row"></div>
+                        </div>
+                        <div id="overviewContent"></div>
+                    </div>
+                </section>
+                
+                <!-- Products: search and watchlist -->
+                <section class="pane hidden" id="productsPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span>Products</span>
+                    </div>
+                    <div class="pc-scroll"><div id="productsContent" class="pc-container"></div></div>
+                </section>
+
+                <!-- Product card -->
+                <section class="pane hidden" id="productPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span><button id="productBackBtn" class="icon-btn" aria-label="Back to Products" title="Back to Products"><i data-feather="arrow-left" style="width: 14px; height: 14px;"></i></button> Product card</span>
+                    </div>
+                    <div class="pc-scroll"><div id="productCardContent" class="pc-container"></div></div>
+                </section>
+
+                <!-- Calendar: expirations and holidays -->
+                <section class="pane hidden" id="calendarPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span>Calendar</span>
+                    </div>
+                    <div class="pc-scroll"><div id="calendarContent" class="pc-container"></div></div>
+                </section>
+
+                <!-- Roll tracker -->
+                <section class="pane hidden" id="rollPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span>Roll Tracker</span>
+                    </div>
+                    <div class="pc-scroll"><div id="rollContent" class="pc-container"></div></div>
+                </section>
+
+                <!-- Info & Status Pane -->
+                <section class="pane hidden" id="infoPane" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="pane-header">
+                        <span>API Status &amp; Changelog</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <button id="refreshInfoBtn" class="icon-btn" title="Refresh" aria-label="Refresh Info"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                            <button id="closeInfoBtn" class="icon-btn hide-mobile" aria-label="Close Info pane" title="Close Info pane"><i data-feather="x"></i></button>
+                        </div>
+                    </div>
+                    <div class="info-scroll-container">
+                        <div class="info-layout">
+                            <section class="info-card" aria-labelledby="statusTitle">
+                                <div class="info-card-head">
+                                    <h3 id="statusTitle">Data status</h3>
+                                    <p>Date of the latest published dataset per query. Reference datasets change only occasionally.</p>
+                                </div>
+                                <div id="statusSummary" class="status-summary checking" role="status" aria-live="polite">Checking datasets…</div>
+                                <div id="statusGrid" class="status-grid"></div>
+                            </section>
+                            <section class="info-card faq-card" id="faq" aria-labelledby="faqTitle">
+                                <div class="info-card-head">
+                                    <h3 id="faqTitle">Frequently asked questions</h3>
+                                    <p>General questions about the API, its relationship to T7 RDF / RDI, data availability and service level.</p>
+                                </div>
+
+                                <h4 class="faq-group">General</h4>
+                                <details class="faq-item">
+                                    <summary>What is the Eurex Reference Data API?</summary>
+                                    <div class="faq-answer">
+                                        <p>A free GraphQL API with reference data for products and contracts traded on Eurex. You can get product and contract details, trading hours, holidays, expirations, tick rules, TES profiles, flexible contracts, settlement prices, deliverable bonds, Eurex EnLight configuration and vendor codes, all from one endpoint: <code>https://api.developer.deutsche-boerse.com/eurex-prod-graphql/</code></p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Do I need an API key?</summary>
+                                    <div class="faq-answer">
+                                        <p>The Explorer works with a shared demo key that has a rate limit. For production use, or if you need more requests, create your own key in the <a href="https://console.developer.deutsche-boerse.com/apis/50247b4e-dae5-4db7-be15-27bd5b17a082" target="_blank" rel="noopener">Deutsche Börse Developer Portal</a>. Send the key in the <code>X-DBP-APIKEY</code> HTTP header.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Which queries are available?</summary>
+                                    <div class="faq-answer">
+                                        <p><code>ProductInfos</code>, <code>Contracts</code>, <code>FlexibleContracts</code>, <code>Expirations</code>, <code>TradingHours</code>, <code>Holidays</code>, <code>TickRules</code>, <code>TESProfiles</code>, <code>SettlementPrices</code>, <code>DeliverableBonds</code>, <code>Enlight</code>, <code>EnlightResponders</code>, <code>VendorCodes</code> and <code>Changelog</code>. For all fields and their descriptions, see the <strong>Docs</strong> (Schema Explorer) in the API Explorer.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Where can I see changes to the API?</summary>
+                                    <div class="faq-answer">
+                                        <p>In the <strong>Changelog</strong> next to this section, or with the <code>Changelog</code> query. Both list new fields, renamed fields and removed fields with the date each change takes effect.</p>
+                                    </div>
+                                </details>
+
+                                <h4 class="faq-group">Relationship to T7 RDF / RDI</h4>
+                                <details class="faq-item">
+                                    <summary>Can the API replace the T7 Reference Data File (RDF) or Reference Data Interface (RDI) for my trading application?</summary>
+                                    <div class="faq-answer">
+                                        <p><strong>No.</strong> RDF and RDI are, and will stay, the golden source of reference data for trading applications, with production SLAs. There are no plans to change or deprecate the RDF files. The API is designed as an <strong>add-on</strong> to RDF/RDI: it adds information such as trading hours, holidays, TES profiles and settlement prices. It does not replace them.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Do the IDs match RDF / RDI and ETI?</summary>
+                                    <div class="faq-answer">
+                                        <p><strong>Yes.</strong> The API was designed as an add-on to RDF/RDI, so all IDs match exactly and you can join the data directly:</p>
+                                        <table class="faq-table">
+                                            <thead><tr><th>API field</th><th>T7 RDF / RDI / ETI</th></tr></thead>
+                                            <tbody>
+                                                <tr><td><code>Contracts.InstrumentID</code></td><td>SecurityID</td></tr>
+                                                <tr><td><code>ProductInfos.ProductID</code></td><td>MarketSegmentID</td></tr>
+                                            </tbody>
+                                        </table>
+                                        <p>When you join the data, use API data and RDF data for the <strong>same business day</strong>. Each response has a <code>date</code> field that shows which business day the data belongs to.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Are complex instruments (futures spreads, strategies, packs &amp; bundles, inter-product spreads) available?</summary>
+                                    <div class="faq-answer">
+                                        <p>Not at the moment. The API covers <strong>simple instruments only</strong>: standard contracts (<code>SI</code>) in <code>Contracts</code> and flexible contracts (<code>FI</code>) in <code>FlexibleContracts</code>.</p>
+                                        <p>Complex instruments are on the roadmap. They will be provided as <strong>historical information</strong> and will not be suitable for intraday use. For complex instruments and their legs, use RDF/RDI. Complex instruments created during the day are also published in EMDI, MDI and EOBI.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Does the API provide intraday updates?</summary>
+                                    <div class="faq-answer">
+                                        <p>No. The API provides one dataset per business day. It does not include intraday changes such as newly created or deleted instruments. If you need intraday data, use RDF intraday files or RDI.</p>
+                                    </div>
+                                </details>
+
+                                <h4 class="faq-group">Data availability and service level</h4>
+                                <details class="faq-item">
+                                    <summary>When is the data for a business day available?</summary>
+                                    <div class="faq-answer">
+                                        <p>Usually at these times:</p>
+                                        <ul>
+                                            <li><code>SettlementPrices</code>: approx. <strong>01:00</strong></li>
+                                            <li>All other queries: approx. <strong>03:00</strong></li>
+                                        </ul>
+                                        <p>Use the <code>date</code> field in the response, or the <strong>Data status</strong> next to this section, to check which business day you are looking at.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Is there an SLA for production use?</summary>
+                                    <div class="faq-answer">
+                                        <p><strong>No.</strong> The API has no production SLAs. Errors are fixed on a best-effort basis. If your application needs guaranteed availability, use RDF/RDI.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>How much history is available?</summary>
+                                    <div class="faq-answer">
+                                        <p>Most queries return only the current dataset. A few return more:</p>
+                                        <ul>
+                                            <li><code>SettlementPrices</code>: the last 5 trading days, for standard and flexible contracts</li>
+                                            <li><code>Holidays</code>: product holidays and exchange holidays for the next 2 years</li>
+                                        </ul>
+                                    </div>
+                                </details>
+
+                                <h4 class="faq-group">Data details</h4>
+                                <details class="faq-item">
+                                    <summary>Can the contract name (<code>Contract</code>) change?</summary>
+                                    <div class="faq-answer">
+                                        <p>In exceptional cases, yes. Examples are capital adjustments, which change the strike price in the name, or changes to the trading calendar, which change the contract date. Use <code>InstrumentID</code> or <code>ContractID</code> as a stable key. After a capital adjustment, the fields <code>PreviousContract</code>, <code>PreviousStrike</code>, <code>PreviousContractSize</code> and <code>PreviousProduct</code> show the values before the change.</p>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>What is the difference between <code>InstrumentID</code> and <code>ContractID</code>?</summary>
+                                    <div class="faq-answer">
+                                        <ul>
+                                            <li><code>InstrumentID</code> is the T7 ID that ETI uses for trading requests (SecurityID).</li>
+                                            <li><code>ContractID</code> is Eurex's numeric ID for the contract across all of its systems.</li>
+                                        </ul>
+                                    </div>
+                                </details>
+                                <details class="faq-item">
+                                    <summary>Where do I find more examples?</summary>
+                                    <div class="faq-answer">
+                                        <ul>
+                                            <li><a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/eurex_graphql_tutorial.ipynb" target="_blank" rel="noopener">API examples notebook</a></li>
+                                            <li><a href="https://github.com/ViktorHD/eurex-api/blob/main/notebooks/FAQ_cases.ipynb" target="_blank" rel="noopener">FAQ cases notebook</a>, for example how to apply product-level TES <code>MinLotSize</code> to individual contracts</li>
+                                            <li><a href="ai.html">Use it with your AI</a></li>
+                                        </ul>
+                                    </div>
+                                </details>
+
+                                <p class="faq-support">Further questions? Viktor Uvarov · Eurex Frankfurt AG | Trading Design · <a href="tel:+496921114282">+49 69 211 1 42 82</a> · <a href="mailto:Viktor.Uvarov@eurex.com">Viktor.Uvarov@eurex.com</a></p>
+                            </section>
+                            <section class="info-card cl-card" aria-labelledby="changelogTitle">
+                                <div class="info-card-head">
+                                    <h3 id="changelogTitle">Changelog</h3>
+                                    <p>Announced and past changes to the API. Run the example query to see the affected data.</p>
+                                </div>
+                                <div id="changelogFilters" class="cl-filters"></div>
+                                <div id="changelogLoading" class="loading hidden">
+                                    <div class="skeleton skeleton-header"></div>
+                                    <div class="skeleton skeleton-row"></div>
+                                    <div class="skeleton skeleton-row"></div>
+                                </div>
+                                <div id="changelogContent" class="cl-list"></div>
+                            </section>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Timeline Pane: Trading Hours -->
+                <section class="pane hidden" id="timelinePane" style="flex: 1;">
+                    <div class="pane-header timeline-toolbar">
+                        <span>Trading Hours</span>
+                        <div class="timeline-controls">
+                            <label class="timeline-search">
+                                <i data-feather="search" aria-hidden="true"></i>
+                                <input type="search" id="timelineFilter" placeholder="Filter product, name or type" aria-label="Filter products">
+                            </label>
+                            <select id="timezoneSelect" aria-label="Timezone">
+                                <option value="UTC">UTC</option>
+                                <option value="CET" selected>CET/CEST</option>
+                                <option value="SGT">SGT (Singapore)</option>
+                                <option value="CST">CST/CDT (Chicago)</option>
+                                <option value="LOCAL">Local Time</option>
+                            </select>
+                            <select id="timelinePartition" class="hidden" aria-label="Partition"><option value="">All partitions</option></select>
+                            <button id="timelineWatchBtn" class="timeline-text-btn" type="button" aria-pressed="false" title="Show only the products you follow">★ Watchlist</button>
+                            <button id="timelineExpandAllBtn" class="timeline-text-btn" type="button">Expand all</button>
+                            <button id="shareTimelineBtn" class="icon-btn" title="Share this view" aria-label="Share Trading Hours"><i data-feather="share-2" style="width: 14px; height: 14px;"></i></button>
+                            <button id="refreshTimelineBtn" class="icon-btn" title="Refresh" aria-label="Refresh Trading Hours"><i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i></button>
+                        </div>
+                    </div>
+                    <div class="timeline-legend" aria-label="Legend">
+                        <span class="legend-item"><span class="legend-swatch bar-continuous"></span>Continuous trading</span>
+                        <span class="legend-item"><span class="legend-swatch bar-auction"></span>Opening / closing auction</span>
+                        <span class="legend-item"><span class="legend-swatch bar-tes"></span>TES (off-book)</span>
+                        <span class="legend-item"><span class="legend-swatch legend-ltd"></span>Last trading day close</span>
+                        <span class="legend-item"><span class="legend-swatch legend-now"></span>Now</span>
+                        <span class="legend-item legend-status"><span class="timeline-status status-open"></span>Open <span class="timeline-status status-tes"></span>TES only <span class="timeline-status status-closed"></span>Closed <span class="timeline-status status-holiday"></span>Holiday</span>
+                    </div>
+                    <div id="timelineContainer" class="timeline-container">
+                        <div id="timelineLoading" class="loading hidden" style="padding: 24px;">
+                            <div class="skeleton skeleton-header"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row"></div>
+                        </div>
+                        <div id="timelineContent"></div>
+                    </div>
+                </section>
+
+                <!-- Left Pane: Query Editor & Drawer -->
+                <section class="pane editor-pane" id="queryPane">
+                    <div class="pane-header qe-toolbar">
+                        <div class="qe-toolbar-left">
+                            <span>Query</span>
+                            <button id="runQueryBtn" class="primary-btn qe-run" title="Run query (Ctrl+Enter)">
+                                <i data-feather="play" style="width: 14px; height: 14px;"></i> <span class="qe-run-label">Run</span>
+                            </button>
+                        </div>
+                        <div class="qe-toolbar-right">
+                            <button id="formatQueryBtn" class="qe-tool" title="Format query (Shift+Alt+F)" aria-label="Format query"><i data-feather="align-left"></i></button>
+                            <button id="copyQueryBtn" class="qe-tool" title="Copy query" aria-label="Copy query"><i data-feather="copy"></i></button>
+                            <div class="qe-history">
+                                <button id="historyBtn" class="qe-tool" title="Query history" aria-label="Query history" aria-haspopup="true" aria-expanded="false"><i data-feather="clock"></i></button>
+                                <div id="historyMenu" class="qe-history-menu hidden" role="menu"></div>
+                            </div>
+                            <button id="clearQueryBtn" class="qe-tool" title="Clear editor" aria-label="Clear editor"><i data-feather="trash-2"></i></button>
+                            <button id="closeQueryBtn" class="icon-btn" aria-label="Close Query pane" title="Close Query pane"><i data-feather="x"></i></button>
+                        </div>
+                    </div>
+                    <textarea id="queryInput" class="code-editor" spellcheck="false">
+query {
+  Contracts(filter: { Product: { eq: "FDAX" } }) {
+    date
+    data {
+      ISIN
+      Contract
+      ExpirationDate
+    }
+  }
+}</textarea>
+
+                    <!-- Bottom drawer: variables and headers -->
+                    <div class="editor-drawer">
+                        <div class="drawer-header" id="drawerToggle">
+                            <div class="qe-drawer-tabs" role="tablist">
+                                <button type="button" class="qe-drawer-tab active" data-tab="vars" role="tab">Variables <span id="varsBadge" class="qe-badge hidden"></span></button>
+                                <button type="button" class="qe-drawer-tab" data-tab="headers" role="tab">Headers</button>
+                            </div>
+                            <i data-feather="chevron-up" id="drawerIcon"></i>
+                        </div>
+                        <div class="drawer-content" id="drawerContent">
+                            <div class="qe-drawer-panel" data-panel="vars">
+                                <div class="control-group">
+                                    <div class="qe-label-row">
+                                        <label for="variablesInput">Variables (JSON)</label>
+                                        <button type="button" id="formatVarsBtn" class="qe-link">Format JSON</button>
+                                    </div>
+                                    <textarea id="variablesInput" class="variables-editor" spellcheck="false" placeholder='{ "product": "FESX" }'></textarea>
+                                    <p id="varsStatus" class="qe-hint">Use <code>$name</code> in the query, e.g. <code>query ($product: String) { … eq: $product … }</code></p>
+                                </div>
+                            </div>
+                            <div class="qe-drawer-panel hidden" data-panel="headers">
+                                <div class="control-group">
+                                    <label for="apiKey">X-DBP-APIKEY</label>
+                                    <div class="qe-secret">
+                                        <input type="text" class="secret-input" id="apiKey" value="68cdafd2-c5c1-49be-8558-37244ab4f513" placeholder="Enter your API key..." autocomplete="off">
+                                        <button type="button" id="toggleApiKeyBtn" class="qe-tool" title="Show key" aria-label="Show API key"><i data-feather="eye"></i></button>
+                                    </div>
+                                    <p id="apiKeyHint" class="qe-hint"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="resize-handle horizontal"></div>
+
+                <!-- Middle Pane: Results Table -->
+                <section class="pane results-pane">
+                    <div class="pane-header">
+                        <span><span id="resultLabel">Result</span> <span id="recordCounter" class="record-counter"></span> <span id="validityDate" class="validity-date"></span></span>
+                        <div class="results-actions">
+                            <button id="actionShareBtn" class="icon-btn" title="Share Results" aria-label="Share Results" disabled><i data-feather="share-2"></i> Share</button>
+                            <button id="downloadCsvBtn" class="icon-btn" title="Download CSV" aria-label="Download CSV" disabled><i data-feather="download"></i> CSV</button>
+                            <button id="downloadXlsxBtn" class="icon-btn" title="Download Excel" aria-label="Download Excel" disabled><i data-feather="file"></i> Excel</button>
+                            <button id="downloadMdBtn" class="icon-btn" title="Download MD" aria-label="Download Markdown" disabled><i data-feather="file-text"></i> MD</button>
+                            <div class="display-menu-wrap">
+                                <button id="displayBtn" class="icon-btn" title="How numbers and dates are shown" aria-label="Display settings" aria-haspopup="true" aria-expanded="false"><i data-feather="sliders"></i> Display</button>
+                                <div id="displayMenu" class="display-menu hidden" role="group" aria-label="Display settings">
+                                    <label>Numbers <select id="displayNumbers"></select></label>
+                                    <label>Dates <select id="displayDates"></select></label>
+                                    <p class="qe-hint">Only changes how values are shown. Copy, sorting and exports use the raw values.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <div id="errorBox" class="error-card hidden"></div>
+                        <div id="loadingIndicator" class="loading hidden">
+                            <div class="skeleton skeleton-header"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row" style="width: 80%;"></div>
+                            <div class="skeleton skeleton-row" style="width: 90%;"></div>
+                        </div>
+                        <div id="emptyState" class="empty-state results-empty">
+                            <i data-feather="database"></i>
+                            <div>
+                                <h3>No results yet</h3>
+                                <p>Run the query on the left with <strong>Run</strong> or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>, or start from an example:</p>
+                                <div class="results-examples">
+                                    <button type="button" class="domain-query-btn results-example" data-domain="products">Products &amp; contracts</button>
+                                    <button type="button" class="domain-query-btn results-example" data-domain="calendar">Trading calendar</button>
+                                    <button type="button" class="domain-query-btn results-example" data-domain="parameters">Trading parameters</button>
+                                    <button type="button" class="domain-query-btn results-example" data-domain="options">Option series</button>
+                                </div>
+                                <p class="results-empty-link"><a href="https://www.eurex.com/ex-en/data/free-reference-data-api" target="_blank" rel="noopener">Learn more about the Eurex API →</a></p>
+                            </div>
+                        </div>
+                        <div id="resultsContainer" class="hidden"></div>
+                    </div>
+                </section>
+
+                <div class="resize-handle horizontal hidden" id="docsSplitter"></div>
+
+                <!-- Right Pane: Docs (Schema Introspection) -->
+                <section class="pane docs-pane hidden" id="docsPane">
+                    <div class="pane-header">
+                        <span>Schema</span>
+                        <button id="closeDocsBtn" class="icon-btn" aria-label="Close Schema Explorer" title="Close Schema Explorer"><i data-feather="x"></i></button>
+                    </div>
+                    <div class="docs-content" id="docsContent">
+                        <label class="dx-search">
+                            <i data-feather="search" aria-hidden="true"></i>
+                            <input type="search" id="docsSearch" placeholder="Search queries, fields, descriptions" aria-label="Search the schema">
+                        </label>
+                        <div id="docsLoading" class="docs-loading hidden">
+                            <div class="skeleton skeleton-header" style="width: 70%;"></div>
+                            <div class="skeleton skeleton-row"></div>
+                            <div class="skeleton skeleton-row" style="width: 50%;"></div>
+                        </div>
+                        <div id="docsEmpty" class="empty-state hidden" style="margin-top: 40px;">
+                            <i data-feather="book-open"></i>
+                            <div>
+                                <h3>Schema Explorer</h3>
+                                <p>The schema could not be loaded yet. Check the API key, then reopen Docs.</p>
+                            </div>
+                        </div>
+                        <div id="docsTree" class="docs-tree hidden"></div>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Request Additional Strikes Modal -->
+    <div id="requestStrikesModal" class="modal hidden">
+        <div class="modal-content" style="max-width: 650px; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <span>Request Additional Strikes</span>
+                <button id="closeRequestStrikesModal" class="icon-btn" aria-label="Close Request Additional Strikes modal" title="Close Request Additional Strikes modal"><i data-feather="x"></i></button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto; max-height: calc(90vh - 60px);">
+                <form id="requestStrikesForm">
+                    <div style="margin-bottom: 12px;">
+                        <label for="reqSymbol" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: var(--text-primary);">Symbol / Product</label>
+                        <input type="text" id="reqSymbol" readonly style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-main); color: var(--text-primary); font-size: 0.9rem;">
+                    </div>
+                    <div id="reqDistanceHint" style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 12px;"></div>
+
+                    <div id="reqRowsContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px;">
+                        <!-- Dynamic strike range rows will be rendered here -->
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                        <button type="button" id="addReqRowBtn" class="secondary-btn" style="height: 32px; padding: 0 12px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px;">
+                            <i data-feather="plus" style="width: 14px; height: 14px;"></i> Add Contract Date / Range
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 16px; padding: 12px; background: rgba(0, 206, 125, 0.1); border-left: 4px solid var(--neon-green); border-radius: 4px; font-size: 0.825rem; color: var(--navy-blue); line-height: 1.4;">
+                        <i data-feather="info" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i>
+                        Please send the generated CSV file to <a href="mailto:eurextrading@eurex.com" style="color: var(--navy-blue); font-weight: 600; text-decoration: underline;">eurextrading@eurex.com</a> for processing.
+                    </div>
+
+                    <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+                        <button type="button" id="cancelRequestStrikesBtn" class="secondary-btn" style="height: 36px; padding: 0 16px; font-size: 0.8rem;">Cancel</button>
+                        <button type="button" id="prepareMailBtn" class="secondary-btn" style="height: 36px; padding: 0 16px; font-size: 0.8rem;"><i data-feather="mail" style="width: 14px; height: 14px;"></i> Prepare Email</button>
+                        <button type="submit" class="primary-btn" style="height: 36px; padding: 0 16px; font-size: 0.8rem;"><i data-feather="download" style="width: 14px; height: 14px;"></i> Generate CSV</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation (Mobile) -->
+    <nav class="bottom-nav">
+        <button class="nav-item active" data-pane="query">
+            <i data-feather="edit-3"></i>
+            <span>Query</span>
+        </button>
+        <button class="nav-item" data-pane="results">
+            <i data-feather="database"></i>
+            <span>Results</span>
+        </button>
+        <button class="nav-item" data-pane="docs">
+            <i data-feather="book"></i>
+            <span>Docs</span>
+        </button>
+        <button class="nav-item" data-pane="info">
+            <i data-feather="info"></i>
+            <span>Info</span>
+        </button>
+        <button class="nav-item" data-pane="views" id="mobileViewsBtn" aria-haspopup="true" aria-expanded="false">
+            <i data-feather="grid"></i>
+            <span>Views</span>
+        </button>
+    </nav>
+
+    <!-- Views sheet (Mobile): every view of the app -->
+    <div id="viewSheet" class="view-sheet hidden" role="dialog" aria-label="Views">
+        <div class="view-sheet-content">
+            <button class="menu-item" data-view="api-overview"><i data-feather="compass"></i> API Overview</button>
+            <button class="menu-item" data-view="products"><i data-feather="search"></i> Products</button>
+            <button class="menu-item" data-view="eurex-overview"><i data-feather="bar-chart-2"></i> Strike Window</button>
+            <button class="menu-item" data-view="roll-tracker"><i data-feather="repeat"></i> Roll Tracker</button>
+            <button class="menu-item" data-view="trading-hours"><i data-feather="clock"></i> Trading Hours</button>
+            <button class="menu-item" data-view="calendar"><i data-feather="calendar"></i> Calendar</button>
+            <button class="menu-item" data-view="api-explorer"><i data-feather="terminal"></i> API Explorer</button>
+        </div>
+    </div>
+
+    <!-- Share Modal -->
+    <div id="shareModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>Share Results</span>
+                <button id="closeShareModal" class="icon-btn" aria-label="Close Share modal" title="Close Share modal"><i data-feather="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 16px; font-size: 0.875rem; color: var(--text-secondary);">Anyone with this link can view these results using the Eurex demo API key.</p>
+                <div class="share-input-group">
+                    <input type="text" id="shareLinkInput" readonly>
+                    <button id="copyShareLinkBtn" class="primary-btn" style="height: 36px; padding: 0 16px;">Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script type="module" src="explorer/app.js?v=26"></script>
+    <script src="ext/icons.js"></script>
+</body>
+</html>

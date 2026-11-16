@@ -19,5 +19,4 @@ Thumbs.db
 .vscode/
 
 # Browser extension build output
-extension/dist/
 extension/*.zip
