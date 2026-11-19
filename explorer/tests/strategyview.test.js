@@ -159,6 +159,102 @@ describe('dragging legs on the chart', () => {
     });
 });
 
+describe('drawing a payoff', () => {
+    const origRect = Element.prototype.getBoundingClientRect;
+    beforeAll(() => { Element.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 760, height: 300, right: 760, bottom: 300 }); });
+    afterAll(() => { Element.prototype.getBoundingClientRect = origRect; });
+
+    const picked = async (code = 'OESX') => {
+        const ctx = make();
+        await ctx.view.show();
+        await typeInto(ctx.box.querySelector('.sw-picker input'), code);
+        await flush();
+        return ctx;
+    };
+    const sk = (box) => box.querySelector('.sk-panel');
+    const cards = (box) => [...sk(box).querySelectorAll('.sk-card')];
+    const names = (box) => cards(box).map(c => c.querySelector('strong').textContent);
+    // pixel position (viewBox units) of a level fraction u and a P&L fraction v in the drawing area: margins 66 / 14, size 672 x 252
+    const pt = (u, v) => ({ clientX: 66 + u * 672, clientY: 14 + (252 * (1 - v)) / 2 });
+    const draw = (box, curve) => {
+        const pad = sk(box).querySelector('.sk-pad');
+        const pts = Array.from({ length: 41 }, (_, i) => pt(i / 40, curve(i / 40)));
+        pad.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, ...pts[0] }));
+        pts.slice(1).forEach(p => pad.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, ...p })));
+        pad.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, ...pts[pts.length - 1] }));
+    };
+
+    test('asks for an options product first; a futures product cannot be drawn for', async () => {
+        const { view, box } = make();
+        await view.show();
+        expect(sk(box).textContent).toContain('Pick an options product');
+        await typeInto(box.querySelector('.sw-picker input'), 'FESX');
+        await flush();
+        expect(sk(box).textContent).toContain('futures product');
+    });
+
+    test('a drawn V suggests a long straddle and previews it', async () => {
+        const { box } = await picked();
+        draw(box, (u) => 1.6 * Math.abs(2 * u - 1) - 0.8);
+        expect(names(box)).toContain('2 legs · Long straddle');
+        const recommended = cards(box).find(c => c.querySelector('.sw-tes-badge'));
+        expect(recommended.textContent).toContain('2 legs · Long straddle');
+        expect(recommended.textContent).toContain('Buy 1 × OESX C 5,000');
+        expect(recommended.textContent).toContain('Buy 1 × OESX P 5,000');
+        expect(sk(box).querySelector('.lc-empty').getAttribute('visibility')).toBe('hidden'); // "Draw here" makes way for the drawing
+        expect(sk(box).querySelector('.pf-line2').getAttribute('d')).toMatch(/^M/); // the dashed preview
+        expect(sk(box).querySelector('.sk-line').getAttribute('d')).toMatch(/^M/);  // and the drawing
+    });
+
+    test('using the legs puts them into the strategy with their data and draws the payoff', async () => {
+        const { box } = await picked();
+        draw(box, (u) => 1.6 * Math.abs(2 * u - 1) - 0.8);
+        click(byText(cards(box).find(c => c.textContent.includes('Long straddle')), 'button', 'Use these legs'));
+        const rows = [...box.querySelectorAll('.sw-legs tbody tr')];
+        expect(rows.map(r => r.children[4].textContent)).toEqual(['Call', 'Put']);
+        expect(rows.map(r => r.children[5].textContent)).toEqual(['5,000', '5,000']);
+        expect(rows[0].querySelector('select').value).toBe('1');
+        expect(tile(box, 'Net debit')).toBe('1,200 EUR');
+        expect(box.querySelectorAll('.pf-leg')).toHaveLength(2); // and the legs can be dragged on the chart
+    });
+
+    test('a short volatility shape gives sold legs, "Add to legs" keeps the existing ones', async () => {
+        const { box } = await picked();
+        click(byText(box, '.sk-panel button', 'Long volatility'));
+        click(byText(cards(box).find(c => c.textContent.includes('Long straddle')), 'button', 'Use these legs'));
+        click(byText(box, '.sk-panel button', 'Short volatility'));
+        const short = cards(box).find(c => c.textContent.includes('Short straddle'));
+        expect(short.textContent).toContain('Sell 1 × OESX C 5,000');
+        expect(short.textContent).toContain('Net credit');
+        click(byText(short, 'button', 'Add to legs'));
+        expect(box.querySelectorAll('.sw-legs tbody tr')).toHaveLength(4);
+    });
+
+    test('a capped rising curve suggests a spread; more legs are offered as alternatives', async () => {
+        const { box } = await picked();
+        click(byText(box, '.sk-panel button', 'Capped bullish'));
+        expect(names(box).some(n => /Bull (call|put) spread/.test(n))).toBe(true);
+        expect(cards(box).length).toBeGreaterThan(1);
+        click(byText(cards(box)[cards(box).length - 1], 'button', 'Preview'));
+        expect(cards(box).filter(c => c.classList.contains('selected'))).toHaveLength(1);
+    });
+
+    test('the expiry, range and clearing are respected; a flat or empty drawing suggests nothing', async () => {
+        const { box } = await picked();
+        click(byText(box, '.sk-panel button', 'Bullish'));
+        expect(cards(box).length).toBeGreaterThan(0);
+        click(byText(box, '.sk-panel button', 'Clear'));
+        expect(cards(box)).toHaveLength(0);
+        draw(box, () => 0.3);
+        expect(cards(box)).toHaveLength(0);
+        expect(sk(box).querySelector('.sk-results').textContent).toContain('Nothing to fit');
+        const range = sk(box).querySelector('select[aria-label="Level range"]');
+        range.value = '0.2';
+        range.dispatchEvent(new Event('change'));
+        expect([...sk(box).querySelectorAll('.lc-tick')].some(t => t.textContent === '6,000')).toBe(true);
+    });
+});
+
 describe('StrategyView', () => {
     test('offers only option and future products, and loads nothing else before one is picked', async () => {
         const { view, box, calls } = make();

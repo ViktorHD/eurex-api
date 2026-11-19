@@ -4361,3 +4361,16 @@ html.boot-overview #nav-api-explorer.active { background: transparent; color: in
 .pf-leg:focus { outline: none; }
 .pf-leg:focus-visible rect { stroke: var(--neon-green); stroke-width: 3; }
 body.pf-dragging { cursor: ew-resize; user-select: none; }
+
+/* ---------- Draw a payoff ---------- */
+.sk-svg { display: block; width: 100%; max-width: 860px; height: auto; margin: 6px 0; }
+.sk-pad { fill: transparent; cursor: crosshair; touch-action: none; }
+.sk-line { stroke: var(--navy-blue); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.sk-results { margin-top: 8px; }
+.sk-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.sk-card { border: 1px solid var(--eurex-line); border-radius: 6px; padding: 10px 12px; background: #fff; }
+.sk-card.selected { border-color: var(--navy-blue); box-shadow: 0 0 0 2px rgba(32, 23, 81, 0.15); }
+.sk-card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.sk-card-head .pc-hint { margin-left: auto; }
+.sk-legs { list-style: none; margin: 0 0 6px; padding: 0; font-size: 0.85rem; }
+.sk-legs li { padding: 1px 0; }

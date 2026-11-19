@@ -14,7 +14,7 @@ API Overview, Products, Product card, Strike Window, Roll Tracker, Strategy Wiza
 | Query editor | `editor.js` (highlight overlay, history, saved queries), `autocomplete.js`, `schemacheck.js` (schema index, validation, `completionsAt`), `schema.js` (docs pane), `examples.js` (`DOMAIN_QUERIES`), `pagination.js` (rewrites `page: {after}`), `tabs.js` (tabs, snapshot in localStorage), `changelog-query.js` |
 | Results and export | `ui.js` (tables, search, filters, column chooser, CSV/Markdown/Excel), `xlsx.js` (dependency-free writer, stored ZIP), `displayformat.js` (display only; sorting/search/export use raw values), `linechart.js` (SVG) |
 | Product data rules | `tradingstatus.js`, `ticks.js`, `tes.js`, `settlement.js`, `productquery.js` (builds the card request from the schema, omitting roots/fields the schema lacks), `products.js` (search ranking) |
-| Strategy Wizard | `payoff.js` (pure: legs, Black-76, payoff curve, breakevens, put-call-parity forward, contract lookups), `strategies.js` (templates as leg specs relative to a centre strike, `buildLegs`, TES shortcuts `tesSupport` / `tesMinimums`), `strategyquery.js` (per-product requests built against the schema, paged Contracts), `strategyview.js`, `payoffchart.js` (SVG) |
+| Strategy Wizard | `payoff.js` (pure: legs, Black-76, payoff curve, breakevens, put-call-parity forward, contract lookups), `strategies.js` (templates as leg specs relative to a centre strike, `buildLegs`, TES shortcuts `tesSupport` / `tesMinimums`), `fit.js` (pure: resample a drawn curve, candidate calls and puts with per-lot payoffs, beam-search fit to whole lots, out-of-the-money preference, strategy names), `sketchview.js` (the drawing panel and suggestion cards), `strategyquery.js` (per-product requests built against the schema, paged Contracts), `strategyview.js`, `payoffchart.js` (SVG) |
 | Views | `productcard.js`, `productsview.js`, `overview.js` (Strike Window, largest file), `timeline.js` (Trading Hours), `calendar.js` + `calendarview.js`, `info.js` (freshness and changelog), `ics.js` |
 | Small helpers | `dom.js`, `watchlist.js`, `secretinput.js` |
 
@@ -26,6 +26,7 @@ API Overview, Products, Product card, Strike Window, Roll Tracker, Strategy Wiza
 - Reference levels: futures entry prices, else the forward implied by put-call parity of the settlement prices, else the middle strike; all editable.
 - Product data is fetched per product on demand (info + TES + expirations in one request, Contracts paged, up to 10 pages) and cached in the view.
 
+- Drawing: only the shape at expiry is fitted (a free constant); the height follows from the premiums. Call and put of one strike differ by a straight line, so equal shapes have several answers and the one with out-of-the-money legs is shown (`preferOutOfTheMoney`). Lots are whole numbers, so the drawn size matters; the default P&L range makes the preset shapes one lot.
 - Dragging: `payoffchart.js` draws one pill per leg and only forwards pointer / key events; `strategyview.js` owns the drag (window listeners, so redrawing the chart under the pointer is safe) and freezes the x range and reference levels while it runs. Option legs snap to listed strikes and take the settlement price of the new contract unless the user typed their own; futures snap to the tick size and keep the reference level.
 
 ## Rules

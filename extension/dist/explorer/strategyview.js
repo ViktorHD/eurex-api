@@ -11,6 +11,7 @@ import {
 } from './payoff.js';
 import { TEMPLATES, FAMILIES, templateById, templatesFor, productKind, tesSupport, tesMinimums, buildLegs, legFromContract } from './strategies.js';
 import { renderPayoffChart } from './payoffchart.js';
+import { SketchPanel } from './sketchview.js';
 import { cetDate } from './tradingstatus.js';
 import { formatDateString } from './displayformat.js';
 import { downloadText } from './ui.js';
@@ -95,6 +96,24 @@ export class StrategyView {
         s1.appendChild(this.templates);
         this.tplForm = el('div', 'sw-form');
         s1.appendChild(this.tplForm);
+
+        // Or draw the payoff and let the wizard suggest the legs
+        const sk = el('section', 'pc-card sw-step');
+        const skHead = el('div', 'pc-card-head');
+        skHead.appendChild(el('h3', '', '1b · Or draw the payoff you want'));
+        skHead.appendChild(el('span', 'pc-hint', 'suggests the legs'));
+        sk.appendChild(skHead);
+        const skBody = el('div', 'sk-panel');
+        sk.appendChild(skBody);
+        box.appendChild(sk);
+        this.sketch = new SketchPanel(skBody, {
+            getData: () => (this.main ? this.loaded.get(this.main) || null : null),
+            onUse: (legs, append) => {
+                this.legs = append ? [...this.legs, ...legs] : legs;
+                this._legsChanged({ resetLevels: !append });
+                this.legsBox.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+            }
+        });
 
         // 2 · Legs
         const s2 = step(2, 'Legs', 'buy / sell, quantity and entry price are editable');
@@ -289,6 +308,7 @@ export class StrategyView {
             this._renderProductInfo(d);
             this._renderTemplates(d);
             this._renderBuilder();
+            this.sketch.refresh();
         } catch (err) {
             if (this.main !== code) return;
             this.mainPicker.retry();
