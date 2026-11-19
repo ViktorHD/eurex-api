@@ -1,6 +1,6 @@
 import {
     normCdf, black76, legValue, legScale, strategyPnl, moveRange, curve, analyze, breakevens, netPremium, firstExpiry,
-    impliedForward, defaultLevel, pointValueOf, contractOptions, expirationsOf, strikesOf, findContract, nearestStrike, groupsOf, groupLevel
+    impliedForward, defaultLevel, legLevel, valueAtLevel, snapToStep, stepStrike, pointValueOf, contractOptions, expirationsOf, strikesOf, findContract, nearestStrike, groupsOf, groupLevel
 } from '../payoff.js';
 
 const leg = (o) => ({ id: Math.random().toString(36), product: 'OESX', kind: 'call', strike: 100, expiration: '2026-12-18', side: 1, qty: 1, price: 0, pointValue: 1, currency: 'EUR', ...o });
@@ -180,5 +180,34 @@ describe('contract data', () => {
         expect(pointValueOf({ TickSize: 0.01, TickValue: 10, ContractSize: 100000 })).toBeCloseTo(1000, 6);
         expect(pointValueOf({ ContractSize: 25 })).toBe(25);
         expect(pointValueOf({})).toBeNull();
+    });
+});
+
+describe('placing and dragging legs on the chart', () => {
+    const groups = { FESX: { s0: 5000, beta: 1, rel: 0 }, FDAX: { s0: 20000, beta: 1.2, rel: 0.01 } };
+    test('an option sits at its strike, a future at its entry price', () => {
+        expect(legLevel(leg({ product: 'FESX', group: 'FESX', strike: 5100 }), groups, 'FESX')).toBeCloseTo(5100, 6);
+        expect(legLevel(leg({ product: 'FESX', group: 'FESX', kind: 'future', strike: null, price: 4950 }), groups, 'FESX')).toBeCloseTo(4950, 6);
+    });
+    test('a leg of another underlying sits where the leader would be when that strike is reached, and back', () => {
+        const l = leg({ product: 'FDAX', group: 'FDAX', strike: 21000 });
+        const at = legLevel(l, groups, 'FESX');
+        // FDAX 21000 = 20000 * (1 + 1.2 x + 0.01)  ->  x = 0.03333
+        expect(at).toBeCloseTo(5000 * (1 + (21000 / 20000 - 1.01) / 1.2), 6);
+        expect(valueAtLevel(l, groups, 'FESX', at)).toBeCloseTo(21000, 6);
+    });
+    test('a leg that cannot be placed gives null', () => {
+        expect(legLevel(leg({ product: 'FDAX', group: 'FDAX' }), { ...groups, FDAX: { s0: 20000, beta: 0, rel: 0 } }, 'FESX')).toBeNull();
+        expect(legLevel(leg({ product: 'XXXX', group: 'XXXX' }), groups, 'FESX')).toBeNull();
+        expect(valueAtLevel(leg({}), groups, 'NOPE', 5000)).toBeNull();
+    });
+    test('snapping to a tick and stepping along strikes', () => {
+        expect(snapToStep(5003.4, 0.5)).toBe(5003.5);
+        expect(snapToStep(1.0000000001, 0.01)).toBe(1);
+        expect(snapToStep(5003.4, 0)).toBe(5003.4);
+        expect(stepStrike([4900, 5000, 5100], 5000, 1)).toBe(5100);
+        expect(stepStrike([4900, 5000, 5100], 5100, 1)).toBe(5100);
+        expect(stepStrike([4900, 5000, 5100], 4900, -2)).toBe(4900);
+        expect(stepStrike([], 5000, 1)).toBeNull();
     });
 });

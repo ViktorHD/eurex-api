@@ -26,6 +26,8 @@ API Overview, Products, Product card, Strike Window, Roll Tracker, Strategy Wiza
 - Reference levels: futures entry prices, else the forward implied by put-call parity of the settlement prices, else the middle strike; all editable.
 - Product data is fetched per product on demand (info + TES + expirations in one request, Contracts paged, up to 10 pages) and cached in the view.
 
+- Dragging: `payoffchart.js` draws one pill per leg and only forwards pointer / key events; `strategyview.js` owns the drag (window listeners, so redrawing the chart under the pointer is safe) and freezes the x range and reference levels while it runs. Option legs snap to listed strikes and take the settlement price of the new contract unless the user typed their own; futures snap to the tick size and keep the reference level.
+
 ## Rules
 
 - Personal state (watchlist, tabs, history, saved queries, display settings) lives only in `localStorage`.

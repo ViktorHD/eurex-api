@@ -4349,3 +4349,15 @@ html.boot-overview #nav-api-explorer.active { background: transparent; color: in
 .pf-dot2 { fill: #c77d00; }
 .pf-tipbg { fill: #fff; stroke: var(--eurex-line); }
 .pf-tip { font-size: 11px; fill: var(--text-primary); }
+
+.pf { touch-action: pan-y; }
+.pf-leg rect { fill: var(--navy-blue); }
+.pf-leg text { fill: #fff; font-size: 11px; pointer-events: none; }
+.pf-leg.pf-sell rect { fill: #c77d00; }
+.pf-leg-line { stroke: #c4c9cd; stroke-width: 1; stroke-dasharray: 2 3; }
+.pf-leg.pf-drag { cursor: ew-resize; }
+.pf-leg.pf-drag:hover rect, .pf-leg.pf-active rect { stroke: var(--neon-green); stroke-width: 2.5; }
+.pf-leg.pf-active .pf-leg-line, .pf-leg.pf-drag:hover .pf-leg-line { stroke: var(--navy-blue); stroke-dasharray: none; }
+.pf-leg:focus { outline: none; }
+.pf-leg:focus-visible rect { stroke: var(--neon-green); stroke-width: 3; }
+body.pf-dragging { cursor: ew-resize; user-select: none; }

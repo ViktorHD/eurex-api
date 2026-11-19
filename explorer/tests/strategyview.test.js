@@ -63,6 +63,102 @@ const tile = (box, label) => [...box.querySelectorAll('.pc-stat')].find(s => s.f
 
 beforeEach(() => localStorage.clear());
 
+describe('dragging legs on the chart', () => {
+    const origRect = Element.prototype.getBoundingClientRect;
+    beforeAll(() => { Element.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 760, height: 400, right: 760, bottom: 400 }); });
+    afterAll(() => { Element.prototype.getBoundingClientRect = origRect; });
+
+    const straddle = async () => {
+        const ctx = make();
+        await ctx.view.show();
+        await typeInto(ctx.box.querySelector('.sw-picker input'), 'OESX');
+        await flush();
+        click(byText(ctx.box, '.sw-tpl', 'Long straddle'));
+        click(byText(ctx.box, '.sw-form button', 'Replace legs'));
+        return ctx;
+    };
+    const pills = (box) => [...box.querySelectorAll('.pf-leg')];
+    const label = (pill) => pill.querySelector('text').textContent;
+    const dragTo = (box, pill, level) => {
+        const svg = box.querySelector('svg.pf');
+        pill.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 0 }));
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: box.querySelector('svg.pf').xAt(level) }));
+        window.dispatchEvent(new MouseEvent('pointerup'));
+        return svg;
+    };
+
+    test('every leg is a pill under the chart, with the strike it sits at', async () => {
+        const { box } = await straddle();
+        expect(pills(box).map(label)).toEqual(['+1 OESX C 5,000', '+1 OESX P 5,000']);
+        expect(pills(box).every(p => p.getAttribute('role') === 'slider' && p.getAttribute('tabindex') === '0')).toBe(true);
+    });
+
+    test('dragging a pill moves the strike to the nearest listed one and updates the leg, its price and the result', async () => {
+        const { box } = await straddle();
+        expect(tile(box, 'Net debit')).toBe('1,200 EUR');
+        dragTo(box, pills(box)[0], 4890);
+        const row = box.querySelector('.sw-legs tbody tr');
+        expect(row.children[5].textContent).toBe('4,900');                 // strike
+        expect(row.children[2].textContent).toBe('OESX C 4900');           // contract
+        expect(row.querySelectorAll('input')[1].value).toBe('160');        // settlement price of the new contract
+        expect(label(pills(box)[0])).toBe('+1 OESX C 4,900');
+        expect(tile(box, 'Net debit')).toBe('2,200 EUR');                  // (160 + 60) * 10: the result follows the new leg
+        expect(document.body.classList.contains('pf-dragging')).toBe(false);
+        expect(JSON.parse(localStorage.getItem('eurexExplorer.strategy')).legs[0].strike).toBe(4900);
+    });
+
+    test('a strike cannot leave the listed ladder', async () => {
+        const { box } = await straddle();
+        dragTo(box, pills(box)[1], 99999);
+        expect(box.querySelectorAll('.sw-legs tbody tr')[1].children[5].textContent).toBe('5,200');
+    });
+
+    test('an entry price typed by the user is kept when the strike moves', async () => {
+        const { box } = await straddle();
+        const price = box.querySelector('.sw-legs tbody tr').querySelectorAll('input')[1];
+        price.value = '77';
+        price.dispatchEvent(new Event('input'));
+        dragTo(box, pills(box)[0], 5090);
+        expect(box.querySelector('.sw-legs tbody tr').querySelectorAll('input')[1].value).toBe('77');
+    });
+
+    test('arrow keys step one listed strike and keep the focus on the pill', async () => {
+        const { box } = await straddle();
+        const pill = () => pills(box)[1];
+        pill().focus();
+        pill().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+        expect(box.querySelectorAll('.sw-legs tbody tr')[1].children[5].textContent).toBe('4,900');
+        expect(document.activeElement.getAttribute('data-leg')).toBe(pill().getAttribute('data-leg'));
+        pill().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        pill().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        expect(box.querySelectorAll('.sw-legs tbody tr')[1].children[5].textContent).toBe('5,100');
+    });
+
+    test('dragging a future changes its entry price (snapped to the tick) but not the reference level', async () => {
+        const { view, box } = make();
+        await view.show();
+        await typeInto(box.querySelector('.sw-picker input'), 'FESX');
+        await flush();
+        click(byText(box, '.sw-tpl', 'Futures calendar'));
+        click(byText(box, '.sw-form button', 'Replace legs'));
+        const refBefore = box.querySelector('.sw-scenario input').value;
+        dragTo(box, pills(box)[0], 5033.4);
+        const row = box.querySelector('.sw-legs tbody tr');
+        expect(row.querySelectorAll('input')[1].value).toBe('5033');
+        expect(box.querySelector('.sw-scenario input').value).toBe(refBefore);
+        expect(label(pills(box)[0])).toBe('+1 FESX F @5,033');
+    });
+
+    test('legs whose strikes are not loaded cannot be dragged', async () => {
+        const first = await straddle();
+        const again = make();
+        await again.view.show(); // restored from the browser, the product data is still loading
+        expect(pills(again.box).every(p => p.getAttribute('role') !== 'slider')).toBe(true);
+        await flush();
+        expect(pills(again.box).every(p => p.getAttribute('role') === 'slider')).toBe(true);
+    });
+});
+
 describe('StrategyView', () => {
     test('offers only option and future products, and loads nothing else before one is picked', async () => {
         const { view, box, calls } = make();
