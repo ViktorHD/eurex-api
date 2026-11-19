@@ -24,13 +24,19 @@ const money = (v) => `${v < 0 ? '-' : v > 0 ? '+' : ''}${Math.abs(v).toLocaleStr
 
 /**
  * series: [{ name, points: [{ x, s, y }], dashed? }]; the first series is the main one (area fill, breakevens).
- * options: { breakevens: [{ x, s }], currentLevel: number, currency, label, xLabel }
+ * options: { breakevens: [{ x, s }], currentLevel: number, currency, label, xLabel,
+ *   legs: [{ id, text, s (level the leg sits at), side, draggable, active }],
+ *   onLegDown(id, pointerEvent), onLegStep(id, -1 | 1) }
+ * Legs are drawn as pills in a lane under the axis, one row each; a draggable pill reports pointer presses and arrow keys
+ * to the caller, which moves the leg and draws a new chart. The svg gets levelAt(clientX) and xAt(level) for the caller.
  * Returns the <svg> element, already filled.
  */
 export function renderPayoffChart(series, options = {}) {
     const W = 760;
-    const H = 360;
-    const m = { top: 30, right: 22, bottom: 44, left: 66 };
+    const H = 360 + (options.legs?.length ? options.legs.length * 22 + 6 : 0);
+    const legs = options.legs || [];
+    const LANE = 22;
+    const m = { top: 30, right: 22, bottom: 44 + (legs.length ? legs.length * LANE + 6 : 0), left: 66 };
     const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'pf', role: 'img', preserveAspectRatio: 'xMidYMid meet', tabindex: 0 });
     root.setAttribute('aria-label', options.label || 'Payoff chart');
     const main = series[0]?.points || [];
@@ -53,6 +59,7 @@ export function renderPayoffChart(series, options = {}) {
     const plotH = H - m.top - m.bottom;
     const sx = (s) => m.left + (sMax === sMin ? plotW / 2 : ((s - sMin) / (sMax - sMin)) * plotW);
     const sy = (y) => m.top + (1 - (y - yMin) / (yMax - yMin)) * plotH;
+    root.xAt = (s) => sx(s);
     const line = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${sx(p.s).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(' ');
 
     yTicks.forEach(t => {
@@ -63,7 +70,7 @@ export function renderPayoffChart(series, options = {}) {
         root.appendChild(svg('line', { x1: sx(t), x2: sx(t), y1: m.top, y2: H - m.bottom, class: 'lc-grid' }));
         root.appendChild(svg('text', { x: sx(t), y: H - m.bottom + 18, 'text-anchor': 'middle', class: 'lc-tick' }, level(t)));
     });
-    if (options.xLabel) root.appendChild(svg('text', { x: m.left + plotW / 2, y: H - 6, 'text-anchor': 'middle', class: 'lc-ylabel' }, options.xLabel));
+    if (options.xLabel) root.appendChild(svg('text', { x: m.left + plotW / 2, y: m.top + plotH + 34, 'text-anchor': 'middle', class: 'lc-ylabel' }, options.xLabel));
     if (options.currency) root.appendChild(svg('text', { x: 14, y: 14, class: 'lc-ylabel' }, `P&L (${options.currency})`));
 
     // Profit above zero, loss below: the same area is clipped twice
@@ -91,6 +98,30 @@ export function renderPayoffChart(series, options = {}) {
     (options.breakevens || []).forEach(b => {
         root.appendChild(svg('circle', { cx: sx(b.s), cy: zero, r: 4.5, class: 'pf-be' }));
         root.appendChild(svg('text', { x: sx(b.s), y: zero - 9, 'text-anchor': 'middle', class: 'pf-be-label' }, level(b.s)));
+    });
+
+    // Legs: pills in a lane under the axis. Dragging one is the caller's business; here only the events are forwarded.
+    legs.forEach((leg, i) => {
+        if (!Number.isFinite(leg.s)) return;
+        const w = Math.max(54, leg.text.length * 6.6 + 16);
+        const x = Math.max(m.left + w / 2, Math.min(W - m.right - w / 2, sx(leg.s)));
+        const y = m.top + plotH + 44 + i * LANE;
+        const g = svg('g', { class: `pf-leg${leg.side < 0 ? ' pf-sell' : ''}${leg.draggable ? ' pf-drag' : ''}${leg.active ? ' pf-active' : ''}`, 'data-leg': leg.id });
+        g.appendChild(svg('line', { x1: sx(leg.s), x2: sx(leg.s), y1: m.top + plotH, y2: y, class: 'pf-leg-line' }));
+        g.appendChild(svg('rect', { x: x - w / 2, y: y, width: w, height: LANE - 4, rx: 9 }));
+        g.appendChild(svg('text', { x, y: y + 12, 'text-anchor': 'middle' }, leg.text));
+        const title = svg('title', {}, leg.draggable ? `${leg.text}: drag sideways to move it, or use the arrow keys` : leg.text);
+        g.appendChild(title);
+        if (leg.draggable) {
+            g.setAttribute('tabindex', '0');
+            g.setAttribute('role', 'slider');
+            g.setAttribute('aria-label', `${leg.text}, move with the left and right arrow keys`);
+            g.addEventListener('pointerdown', (e) => { if (e.button === 0 || e.pointerType === 'touch') options.onLegDown?.(leg.id, e); });
+            g.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { options.onLegStep?.(leg.id, e.key === 'ArrowLeft' ? -1 : 1); e.preventDefault(); e.stopPropagation(); }
+            });
+        }
+        root.appendChild(g);
     });
 
     // Crosshair
@@ -128,11 +159,15 @@ export function renderPayoffChart(series, options = {}) {
         cross.setAttribute('visibility', 'visible');
         root.dataset.index = String(index);
     };
-    // The series share their x grid, so one index serves all
-    const indexAt = (clientX) => {
+    const levelAt = (clientX) => {
         const box = root.getBoundingClientRect();
         const px = ((clientX - box.left) / (box.width || 1)) * W;
-        const s = sMin + ((px - m.left) / plotW) * (sMax - sMin);
+        return sMin + ((px - m.left) / plotW) * (sMax - sMin);
+    };
+    root.levelAt = levelAt;
+    // The series share their x grid, so one index serves all
+    const indexAt = (clientX) => {
+        const s = levelAt(clientX);
         let best = 0;
         main.forEach((p, i) => { if (Math.abs(p.s - s) < Math.abs(main[best].s - s)) best = i; });
         return best;

@@ -7,10 +7,11 @@ import { buildSchemaIndex } from './schemacheck.js';
 import { buildInfoQuery, buildContractsQuery } from './strategyquery.js';
 import {
     contractOptions, expirationsOf, strikesOf, findContract, nearestStrike, impliedForward, defaultLevel, groupsOf, isOption,
-    curve, moveRange, analyze, firstExpiry, netPremium, strategyPnl
+    curve, moveRange, analyze, firstExpiry, netPremium, strategyPnl, legLevel, valueAtLevel, snapToStep, stepStrike
 } from './payoff.js';
 import { TEMPLATES, FAMILIES, templateById, templatesFor, productKind, tesSupport, tesMinimums, buildLegs, legFromContract } from './strategies.js';
 import { renderPayoffChart } from './payoffchart.js';
+import { SketchPanel } from './sketchview.js';
 import { cetDate } from './tradingstatus.js';
 import { formatDateString } from './displayformat.js';
 import { downloadText } from './ui.js';
@@ -95,6 +96,24 @@ export class StrategyView {
         s1.appendChild(this.templates);
         this.tplForm = el('div', 'sw-form');
         s1.appendChild(this.tplForm);
+
+        // Or draw the payoff and let the wizard suggest the legs
+        const sk = el('section', 'pc-card sw-step');
+        const skHead = el('div', 'pc-card-head');
+        skHead.appendChild(el('h3', '', '1b · Or draw the payoff you want'));
+        skHead.appendChild(el('span', 'pc-hint', 'suggests the legs'));
+        sk.appendChild(skHead);
+        const skBody = el('div', 'sk-panel');
+        sk.appendChild(skBody);
+        box.appendChild(sk);
+        this.sketch = new SketchPanel(skBody, {
+            getData: () => (this.main ? this.loaded.get(this.main) || null : null),
+            onUse: (legs, append) => {
+                this.legs = append ? [...this.legs, ...legs] : legs;
+                this._legsChanged({ resetLevels: !append });
+                this.legsBox.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+            }
+        });
 
         // 2 · Legs
         const s2 = step(2, 'Legs', 'buy / sell, quantity and entry price are editable');
@@ -289,6 +308,7 @@ export class StrategyView {
             this._renderProductInfo(d);
             this._renderTemplates(d);
             this._renderBuilder();
+            this.sketch.refresh();
         } catch (err) {
             if (this.main !== code) return;
             this.mainPicker.retry();
@@ -456,7 +476,7 @@ export class StrategyView {
             cell().textContent = KIND_LABEL[leg.kind];
             cell().textContent = leg.kind === 'future' ? '' : levelText(Number(leg.strike));
             cell().textContent = formatDateString(leg.expiration);
-            const price = this._number(leg.price, (v, i) => { leg.price = Number.isFinite(v) ? v : NaN; leg.priceFromSettlement = false; i.classList.toggle('invalid', !Number.isFinite(v)); this._changed({ levels: leg.kind === 'future' }); }, { label: `Entry price of ${leg.label}`, width: 100 });
+            const price = this._number(leg.price, (v, i) => { leg.price = Number.isFinite(v) ? v : NaN; leg.priceFromSettlement = false; i.classList.toggle('invalid', !Number.isFinite(v)); this._futurePriceSet(leg); this._changed(); }, { label: `Entry price of ${leg.label}`, width: 100 });
             price.title = leg.priceFromSettlement ? 'Last settlement price. Overwrite with your own entry price.' : 'Entry price';
             cell(price);
             cell(this._number(leg.pointValue, (v, i) => { leg.pointValue = Number.isFinite(v) && v > 0 ? v : 0; leg.pointValueKnown = true; i.classList.toggle('invalid', !leg.pointValue); this._changed(); }, { label: `Point value of ${leg.product}`, width: 90 }));
@@ -580,7 +600,7 @@ export class StrategyView {
         names.forEach((name, i) => {
             const c = this.cfg[name] = this.cfg[name] || { s0: 0, auto: true, beta: 1, rel: 0 };
             if (reset) c.auto = true;
-            if (c.auto) c.s0 = this._autoLevel(name);
+            if (c.auto && !this.drag) c.s0 = this._autoLevel(name);
             if (i === 0) { c.beta = 1; c.rel = 0; }
         });
         Object.keys(this.cfg).forEach(k => { if (!names.includes(k)) delete this.cfg[k]; });
@@ -698,7 +718,8 @@ export class StrategyView {
         const fx = Object.fromEntries(Object.entries(this.settings.fx));
         const vol = (this.settings.vol || 0) / 100;
         const evalDate = firstExpiry(legs);
-        const range = moveRange(legs, groups, num(this.settings.range) / 100 || null);
+        // While a leg is dragged the axis stays put, otherwise it would rescale under the pointer
+        const range = this.freeze || moveRange(legs, groups, num(this.settings.range) / 100 || null);
         const expiry = curve(legs, groups, range, { date: evalDate, vol, fx });
         // Exact when every option is at its expiry on the evaluation date; otherwise part of the curve is the model
         const stats = analyze(expiry, { exact: legs.every(l => l.kind === 'future' || l.expiration === evalDate) });
@@ -721,16 +742,28 @@ export class StrategyView {
         tile('Valued at', formatDateString(evalDate));
         box.appendChild(tiles);
 
-        box.appendChild(renderPayoffChart(series, {
+        const markers = legs.map(l => {
+            const value = l.kind === 'future' ? l.price : l.strike;
+            return {
+                id: l.id, side: l.side, s: legLevel(l, groups, leader), draggable: this._draggable(l, groups, leader), active: this.drag?.id === l.id,
+                text: `${l.side > 0 ? '+' : '-'}${l.qty} ${l.product} ${l.kind === 'future' ? `F @${levelText(Number(value))}` : `${l.kind === 'call' ? 'C' : 'P'} ${levelText(Number(value))}`}`
+            };
+        });
+        const chart = renderPayoffChart(series, {
+            legs: markers,
+            onLegDown: (id, e) => this._startDrag(id, e),
+            onLegStep: (id, dir) => this._stepLeg(id, dir),
             breakevens: stats.breakevens,
             currentLevel: groups[leader].s0,
             currency: cur,
             xLabel: `${leader} level at the evaluation date`,
             label: `Payoff of the strategy at ${evalDate}: max profit ${stats.unlimitedProfit ? 'unlimited' : money(stats.maxProfit, cur)}, max loss ${stats.unlimitedLoss ? 'unlimited' : money(stats.maxLoss, cur)}`
-        }));
+        });
+        box.appendChild(chart);
+        if (this.focusLeg) { chart.querySelector(`[data-leg="${this.focusLeg}"]`)?.focus(); this.focusLeg = null; }
         box.appendChild(el('p', 'pc-hint', stats.unlimitedProfit || stats.unlimitedLoss
-            ? 'Max profit / loss are over the shown range; "Unlimited" means the curve is still moving at its upper end. Hover the chart or focus it and use the arrow keys for values.'
-            : 'Max profit / loss are over the shown range. Hover the chart or focus it and use the arrow keys for values.'));
+            ? 'Max profit / loss are over the shown range; "Unlimited" means the curve is still moving at its upper end. Drag a leg under the chart sideways to move its strike (a future: its entry price); the legs above follow. Hover the chart or focus it and use the arrow keys for values.'
+            : 'Max profit / loss are over the shown range. Drag a leg under the chart sideways to move its strike (a future: its entry price); the legs above follow. Hover the chart or focus it and use the arrow keys for values.'));
 
         // Notes about what the numbers rest on
         const notes = [];
@@ -765,6 +798,103 @@ export class StrategyView {
         actions.appendChild(button('Download CSV', { className: 'pc-btn', iconName: 'download', onClick: () => this._csv(series, groups, leader, cur) }));
         box.appendChild(actions);
         refreshIcons();
+    }
+
+    // ---------- Dragging legs ----------
+
+    // A leg can be moved when it has a place on the axis and, for an option, its listed strikes are loaded
+    _draggable(leg, groups, leader) {
+        if (legLevel(leg, groups, leader) === null) return false;
+        return leg.kind === 'future' || Boolean(this.loaded.get(leg.product));
+    }
+
+    _ladder(leg) {
+        const d = this.loaded.get(leg.product);
+        return d ? strikesOf(d.options, leg.expiration, leg.kind) : [];
+    }
+
+    // A future's entry price is the user's own: from now on the reference level keeps its value
+    _futurePriceSet(leg) {
+        const c = this.cfg[leg.group || leg.product];
+        if (c) c.auto = false;
+    }
+
+    /** Moves an option to another listed strike, or a future to another entry price, and brings the leg data along. */
+    _setLegValue(leg, value) {
+        if (leg.kind === 'future') {
+            const d = this.loaded.get(leg.product);
+            const step = Number(d?.info?.TickSize) || 0;
+            const next = snapToStep(value, step);
+            if (!(next > 0) || next === leg.price) return false;
+            this._futurePriceSet(leg);
+            leg.price = next;
+            leg.priceFromSettlement = false;
+            return true;
+        }
+        const d = this.loaded.get(leg.product);
+        const contract = d ? findContract(d.options, leg.kind, leg.expiration, value) : null;
+        if (!contract || contract.strike === leg.strike) return false;
+        leg.strike = contract.strike;
+        leg.label = contract.label || `${leg.product} ${leg.expiration} ${contract.strike}`;
+        // The price follows the settlement price of the new contract, unless it is the user's own entry price
+        if (leg.priceFromSettlement || !(leg.price > 0)) { leg.price = contract.price ?? 0; leg.priceFromSettlement = contract.price !== null; }
+        return true;
+    }
+
+    _redrawAfterMove() {
+        this._renderLegs();
+        this._renderResult();
+        this._persist();
+    }
+
+    _startDrag(id, e) {
+        const leg = this.legs.find(l => l.id === id);
+        const { legs, groups, names } = this._model();
+        if (!leg || !this._draggable(leg, groups, names[0])) return;
+        e.preventDefault();
+        this.freeze = moveRange(legs, groups, num(this.settings.range) / 100 || null);
+        this.drag = { id };
+        document.body.classList.add('pf-dragging');
+        const move = (ev) => {
+            const svg = this.out.querySelector('svg.pf');
+            const m = this._model();
+            if (!svg?.levelAt || !m.names.length) return;
+            const target = valueAtLevel(leg, m.groups, m.names[0], svg.levelAt(ev.clientX));
+            if (target === null) return;
+            const value = leg.kind === 'future' ? target : (nearestStrike(this._ladder(leg), target)?.strike ?? null);
+            if (value !== null && this._setLegValue(leg, value)) this._redrawAfterMove();
+        };
+        const end = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', end);
+            window.removeEventListener('pointercancel', end);
+            document.body.classList.remove('pf-dragging');
+            this.drag = null;
+            this.freeze = null;
+            this._renderScenario();
+            this._renderResult();
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+        this._renderResult(); // marks the pill as active
+    }
+
+    // Keyboard: one listed strike per press (a future: one tick, or a thousandth of the level without a tick size)
+    _stepLeg(id, dir) {
+        const leg = this.legs.find(l => l.id === id);
+        if (!leg) return;
+        let value;
+        if (leg.kind === 'future') {
+            const d = this.loaded.get(leg.product);
+            const step = Number(d?.info?.TickSize) || Math.max(Number(leg.price) / 1000, 0.01);
+            value = Number(leg.price) + dir * step;
+        } else {
+            value = stepStrike(this._ladder(leg), leg.strike, dir);
+            if (value === null) return;
+        }
+        this.focusLeg = id;
+        if (this._setLegValue(leg, value)) { this._redrawAfterMove(); this._renderScenario(); } else this.focusLeg = null;
     }
 
     _sample(series, count) {

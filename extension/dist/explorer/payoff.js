@@ -268,3 +268,37 @@ export function nearestStrike(strikes, level) {
     strikes.forEach((k, i) => { if (Math.abs(k - level) < Math.abs(strikes[at] - level)) at = i; });
     return { strike: strikes[at], index: at };
 }
+
+// ---------- Dragging legs on the chart ----------
+// A leg sits on the x axis (level of the first underlying) where its strike, or for a future its entry price, would be
+// reached. Dragging inverts that: a chart level becomes a strike / price of the leg's own underlying.
+
+/** Chart level of a leg's strike (options) or entry price (futures); null when the leg cannot be placed (beta 0, no level). */
+export function legLevel(leg, groups, leader) {
+    const g = groups[leg.group || leg.product];
+    const lead = groups[leader];
+    const value = leg.kind === 'future' ? Number(leg.price) : Number(leg.strike);
+    if (!g || !lead || !(g.s0 > 0) || !(lead.s0 > 0) || !g.beta || !Number.isFinite(value)) return null;
+    return lead.s0 * (1 + (value / g.s0 - 1 - g.rel) / g.beta);
+}
+
+/** The strike / price of the leg's own underlying at a chart level (inverse of legLevel). */
+export function valueAtLevel(leg, groups, leader, level) {
+    const lead = groups[leader];
+    if (!lead || !(lead.s0 > 0)) return null;
+    return groupLevel(groups, leg.group || leg.product, level / lead.s0 - 1);
+}
+
+/** Value rounded to a multiple of `step` (tick size); unchanged without a usable step. */
+export function snapToStep(value, step) {
+    if (!(step > 0)) return value;
+    const n = Math.round(value / step);
+    return Number((n * step).toFixed(10));
+}
+
+/** The listed strike `delta` places away from `strike` (clamped to the ladder); null for an empty ladder. */
+export function stepStrike(strikes, strike, delta) {
+    const at = nearestStrike(strikes, strike);
+    if (!at) return null;
+    return strikes[Math.max(0, Math.min(strikes.length - 1, at.index + delta))];
+}
