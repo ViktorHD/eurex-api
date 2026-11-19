@@ -15,6 +15,7 @@ import { ProductCard } from './productcard.js';
 import { ProductsView } from './productsview.js';
 import { CalendarView } from './calendarview.js?v=2';
 import { RollView } from './rollview.js?v=7';
+import { StrategyView } from './strategyview.js';
 import { loadDisplay, setDisplay, getDisplay, NUMBER_MODES, DATE_MODES } from './displayformat.js';
 import { XLSX_MIME } from './xlsx.js';
 import { hardenSecretInput, isRevealed, setRevealed } from './secretinput.js';
@@ -57,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const productPane = document.getElementById('productPane');
     const calendarPane = document.getElementById('calendarPane');
     const rollPane = document.getElementById('rollPane');
+    const strategyPane = document.getElementById('strategyPane');
 
     // Toggles
     const toggleQueryBtn = document.getElementById('toggleQueryBtn');
@@ -80,6 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         'roll-tracker': { nav: 'nav-roll-tracker', pane: rollPane, onShow: () => rollView.show() },
+        'strategy-wizard': { nav: 'nav-strategy-wizard', pane: strategyPane, onShow: () => strategyView.show() },
         'trading-hours': { nav: 'nav-trading-hours', pane: timelinePane, onShow: () => timelineManager.fetchAndRender() },
         'calendar': { nav: 'nav-calendar', pane: calendarPane, onShow: () => calendarView.show(), onHide: () => calendarView.hide() },
         'info': { nav: 'nav-info', pane: infoPane, onShow: () => infoPanel.load() }
@@ -131,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    ['api-overview', 'products', 'eurex-overview', 'roll-tracker', 'trading-hours', 'calendar', 'info', 'api-explorer'].forEach(view => {
+    ['api-overview', 'products', 'eurex-overview', 'roll-tracker', 'strategy-wizard', 'trading-hours', 'calendar', 'info', 'api-explorer'].forEach(view => {
         const id = view === 'api-explorer' ? 'nav-api-explorer' : (VIEWS[view]?.nav);
         document.getElementById(id)?.addEventListener('click', () => switchAppView(view));
     });
@@ -525,6 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const productsView = new ProductsView(client, { content: document.getElementById('productsContent') }, { onOpenProduct: openProduct, getSchema: getSchemaOnce });
     const rollView = new RollView(client, { content: document.getElementById('rollContent') }, { onOpenProduct: openProduct, getSchema: getSchemaOnce });
+    const strategyView = new StrategyView(client, { content: document.getElementById('strategyContent') }, { onOpenProduct: openProduct, getSchema: getSchemaOnce });
     const calendarView = new CalendarView(client, { content: document.getElementById('calendarContent') }, { onOpenProduct: openProduct });
     document.getElementById('productBackBtn')?.addEventListener('click', () => switchAppView('products'));
 

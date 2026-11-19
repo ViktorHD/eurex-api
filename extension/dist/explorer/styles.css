@@ -4307,3 +4307,45 @@ html.boot-overview #nav-api-explorer.active { background: transparent; color: in
     .overview-3d-slider input { width: 70px; }
     .overview-gl-card { width: calc(100% - 24px); }
 }
+
+/* ---------- Strategy Wizard ---------- */
+.sw-step { margin-bottom: 14px; }
+.sw-info { margin: 4px 0 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.sw-info .pc-chips { margin-top: 0; }
+.sw-templates { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.sw-tpl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sw-tpl-family { min-width: 96px; }
+.sw-tes-badge { margin-left: 6px; padding: 0 5px; border-radius: 999px; background: #7a73a6; color: #fff; font-size: 0.65rem; font-weight: 600; }
+.sw-form { margin-top: 8px; }
+.sw-form:empty { display: none; }
+.sw-missing .pc-note { margin: 4px 0 0; }
+.sw-sub { font-size: 0.82rem; color: var(--navy-blue); margin: 14px 0 6px; }
+.sw-table-wrap { overflow-x: auto; }
+.sw-table td { vertical-align: middle; white-space: nowrap; }
+.sw-table .pc-select { margin: 0; }
+.sw-num { font: inherit; font-size: 0.82rem; padding: 4px 6px; border: 1px solid var(--eurex-line); border-radius: 4px; background: #fff; text-align: right; }
+.sw-num.invalid, .sw-picker input.invalid { border-color: var(--error); background: #fdecec; }
+.sw-del { padding: 4px 6px; }
+.sw-check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; }
+.sw-pick-note.bad { color: var(--error); }
+.sw-details { margin: 12px 0 8px; }
+.sw-details summary { cursor: pointer; color: var(--navy-blue); font-size: 0.85rem; }
+.sw-details table { margin-top: 8px; max-width: 520px; }
+.sw-tes p { margin: 2px 0; }
+.pc-stat.gain strong { color: #007a4a; }
+.pc-stat.loss strong { color: var(--error); }
+.pf { display: block; width: 100%; max-width: 860px; height: auto; margin: 10px 0 4px; }
+.pf-gain { fill: rgba(0, 206, 125, 0.22); }
+.pf-loss { fill: rgba(211, 47, 47, 0.18); }
+.pf-zero { stroke: #8a949b; stroke-width: 1; }
+.pf-now { stroke: var(--eurex-grey); stroke-width: 1; stroke-dasharray: 4 4; }
+.pf-line { stroke: var(--navy-blue); stroke-width: 2.2; stroke-linejoin: round; }
+.pf-line2 { stroke: #c77d00; }
+.pf-dashed { stroke-dasharray: 6 4; }
+.pf-be { fill: #fff; stroke: var(--navy-blue); stroke-width: 2; }
+.pf-be-label { fill: var(--navy-blue); font-size: 11px; font-weight: 600; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.pf-vline { stroke: #7a73a6; stroke-width: 1; }
+.pf-dot { fill: var(--navy-blue); }
+.pf-dot2 { fill: #c77d00; }
+.pf-tipbg { fill: #fff; stroke: var(--eurex-line); }
+.pf-tip { font-size: 11px; fill: var(--text-primary); }
