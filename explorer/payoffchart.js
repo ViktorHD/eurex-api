@@ -26,14 +26,15 @@ const money = (v) => `${v < 0 ? '-' : v > 0 ? '+' : ''}${Math.abs(v).toLocaleStr
  * series: [{ name, points: [{ x, s, y }], dashed? }]; the first series is the main one (area fill, breakevens).
  * options: { breakevens: [{ x, s }], currentLevel: number, currency, label, xLabel,
  *   legs: [{ id, text, s (level the leg sits at), side, draggable, active }],
- *   onLegDown(id, pointerEvent), onLegStep(id, -1 | 1) }
+ *   onLegDown(id, pointerEvent), onLegStep(id, -1 | 1),
+ *   ghost: { points: [{ s, y }] } a wish curve drawn behind the first series (inside the shown levels only) }
  * Legs are drawn as pills in a lane under the axis, one row each; a draggable pill reports pointer presses and arrow keys
  * to the caller, which moves the leg and draws a new chart. The svg gets levelAt(clientX) and xAt(level) for the caller.
  * Returns the <svg> element, already filled.
  */
 export function renderPayoffChart(series, options = {}) {
-    const W = 760;
-    const H = 360 + (options.legs?.length ? options.legs.length * 22 + 6 : 0);
+    const W = 640;
+    const H = 400 + (options.legs?.length ? options.legs.length * 22 + 6 : 0);
     const legs = options.legs || [];
     const LANE = 22;
     const m = { top: 30, right: 22, bottom: 44 + (legs.length ? legs.length * LANE + 6 : 0), left: 66 };
@@ -48,8 +49,9 @@ export function renderPayoffChart(series, options = {}) {
     const all = series.flatMap(s => s.points);
     const sMin = Math.min(...all.map(p => p.s));
     const sMax = Math.max(...all.map(p => p.s));
-    let yMin = Math.min(0, ...all.map(p => p.y));
-    let yMax = Math.max(0, ...all.map(p => p.y));
+    const ghost = (options.ghost?.points || []).filter(p => p.s >= sMin && p.s <= sMax);
+    let yMin = Math.min(0, ...all.map(p => p.y), ...ghost.map(p => p.y));
+    let yMax = Math.max(0, ...all.map(p => p.y), ...ghost.map(p => p.y));
     if (yMin === yMax) { yMin -= 1; yMax += 1; }
     const pad = (yMax - yMin) * 0.08;
     const yTicks = niceTicks(yMin - pad, yMax + pad, 6);
@@ -94,6 +96,7 @@ export function renderPayoffChart(series, options = {}) {
         root.appendChild(svg('line', { x1: sx(options.currentLevel), x2: sx(options.currentLevel), y1: m.top, y2: H - m.bottom, class: 'pf-now' }));
         root.appendChild(svg('text', { x: sx(options.currentLevel) + 4, y: m.top + 10, class: 'lc-tick' }, 'now'));
     }
+    if (ghost.length > 1) root.appendChild(svg('path', { d: line(ghost), class: 'pf-ghost', fill: 'none' }));
     series.forEach((s, i) => root.appendChild(svg('path', { d: line(s.points), class: `pf-line${i ? ' pf-line2' : ''}${s.dashed ? ' pf-dashed' : ''}`, fill: 'none' })));
     (options.breakevens || []).forEach(b => {
         root.appendChild(svg('circle', { cx: sx(b.s), cy: zero, r: 4.5, class: 'pf-be' }));
@@ -103,7 +106,7 @@ export function renderPayoffChart(series, options = {}) {
     // Legs: pills in a lane under the axis. Dragging one is the caller's business; here only the events are forwarded.
     legs.forEach((leg, i) => {
         if (!Number.isFinite(leg.s)) return;
-        const w = Math.max(54, leg.text.length * 6.6 + 16);
+        const w = Math.max(54, leg.text.length * 7.1 + 16);
         const x = Math.max(m.left + w / 2, Math.min(W - m.right - w / 2, sx(leg.s)));
         const y = m.top + plotH + 44 + i * LANE;
         const g = svg('g', { class: `pf-leg${leg.side < 0 ? ' pf-sell' : ''}${leg.draggable ? ' pf-drag' : ''}${leg.active ? ' pf-active' : ''}`, 'data-leg': leg.id });
@@ -147,7 +150,7 @@ export function renderPayoffChart(series, options = {}) {
         });
         tip.textContent = '';
         lines.forEach((t, i) => { const ts = svg('tspan', { x: 0, dy: i ? 15 : 0 }, t); tip.appendChild(ts); });
-        const w = 160;
+        const w = 170;
         const h = 10 + lines.length * 15;
         const left = x + 12 + w > W - m.right ? x - 12 - w : x + 12;
         tip.setAttribute('transform', `translate(${left + 8} ${m.top + 18})`);

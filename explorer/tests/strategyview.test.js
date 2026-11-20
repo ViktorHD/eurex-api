@@ -65,7 +65,7 @@ beforeEach(() => localStorage.clear());
 
 describe('dragging legs on the chart', () => {
     const origRect = Element.prototype.getBoundingClientRect;
-    beforeAll(() => { Element.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 760, height: 400, right: 760, bottom: 400 }); });
+    beforeAll(() => { Element.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 640, height: 400, right: 640, bottom: 400 }); });
     afterAll(() => { Element.prototype.getBoundingClientRect = origRect; });
 
     const straddle = async () => {
@@ -87,9 +87,9 @@ describe('dragging legs on the chart', () => {
         return svg;
     };
 
-    test('every leg is a pill under the chart, with the strike it sits at', async () => {
+    test('every leg is a pill under the chart, named as the API names the contract', async () => {
         const { box } = await straddle();
-        expect(pills(box).map(label)).toEqual(['+1 OESX C 5,000', '+1 OESX P 5,000']);
+        expect(pills(box).map(label)).toEqual(['+1 OESX C 5000', '+1 OESX P 5000']);
         expect(pills(box).every(p => p.getAttribute('role') === 'slider' && p.getAttribute('tabindex') === '0')).toBe(true);
     });
 
@@ -98,10 +98,10 @@ describe('dragging legs on the chart', () => {
         expect(tile(box, 'Net debit')).toBe('1,200 EUR');
         dragTo(box, pills(box)[0], 4890);
         const row = box.querySelector('.sw-legs tbody tr');
-        expect(row.children[5].textContent).toBe('4,900');                 // strike
-        expect(row.children[2].textContent).toBe('OESX C 4900');           // contract
+        expect(row.dataset.strike).toBe('4900');                          // strike
+        expect(row.querySelector('.sw-contract').textContent).toBe('OESX C 4900'); // contract
         expect(row.querySelectorAll('input')[1].value).toBe('160');        // settlement price of the new contract
-        expect(label(pills(box)[0])).toBe('+1 OESX C 4,900');
+        expect(label(pills(box)[0])).toBe('+1 OESX C 4900');
         expect(tile(box, 'Net debit')).toBe('2,200 EUR');                  // (160 + 60) * 10: the result follows the new leg
         expect(document.body.classList.contains('pf-dragging')).toBe(false);
         expect(JSON.parse(localStorage.getItem('eurexExplorer.strategy')).legs[0].strike).toBe(4900);
@@ -110,7 +110,7 @@ describe('dragging legs on the chart', () => {
     test('a strike cannot leave the listed ladder', async () => {
         const { box } = await straddle();
         dragTo(box, pills(box)[1], 99999);
-        expect(box.querySelectorAll('.sw-legs tbody tr')[1].children[5].textContent).toBe('5,200');
+        expect(box.querySelectorAll('.sw-legs tbody tr')[1].dataset.strike).toBe('5200');
     });
 
     test('an entry price typed by the user is kept when the strike moves', async () => {
@@ -127,11 +127,11 @@ describe('dragging legs on the chart', () => {
         const pill = () => pills(box)[1];
         pill().focus();
         pill().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-        expect(box.querySelectorAll('.sw-legs tbody tr')[1].children[5].textContent).toBe('4,900');
+        expect(box.querySelectorAll('.sw-legs tbody tr')[1].dataset.strike).toBe('4900');
         expect(document.activeElement.getAttribute('data-leg')).toBe(pill().getAttribute('data-leg'));
         pill().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
         pill().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-        expect(box.querySelectorAll('.sw-legs tbody tr')[1].children[5].textContent).toBe('5,100');
+        expect(box.querySelectorAll('.sw-legs tbody tr')[1].dataset.strike).toBe('5100');
     });
 
     test('dragging a future changes its entry price (snapped to the tick) but not the reference level', async () => {
@@ -142,11 +142,13 @@ describe('dragging legs on the chart', () => {
         click(byText(box, '.sw-tpl', 'Futures calendar'));
         click(byText(box, '.sw-form button', 'Replace legs'));
         const refBefore = box.querySelector('.sw-scenario input').value;
-        dragTo(box, pills(box)[0], 5033.4);
+        dragTo(box, pills(box)[0], 5040);
         const row = box.querySelector('.sw-legs tbody tr');
-        expect(row.querySelectorAll('input')[1].value).toBe('5033');
+        const price = Number(row.querySelectorAll('input')[1].value);
+        expect(Math.abs(price - 5040)).toBeLessThanOrEqual(3); // the pointer position is a whole pixel, about 2 points wide
+        expect(Number.isInteger(price)).toBe(true);           // snapped to the tick size of 1
         expect(box.querySelector('.sw-scenario input').value).toBe(refBefore);
-        expect(label(pills(box)[0])).toBe('+1 FESX F @5,033');
+        expect(label(pills(box)[0])).toBe(`+1 FESX A @${price.toLocaleString('en-US')}`);
     });
 
     test('legs whose strikes are not loaded cannot be dragged', async () => {
@@ -161,7 +163,7 @@ describe('dragging legs on the chart', () => {
 
 describe('drawing a payoff', () => {
     const origRect = Element.prototype.getBoundingClientRect;
-    beforeAll(() => { Element.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 760, height: 300, right: 760, bottom: 300 }); });
+    beforeAll(() => { Element.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 640, height: 290, right: 640, bottom: 290 }); });
     afterAll(() => { Element.prototype.getBoundingClientRect = origRect; });
 
     const picked = async (code = 'OESX') => {
@@ -174,8 +176,8 @@ describe('drawing a payoff', () => {
     const sk = (box) => box.querySelector('.sk-panel');
     const cards = (box) => [...sk(box).querySelectorAll('.sk-card')];
     const names = (box) => cards(box).map(c => c.querySelector('strong').textContent);
-    // pixel position (viewBox units) of a level fraction u and a P&L fraction v in the drawing area: margins 66 / 14, size 672 x 252
-    const pt = (u, v) => ({ clientX: 66 + u * 672, clientY: 14 + (252 * (1 - v)) / 2 });
+    // pixel position (viewBox units) of a level fraction u and a P&L fraction v in the drawing area: margins 66 / 14, size 552 x 242
+    const pt = (u, v) => ({ clientX: 66 + u * 552, clientY: 14 + (242 * (1 - v)) / 2 });
     const draw = (box, curve) => {
         const pad = sk(box).querySelector('.sk-pad');
         const pts = Array.from({ length: 41 }, (_, i) => pt(i / 40, curve(i / 40)));
@@ -199,8 +201,8 @@ describe('drawing a payoff', () => {
         expect(names(box)).toContain('2 legs · Long straddle');
         const recommended = cards(box).find(c => c.querySelector('.sw-tes-badge'));
         expect(recommended.textContent).toContain('2 legs · Long straddle');
-        expect(recommended.textContent).toContain('Buy 1 × OESX C 5,000');
-        expect(recommended.textContent).toContain('Buy 1 × OESX P 5,000');
+        expect(recommended.textContent).toContain('Buy 1 × OESX C 5000');
+        expect(recommended.textContent).toContain('Buy 1 × OESX P 5000');
         expect(sk(box).querySelector('.lc-empty').getAttribute('visibility')).toBe('hidden'); // "Draw here" makes way for the drawing
         expect(sk(box).querySelector('.pf-line2').getAttribute('d')).toMatch(/^M/); // the dashed preview
         expect(sk(box).querySelector('.sk-line').getAttribute('d')).toMatch(/^M/);  // and the drawing
@@ -209,24 +211,40 @@ describe('drawing a payoff', () => {
     test('using the legs puts them into the strategy with their data and draws the payoff', async () => {
         const { box } = await picked();
         draw(box, (u) => 1.6 * Math.abs(2 * u - 1) - 0.8);
-        click(byText(cards(box).find(c => c.textContent.includes('Long straddle')), 'button', 'Use these legs'));
+        click(byText(cards(box).find(c => c.textContent.includes('Long straddle')), 'button', 'Use legs'));
         const rows = [...box.querySelectorAll('.sw-legs tbody tr')];
-        expect(rows.map(r => r.children[4].textContent)).toEqual(['Call', 'Put']);
-        expect(rows.map(r => r.children[5].textContent)).toEqual(['5,000', '5,000']);
+        expect(rows.map(r => r.dataset.kind)).toEqual(['call', 'put']);
+        expect(rows.map(r => r.dataset.strike)).toEqual(['5000', '5000']);
         expect(rows[0].querySelector('select').value).toBe('1');
         expect(tile(box, 'Net debit')).toBe('1,200 EUR');
         expect(box.querySelectorAll('.pf-leg')).toHaveLength(2); // and the legs can be dragged on the chart
     });
 
-    test('a short volatility shape gives sold legs, "Add to legs" keeps the existing ones', async () => {
+    test('the wish is drawn behind the payoff of the legs, moved to its height, and follows the drawing', async () => {
+        const { box } = await picked();
+        expect(box.querySelector('.pf-ghost')).toBeNull();
+        click(byText(box, '.sk-panel button', 'Long volatility'));
+        click(byText(cards(box).find(c => c.textContent.includes('Long straddle')), 'button', 'Use legs'));
+        const ghost = box.querySelector('.sw-out .pf-ghost');
+        expect(ghost.getAttribute('d')).toMatch(/^M/);
+        expect(box.querySelector('.sw-legend').textContent).toContain('Your wish');
+        const before = ghost.getAttribute('d');
+        click(byText(box, '.sk-panel button', 'Bullish'));
+        expect(box.querySelector('.sw-out .pf-ghost').getAttribute('d')).not.toBe(before);
+        click(byText(box, '.sk-panel button', 'Clear'));
+        expect(box.querySelector('.pf-ghost')).toBeNull();
+        expect(box.querySelector('.sw-legend')).toBeNull();
+    });
+
+    test('a short volatility shape gives sold legs, "Add" keeps the existing ones', async () => {
         const { box } = await picked();
         click(byText(box, '.sk-panel button', 'Long volatility'));
-        click(byText(cards(box).find(c => c.textContent.includes('Long straddle')), 'button', 'Use these legs'));
+        click(byText(cards(box).find(c => c.textContent.includes('Long straddle')), 'button', 'Use legs'));
         click(byText(box, '.sk-panel button', 'Short volatility'));
         const short = cards(box).find(c => c.textContent.includes('Short straddle'));
-        expect(short.textContent).toContain('Sell 1 × OESX C 5,000');
+        expect(short.textContent).toContain('Sell 1 × OESX C 5000');
         expect(short.textContent).toContain('Net credit');
-        click(byText(short, 'button', 'Add to legs'));
+        click(byText(short, 'button', 'Add'));
         expect(box.querySelectorAll('.sw-legs tbody tr')).toHaveLength(4);
     });
 
@@ -256,6 +274,16 @@ describe('drawing a payoff', () => {
 });
 
 describe('StrategyView', () => {
+    test('puts the inputs (product, legs, scenario) in one group and the wish and the result in another', async () => {
+        const { view, box } = make();
+        await view.show();
+        const titles = (sel) => [...box.querySelectorAll(`${sel} .pc-card-head h3`)].map(h => h.textContent);
+        expect(titles('.sw-left')).toEqual(['1 · Product and template', '2 · Legs', '3 · Scenario and model']);
+        expect(titles('.sw-right')).toEqual(['Your wish · draw the payoff', 'Result · payoff of your legs']);
+        expect(box.querySelector('.sw-wish .sk-panel')).not.toBeNull();
+        expect(box.querySelector('.sw-result .sw-out')).not.toBeNull();
+    });
+
     test('offers only option and future products, and loads nothing else before one is picked', async () => {
         const { view, box, calls } = make();
         await view.show();
@@ -330,8 +358,8 @@ describe('StrategyView', () => {
         const rows = [...box.querySelectorAll('.sw-table tbody tr')];
         expect(rows.length).toBeGreaterThanOrEqual(2);
         const legRows = [...box.querySelectorAll('.sw-legs tbody tr')];
-        expect(legRows.map(r => r.children[4].textContent)).toEqual(['Call', 'Put']);
-        expect(legRows.map(r => r.children[5].textContent)).toEqual(['5,000', '5,000']);
+        expect(legRows.map(r => r.dataset.kind)).toEqual(['call', 'put']);
+        expect(legRows.map(r => r.dataset.strike)).toEqual(['5000', '5000']);
         // premium 60 + 60 at 10 per point (1 / 0.1)
         expect(tile(box, 'Net debit')).toBe('1,200 EUR');
         expect(tile(box, 'Max profit')).toBe('Unlimited');
@@ -378,7 +406,7 @@ describe('StrategyView', () => {
         await flush();
         click(byText(box, '.sw-form button', 'Replace legs'));
         const legRows = [...box.querySelectorAll('.sw-legs tbody tr')];
-        expect(legRows.map(r => r.children[3].textContent)).toEqual(['FESX', 'FDAX']);
+        expect(legRows.map(r => r.dataset.product)).toEqual(['FESX', 'FDAX']);
         expect(legRows.map(r => r.children[0].querySelector('select').value)).toEqual(['1', '-1']);
         expect(calls.filter(q => q.includes('"FDAX"'))).toHaveLength(2);
         expect(box.querySelector('.sw-scenario').textContent).toContain('Beta to first');
@@ -410,8 +438,8 @@ describe('StrategyView', () => {
         await flush();
         click(byText(box, '.sw-builder button', 'Add leg'));
         const rows = [...box.querySelectorAll('.sw-legs tbody tr')];
-        expect(rows.map(r => r.children[3].textContent)).toEqual(['OESX', 'FESX']);
-        expect(rows.map(r => r.children[4].textContent)).toEqual(['Call', 'Future']);
+        expect(rows.map(r => r.dataset.product)).toEqual(['OESX', 'FESX']);
+        expect(rows.map(r => r.dataset.kind)).toEqual(['call', 'future']);
         click(rows[0].querySelector('.sw-del'));
         expect(box.querySelectorAll('.sw-legs tbody tr')).toHaveLength(1);
     });

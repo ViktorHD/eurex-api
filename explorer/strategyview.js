@@ -12,6 +12,7 @@ import {
 import { TEMPLATES, FAMILIES, templateById, templatesFor, productKind, tesSupport, tesMinimums, buildLegs, legFromContract } from './strategies.js';
 import { renderPayoffChart } from './payoffchart.js';
 import { SketchPanel } from './sketchview.js';
+import { resample } from './fit.js';
 import { cetDate } from './tradingstatus.js';
 import { formatDateString } from './displayformat.js';
 import { downloadText } from './ui.js';
@@ -76,18 +77,25 @@ export class StrategyView {
         this.status.setAttribute('role', 'status');
         box.append(this.alertBox, this.status);
 
-        const step = (n, title, hint) => {
-            const sec = el('section', 'pc-card sw-step');
+        // Two columns on a wide screen, three on a very wide one: the inputs on the left (product, legs, scenario), the wish
+        // (drawing) and the result (payoff) next to each other on the right, both kept in view while the legs are edited.
+        const grid = el('div', 'sw-grid');
+        const left = el('div', 'sw-left');
+        const right = el('div', 'sw-right');
+        grid.append(left, right);
+        box.appendChild(grid);
+        const step = (parent, title, hint, cls = '') => {
+            const sec = el('section', `pc-card sw-step ${cls}`.trim());
             const head = el('div', 'pc-card-head');
-            head.appendChild(el('h3', '', `${n} · ${title}`));
+            head.appendChild(el('h3', '', title));
             if (hint) head.appendChild(el('span', 'pc-hint', hint));
             sec.appendChild(head);
-            box.appendChild(sec);
+            parent.appendChild(sec);
             return sec;
         };
 
         // 1 · Product and template
-        const s1 = step(1, 'Product and template', 'optional shortcut');
+        const s1 = step(left, '1 · Product and template', 'optional shortcut');
         this.mainPicker = this._picker({ placeholder: 'Product, e.g. OESX', onPick: (code) => this._pickMain(code) });
         s1.appendChild(this.mainPicker.root);
         this.productInfo = el('div', 'sw-info');
@@ -97,26 +105,8 @@ export class StrategyView {
         this.tplForm = el('div', 'sw-form');
         s1.appendChild(this.tplForm);
 
-        // Or draw the payoff and let the wizard suggest the legs
-        const sk = el('section', 'pc-card sw-step');
-        const skHead = el('div', 'pc-card-head');
-        skHead.appendChild(el('h3', '', '1b · Or draw the payoff you want'));
-        skHead.appendChild(el('span', 'pc-hint', 'suggests the legs'));
-        sk.appendChild(skHead);
-        const skBody = el('div', 'sk-panel');
-        sk.appendChild(skBody);
-        box.appendChild(sk);
-        this.sketch = new SketchPanel(skBody, {
-            getData: () => (this.main ? this.loaded.get(this.main) || null : null),
-            onUse: (legs, append) => {
-                this.legs = append ? [...this.legs, ...legs] : legs;
-                this._legsChanged({ resetLevels: !append });
-                this.legsBox.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
-            }
-        });
-
         // 2 · Legs
-        const s2 = step(2, 'Legs', 'buy / sell, quantity and entry price are editable');
+        const s2 = step(left, '2 · Legs', 'side, quantity and entry price are editable');
         this.legsBox = el('div', 'sw-legs');
         s2.appendChild(this.legsBox);
         this.builder = el('div', 'sw-builder');
@@ -125,12 +115,26 @@ export class StrategyView {
         s2.appendChild(this.tesBox);
 
         // 3 · Scenario and model
-        const s3 = step(3, 'Scenario and model');
+        const s3 = step(left, '3 · Scenario and model');
         this.scenario = el('div', 'sw-scenario');
         s3.appendChild(this.scenario);
 
-        // 4 · Payoff
-        const s4 = step(4, 'Payoff');
+        // Wish: draw the payoff and let the wizard suggest the legs
+        const sk = step(right, 'Your wish · draw the payoff', 'suggests the legs', 'sw-wish');
+        const skBody = el('div', 'sk-panel');
+        sk.appendChild(skBody);
+        this.sketch = new SketchPanel(skBody, {
+            getData: () => (this.main ? this.loaded.get(this.main) || null : null),
+            onChange: () => { if (this.out) this._renderResult(); },
+            onUse: (legs, append) => {
+                this.legs = append ? [...this.legs, ...legs] : legs;
+                this._legsChanged({ resetLevels: !append });
+                this.legsBox.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+            }
+        });
+
+        // Result: the payoff of the legs
+        const s4 = step(right, 'Result · payoff of your legs', '', 'sw-result');
         this.out = el('div', 'sw-out');
         s4.appendChild(this.out);
         this._renderBuilder();
@@ -461,25 +465,24 @@ export class StrategyView {
         const wrap = el('div', 'sw-table-wrap');
         const table = el('table', 'pc-table sw-table');
         const head = el('tr');
-        ['', 'Qty', 'Contract', 'Product', 'Type', 'Strike', 'Expiry', 'Entry price', 'Point value', ''].forEach(h => head.appendChild(el('th', '', h)));
+        ['', 'Qty', 'Contract', 'Entry price', 'Point value', ''].forEach(h => head.appendChild(el('th', '', h)));
         const thead = el('thead');
         thead.appendChild(head);
         table.appendChild(thead);
         const body = el('tbody');
         this.legs.forEach(leg => {
             const tr = el('tr');
+            Object.assign(tr.dataset, { leg: leg.id, product: leg.product, kind: leg.kind, strike: leg.kind === 'future' ? '' : String(leg.strike), expiry: leg.expiration });
             const cell = (c) => { const td = el('td'); if (c) td.appendChild(c); tr.appendChild(td); return td; };
             cell(this._select([[1, 'Buy'], [-1, 'Sell']], leg.side, (v) => { leg.side = Number(v); this._changed(); }, 'Buy or sell'));
-            cell(this._number(leg.qty, (v, i) => { leg.qty = Number.isFinite(v) && v >= 1 ? Math.round(v) : 0; i.classList.toggle('invalid', !leg.qty); this._changed(); }, { label: 'Quantity', step: 1, min: 1, width: 60 }));
-            cell().textContent = leg.label;
-            cell().textContent = leg.product;
-            cell().textContent = KIND_LABEL[leg.kind];
-            cell().textContent = leg.kind === 'future' ? '' : levelText(Number(leg.strike));
-            cell().textContent = formatDateString(leg.expiration);
-            const price = this._number(leg.price, (v, i) => { leg.price = Number.isFinite(v) ? v : NaN; leg.priceFromSettlement = false; i.classList.toggle('invalid', !Number.isFinite(v)); this._futurePriceSet(leg); this._changed(); }, { label: `Entry price of ${leg.label}`, width: 100 });
+            cell(this._number(leg.qty, (v, i) => { leg.qty = Number.isFinite(v) && v >= 1 ? Math.round(v) : 0; i.classList.toggle('invalid', !leg.qty); this._changed(); }, { label: 'Quantity', step: 1, min: 1, width: 56 }));
+            const contract = cell();
+            contract.appendChild(el('span', 'sw-contract', leg.label));
+            contract.appendChild(el('span', 'pc-hint sw-detail', `${leg.label.includes(leg.product) ? '' : `${leg.product} · `}${KIND_LABEL[leg.kind]}${leg.kind === 'future' ? '' : ` ${levelText(Number(leg.strike))}`} · ${formatDateString(leg.expiration)}`));
+            const price = this._number(leg.price, (v, i) => { leg.price = Number.isFinite(v) ? v : NaN; leg.priceFromSettlement = false; i.classList.toggle('invalid', !Number.isFinite(v)); this._futurePriceSet(leg); this._changed(); }, { label: `Entry price of ${leg.label}`, width: 88 });
             price.title = leg.priceFromSettlement ? 'Last settlement price. Overwrite with your own entry price.' : 'Entry price';
             cell(price);
-            cell(this._number(leg.pointValue, (v, i) => { leg.pointValue = Number.isFinite(v) && v > 0 ? v : 0; leg.pointValueKnown = true; i.classList.toggle('invalid', !leg.pointValue); this._changed(); }, { label: `Point value of ${leg.product}`, width: 90 }));
+            cell(this._number(leg.pointValue, (v, i) => { leg.pointValue = Number.isFinite(v) && v > 0 ? v : 0; leg.pointValueKnown = true; i.classList.toggle('invalid', !leg.pointValue); this._changed(); }, { label: `Point value of ${leg.product}`, width: 70 }));
             const del = button('', { className: 'pc-btn sw-del', title: 'Remove leg', iconName: 'x', onClick: () => { this.legs = this.legs.filter(l => l !== leg); this._legsChanged(); } });
             del.setAttribute('aria-label', `Remove ${leg.label}`);
             cell(del);
@@ -719,7 +722,10 @@ export class StrategyView {
         const vol = (this.settings.vol || 0) / 100;
         const evalDate = firstExpiry(legs);
         // While a leg is dragged the axis stays put, otherwise it would rescale under the pointer
-        const range = this.freeze || moveRange(legs, groups, num(this.settings.range) / 100 || null);
+        // The sketch (the wish) and the payoff share their level axis when there is a drawing, so they can be compared
+        const wish = this.sketch?.getGhost();
+        const wishRange = wish && wish.code === names[0] && groups[names[0]].s0 > 0 ? { min: wish.axis.min / groups[names[0]].s0 - 1, max: wish.axis.max / groups[names[0]].s0 - 1 } : null;
+        const range = this.freeze || (num(this.settings.range) > 0 ? moveRange(legs, groups, num(this.settings.range) / 100) : wishRange) || moveRange(legs, groups, null);
         const expiry = curve(legs, groups, range, { date: evalDate, vol, fx });
         // Exact when every option is at its expiry on the evaluation date; otherwise part of the curve is the model
         const stats = analyze(expiry, { exact: legs.every(l => l.kind === 'future' || l.expiration === evalDate) });
@@ -742,15 +748,18 @@ export class StrategyView {
         tile('Valued at', formatDateString(evalDate));
         box.appendChild(tiles);
 
+        const ghost = this._ghost(leader, expiry);
         const markers = legs.map(l => {
             const value = l.kind === 'future' ? l.price : l.strike;
             return {
                 id: l.id, side: l.side, s: legLevel(l, groups, leader), draggable: this._draggable(l, groups, leader), active: this.drag?.id === l.id,
-                text: `${l.side > 0 ? '+' : '-'}${l.qty} ${l.product} ${l.kind === 'future' ? `F @${levelText(Number(value))}` : `${l.kind === 'call' ? 'C' : 'P'} ${levelText(Number(value))}`}`
+                // the contract name as the API gives it; a future also shows its entry price, which is what the pill moves
+                text: `${l.side > 0 ? '+' : '-'}${l.qty} ${l.label}${l.kind === 'future' ? ` @${levelText(Number(value))}` : ''}`
             };
         });
         const chart = renderPayoffChart(series, {
             legs: markers,
+            ghost,
             onLegDown: (id, e) => this._startDrag(id, e),
             onLegStep: (id, dir) => this._stepLeg(id, dir),
             breakevens: stats.breakevens,
@@ -760,6 +769,11 @@ export class StrategyView {
             label: `Payoff of the strategy at ${evalDate}: max profit ${stats.unlimitedProfit ? 'unlimited' : money(stats.maxProfit, cur)}, max loss ${stats.unlimitedLoss ? 'unlimited' : money(stats.maxLoss, cur)}`
         });
         box.appendChild(chart);
+        if (ghost) {
+            const legend = el('p', 'pc-hint sw-legend');
+            legend.append(el('span', 'sw-key wish'), 'Your wish (drawing, moved to the height of the payoff)  ', el('span', 'sw-key real'), 'Payoff of your legs');
+            box.appendChild(legend);
+        }
         if (this.focusLeg) { chart.querySelector(`[data-leg="${this.focusLeg}"]`)?.focus(); this.focusLeg = null; }
         box.appendChild(el('p', 'pc-hint', stats.unlimitedProfit || stats.unlimitedLoss
             ? 'Max profit / loss are over the shown range; "Unlimited" means the curve is still moving at its upper end. Drag a leg under the chart sideways to move its strike (a future: its entry price); the legs above follow. Hover the chart or focus it and use the arrow keys for values.'
@@ -895,6 +909,28 @@ export class StrategyView {
         }
         this.focusLeg = id;
         if (this._setLegValue(leg, value)) { this._redrawAfterMove(); this._renderScenario(); } else this.focusLeg = null;
+    }
+
+    // The drawing from the sketch, in the levels of the payoff chart and moved to the height where it lies closest to the
+    // payoff (only its shape was asked for). Null when there is no drawing or it is for another underlying than the x axis.
+    _ghost(leader, points) {
+        const g = this.sketch?.getGhost();
+        if (!g || g.code !== leader) return null;
+        const lo = Math.min(...g.points.map(p => p.s));
+        const hi = Math.max(...g.points.map(p => p.s));
+        const grid = resample(g.points, lo, hi, 160);
+        if (!grid) return null;
+        const at = (s) => {
+            if (s < grid.xs[0] || s > grid.xs[grid.xs.length - 1]) return null;
+            let j = 0;
+            while (j < grid.xs.length - 2 && grid.xs[j + 1] < s) j++;
+            const t = (s - grid.xs[j]) / ((grid.xs[j + 1] - grid.xs[j]) || 1);
+            return grid.ys[j] + (grid.ys[j + 1] - grid.ys[j]) * t;
+        };
+        const diffs = points.map(p => { const y = at(p.s); return y === null ? null : p.y - y; }).filter(d => d !== null);
+        if (diffs.length < 2) return null;
+        const offset = diffs.reduce((s, d) => s + d, 0) / diffs.length;
+        return { points: grid.xs.map((s, i) => ({ s, y: grid.ys[i] + offset })) };
     }
 
     _sample(series, count) {
