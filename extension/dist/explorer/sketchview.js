@@ -242,7 +242,7 @@ export class SketchPanel {
             let debit = 0;
             sol.legs.forEach(l => {
                 debit += l.lots * l.cand.price * this.pv;
-                ul.appendChild(el('li', '', `${l.lots > 0 ? 'Buy' : 'Sell'} ${Math.abs(l.lots)} × ${this.data.code} ${l.cand.kind === 'call' ? 'C' : 'P'} ${levelText(l.cand.strike)} @ ${levelText(l.cand.price)}`));
+                ul.appendChild(el('li', '', `${l.lots > 0 ? 'Buy' : 'Sell'} ${Math.abs(l.lots)} × ${l.cand.contract.label || `${this.data.code} ${l.cand.kind === 'call' ? 'C' : 'P'} ${levelText(l.cand.strike)}`} @ ${levelText(l.cand.price)}`));
             });
             card.appendChild(ul);
             card.appendChild(el('p', 'pc-hint', `${debit >= 0 ? 'Net debit' : 'Net credit'} ${Math.abs(Math.round(debit)).toLocaleString('en-US')} ${this.currency} at the last settlement prices`));

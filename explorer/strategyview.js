@@ -753,7 +753,8 @@ export class StrategyView {
             const value = l.kind === 'future' ? l.price : l.strike;
             return {
                 id: l.id, side: l.side, s: legLevel(l, groups, leader), draggable: this._draggable(l, groups, leader), active: this.drag?.id === l.id,
-                text: `${l.side > 0 ? '+' : '-'}${l.qty} ${l.product} ${l.kind === 'future' ? `F @${levelText(Number(value))}` : `${l.kind === 'call' ? 'C' : 'P'} ${levelText(Number(value))}`}`
+                // the contract name as the API gives it; a future also shows its entry price, which is what the pill moves
+                text: `${l.side > 0 ? '+' : '-'}${l.qty} ${l.label}${l.kind === 'future' ? ` @${levelText(Number(value))}` : ''}`
             };
         });
         const chart = renderPayoffChart(series, {

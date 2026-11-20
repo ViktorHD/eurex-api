@@ -87,9 +87,9 @@ describe('dragging legs on the chart', () => {
         return svg;
     };
 
-    test('every leg is a pill under the chart, with the strike it sits at', async () => {
+    test('every leg is a pill under the chart, named as the API names the contract', async () => {
         const { box } = await straddle();
-        expect(pills(box).map(label)).toEqual(['+1 OESX C 5,000', '+1 OESX P 5,000']);
+        expect(pills(box).map(label)).toEqual(['+1 OESX C 5000', '+1 OESX P 5000']);
         expect(pills(box).every(p => p.getAttribute('role') === 'slider' && p.getAttribute('tabindex') === '0')).toBe(true);
     });
 
@@ -101,7 +101,7 @@ describe('dragging legs on the chart', () => {
         expect(row.dataset.strike).toBe('4900');                          // strike
         expect(row.querySelector('.sw-contract').textContent).toBe('OESX C 4900'); // contract
         expect(row.querySelectorAll('input')[1].value).toBe('160');        // settlement price of the new contract
-        expect(label(pills(box)[0])).toBe('+1 OESX C 4,900');
+        expect(label(pills(box)[0])).toBe('+1 OESX C 4900');
         expect(tile(box, 'Net debit')).toBe('2,200 EUR');                  // (160 + 60) * 10: the result follows the new leg
         expect(document.body.classList.contains('pf-dragging')).toBe(false);
         expect(JSON.parse(localStorage.getItem('eurexExplorer.strategy')).legs[0].strike).toBe(4900);
@@ -148,7 +148,7 @@ describe('dragging legs on the chart', () => {
         expect(Math.abs(price - 5040)).toBeLessThanOrEqual(3); // the pointer position is a whole pixel, about 2 points wide
         expect(Number.isInteger(price)).toBe(true);           // snapped to the tick size of 1
         expect(box.querySelector('.sw-scenario input').value).toBe(refBefore);
-        expect(label(pills(box)[0])).toBe(`+1 FESX F @${price.toLocaleString('en-US')}`);
+        expect(label(pills(box)[0])).toBe(`+1 FESX A @${price.toLocaleString('en-US')}`);
     });
 
     test('legs whose strikes are not loaded cannot be dragged', async () => {
@@ -201,8 +201,8 @@ describe('drawing a payoff', () => {
         expect(names(box)).toContain('2 legs · Long straddle');
         const recommended = cards(box).find(c => c.querySelector('.sw-tes-badge'));
         expect(recommended.textContent).toContain('2 legs · Long straddle');
-        expect(recommended.textContent).toContain('Buy 1 × OESX C 5,000');
-        expect(recommended.textContent).toContain('Buy 1 × OESX P 5,000');
+        expect(recommended.textContent).toContain('Buy 1 × OESX C 5000');
+        expect(recommended.textContent).toContain('Buy 1 × OESX P 5000');
         expect(sk(box).querySelector('.lc-empty').getAttribute('visibility')).toBe('hidden'); // "Draw here" makes way for the drawing
         expect(sk(box).querySelector('.pf-line2').getAttribute('d')).toMatch(/^M/); // the dashed preview
         expect(sk(box).querySelector('.sk-line').getAttribute('d')).toMatch(/^M/);  // and the drawing
@@ -242,7 +242,7 @@ describe('drawing a payoff', () => {
         click(byText(cards(box).find(c => c.textContent.includes('Long straddle')), 'button', 'Use legs'));
         click(byText(box, '.sk-panel button', 'Short volatility'));
         const short = cards(box).find(c => c.textContent.includes('Short straddle'));
-        expect(short.textContent).toContain('Sell 1 × OESX C 5,000');
+        expect(short.textContent).toContain('Sell 1 × OESX C 5000');
         expect(short.textContent).toContain('Net credit');
         click(byText(short, 'button', 'Add'));
         expect(box.querySelectorAll('.sw-legs tbody tr')).toHaveLength(4);
