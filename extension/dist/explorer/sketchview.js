@@ -15,8 +15,8 @@ const svg = (tag, attrs = {}, text) => {
     if (text !== undefined) e.textContent = text;
     return e;
 };
-const W = 760;
-const H = 300;
+const W = 640;
+const H = 290;
 const M = { top: 14, right: 22, bottom: 34, left: 66 };
 const PW = W - M.left - M.right;
 const PH = H - M.top - M.bottom;
@@ -33,7 +33,7 @@ const PRESETS = [
 ].map(([name, f]) => ({ name, points: Array.from({ length: 41 }, (_, i) => { const x = (i / 40) * 2 - 1; return { u: i / 40, v: f(x) }; }) }));
 
 export class SketchPanel {
-    /** hooks: { getData(): the loaded product data or null, onUse(legs, append) } */
+    /** hooks: { getData(): the loaded product data or null, onUse(legs, append), onChange(): the drawing or its axes changed } */
     constructor(box, hooks) {
         this.box = box;
         this.hooks = hooks;
@@ -48,6 +48,7 @@ export class SketchPanel {
     refresh() {
         const box = this.box;
         box.innerHTML = '';
+        this.data = null;
         const d = this.hooks.getData();
         if (!d) { box.appendChild(el('p', 'pc-hint', 'Pick an options product above, then draw the payoff you want and get a combination of calls and puts that draws it.')); return; }
         if (d.kind !== 'option') { box.appendChild(el('p', 'pc-hint', `${d.code} is a futures product. Drawing suggests calls and puts, so pick an options product.`)); return; }
@@ -56,7 +57,7 @@ export class SketchPanel {
         this.expiries = expirationsOf(d.options, 'option').filter(e => e >= today);
         if (!this.expiries.length) { box.appendChild(el('p', 'pc-note bad', `No upcoming option expiry is listed for ${d.code}.`)); return; }
         if (!this.expiries.includes(this.state.expiry)) this.state.expiry = this.expiries[0];
-        box.appendChild(el('p', 'pc-hint', `Draw the profit or loss at expiry you want for ${d.code}: press and drag across the chart, or start from a shape. The wizard looks for the few calls and puts that draw it. Only the shape counts; the height of the curve follows from the premiums.`));
+        box.appendChild(el('p', 'pc-hint', `Draw the profit or loss at expiry you want for ${d.code} (press and drag), or start from a shape. The wizard suggests the calls and puts that draw it; only the shape counts. Your drawing also appears behind the payoff of your legs.`));
         this.controls = el('div', 'ps-bar');
         box.appendChild(this.controls);
         this.presets = el('div', 'sw-tpl-row');
@@ -74,6 +75,13 @@ export class SketchPanel {
         this._renderCanvas();
         this._renderResults();
         refreshIcons();
+        this.hooks.onChange?.();
+    }
+
+    /** The drawing as { code, points: [{ s, y }], axis: { min, max } } in levels and money for the product, or null without one. */
+    getGhost() {
+        if (!this.data || this.points.length < 2) return null;
+        return { code: this.data.code, points: this._drawnPts(), axis: { min: this.sMin, max: this.sMax } };
     }
 
     // Levels and money range of the canvas
@@ -206,6 +214,7 @@ export class SketchPanel {
         }
         this._paint();
         this._renderResults();
+        this.hooks.onChange?.();
     }
 
     _legsOf(sol) {
@@ -239,8 +248,8 @@ export class SketchPanel {
             card.appendChild(el('p', 'pc-hint', `${debit >= 0 ? 'Net debit' : 'Net credit'} ${Math.abs(Math.round(debit)).toLocaleString('en-US')} ${this.currency} at the last settlement prices`));
             const actions = el('div', 'pc-actions');
             actions.appendChild(button('Preview', { className: 'pc-btn', onClick: () => { this.selected = i; this._paint(); this._renderResults(); } }));
-            actions.appendChild(button('Use these legs', { className: 'pc-btn primary', iconName: 'check', onClick: () => this.hooks.onUse(this._legsOf(sol), false) }));
-            actions.appendChild(button('Add to legs', { className: 'pc-btn', iconName: 'plus', onClick: () => this.hooks.onUse(this._legsOf(sol), true) }));
+            actions.appendChild(button('Use legs', { className: 'pc-btn primary', title: 'Replace the legs of the strategy with these', iconName: 'check', onClick: () => this.hooks.onUse(this._legsOf(sol), false) }));
+            actions.appendChild(button('Add', { className: 'pc-btn', title: 'Add these legs to the strategy', iconName: 'plus', onClick: () => this.hooks.onUse(this._legsOf(sol), true) }));
             card.appendChild(actions);
             list.appendChild(card);
         });

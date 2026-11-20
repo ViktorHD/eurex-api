@@ -4367,10 +4367,51 @@ body.pf-dragging { cursor: ew-resize; user-select: none; }
 .sk-pad { fill: transparent; cursor: crosshair; touch-action: none; }
 .sk-line { stroke: var(--navy-blue); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .sk-results { margin-top: 8px; }
-.sk-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
 .sk-card { border: 1px solid var(--eurex-line); border-radius: 6px; padding: 10px 12px; background: #fff; }
 .sk-card.selected { border-color: var(--navy-blue); box-shadow: 0 0 0 2px rgba(32, 23, 81, 0.15); }
 .sk-card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .sk-card-head .pc-hint { margin-left: auto; }
 .sk-legs { list-style: none; margin: 0 0 6px; padding: 0; font-size: 0.85rem; }
 .sk-legs li { padding: 1px 0; }
+
+/* ---------- Strategy Wizard layout: use the screen width ---------- */
+#strategyContent { max-width: none; padding: 16px 20px 40px; container-type: inline-size; }
+.sw-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.sw-left, .sw-right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.sw-grid .sw-step { margin-bottom: 0; }
+.sw-grid .pf, .sw-grid .sk-svg { max-width: none; }
+/* Wide: inputs on the left, wish above result on the right (kept in view while the legs are edited) */
+@container (min-width: 980px) {
+    .sw-grid { grid-template-columns: minmax(400px, 5fr) minmax(0, 7fr); }
+    .sw-right { position: sticky; top: 0; max-height: calc(100vh - 100px); overflow-y: auto; padding: 0 2px 2px 0; }
+    /* Stacked: keep the charts low enough that more of both is in view */
+    .sw-right .sk-svg { max-height: 240px; margin-inline: auto; }
+    .sw-right .pf { max-height: 360px; margin-inline: auto; }
+}
+/* Very wide: wish and result side by side, each in view */
+@container (min-width: 1560px) {
+    .sw-grid { grid-template-columns: minmax(430px, 4fr) minmax(0, 4fr) minmax(0, 4.4fr); }
+    .sw-right { display: contents; }
+    .sw-right .sk-svg, .sw-right .pf { max-height: none; }
+    .sw-wish, .sw-result { position: sticky; top: 0; max-height: calc(100vh - 100px); overflow-y: auto; }
+}
+.sw-wish { border-top-color: #7a73a6; }
+.sw-wish .sk-line { stroke: #6a62a0; }
+.sw-result { border-top-color: var(--navy-blue); }
+.pf-ghost { stroke: #7a73a6; stroke-width: 6; stroke-opacity: 0.4; stroke-linecap: round; stroke-linejoin: round; }
+.sw-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 2px 0 6px; }
+.sw-key { display: inline-block; width: 22px; height: 5px; border-radius: 3px; margin: 0 2px 1px 8px; }
+.sw-key.wish { background: rgba(122, 115, 166, 0.55); height: 6px; }
+.sw-key.real { background: var(--navy-blue); height: 3px; }
+/* Compact legs table: contract details under the name */
+.sw-contract { display: block; font-weight: 500; white-space: nowrap; }
+.sw-detail { display: block; }
+.sw-table td:nth-child(3) { white-space: normal; min-width: 150px; }
+.sw-table th, .sw-table td { padding-left: 6px; padding-right: 6px; }
+/* Suggestions in one scrolling row, so the drawing and the payoff stay close together */
+.sk-cards { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.sk-card { flex: 0 0 260px; }
+.sk-card .pc-actions { flex-wrap: nowrap; gap: 6px; }
+.sk-card .pc-btn { padding: 5px 9px; }
+.pf .lc-tick, .pf .lc-ylabel, .pf .pf-be-label, .sk-svg .lc-tick { font-size: 12px; }
+.pf-leg text { font-size: 12px; }
